@@ -1,0 +1,36 @@
+import SwiftUI
+
+struct BestOfEntryCard: View {
+    let entry: BestOfEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                CategoryChip(label: entry.category.rawValue, colorHex: entry.category.colorHex)
+                Spacer()
+                if !entry.isUnassigned {
+                    Text(entry.isYearOnly
+                         ? String(entry.year)
+                         : entry.date.formatted(.dateTime.month(.abbreviated).year()))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.sunSecondary)
+                }
+            }
+
+            Text(entry.entry)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color.sunText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !entry.notes.isEmpty {
+                Text(entry.notes)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.sunSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(16)
+        .background(Color.sunSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
