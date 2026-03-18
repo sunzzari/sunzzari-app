@@ -8,6 +8,10 @@ struct TodayView: View {
     @State private var errorMessage: String?
     @State private var isNewYearsDay = false
 
+    @State private var selectedEntry: BestOfEntry? = nil
+    @State private var entryToEdit: BestOfEntry? = nil
+    @Namespace private var cardNamespace
+
     private var hasToday: Bool { !bestMomentsToday.isEmpty || !otherToday.isEmpty }
     private var todayCount: Int { bestMomentsToday.count + otherToday.count }
 
@@ -30,21 +34,31 @@ struct TodayView: View {
                             if hasToday {
                                 // Tier 1: Best Moments for today (highest priority)
                                 ForEach(bestMomentsToday) { entry in
-                                    BestOfEntryCard(entry: entry)
-                                        .listRowBackground(Color.sunBackground)
-                                        .listRowSeparator(.hidden)
-                                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    entryRow(entry)
                                 }
                                 // Tier 2: Other categories for today
                                 ForEach(otherToday) { entry in
-                                    BestOfEntryCard(entry: entry)
-                                        .listRowBackground(Color.sunBackground)
-                                        .listRowSeparator(.hidden)
-                                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    entryRow(entry)
                                 }
                             } else if let entry = fallbackEntry {
                                 // Tier 3: Random unassigned fallback
                                 fallbackCard(entry)
+                                    .matchedGeometryEffect(id: entry.id, in: cardNamespace)
+                                    .opacity(selectedEntry?.id == entry.id ? 0 : 1)
+                                    .onTapGesture {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            selectedEntry = entry
+                                        }
+                                    }
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            entryToEdit = entry
+                                        } label: {
+                                            Label("Edit", systemImage: "pencil")
+                                        }
+                                        .tint(.orange)
+                                    }
                                     .listRowBackground(Color.sunBackground)
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
@@ -68,13 +82,82 @@ struct TodayView: View {
             }
             .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .overlay {
+            if let entry = selectedEntry {
+                ZStack {
+                    Color.black.opacity(0.55)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                selectedEntry = nil
+                            }
+                        }
+                    BestOfDetailView(entry: entry, namespace: cardNamespace, onDismiss: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            selectedEntry = nil
+                        }
+                    }, onEdit: {
+                        let captured = entry
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            selectedEntry = nil
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            entryToEdit = captured
+                        }
+                    })
+                }
+                .transition(.identity)
+            }
+        }
+        .sheet(item: $entryToEdit) { entry in
+            EditEntryView(entry: entry) { updated in
+                handleUpdate(updated)
+            }
         }
         .task { await load() }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
+    }
+
+    // MARK: - Entry row (Tier 1 + Tier 2)
+
+    @ViewBuilder
+    private func entryRow(_ entry: BestOfEntry) -> some View {
+        BestOfEntryCard(entry: entry)
+            .matchedGeometryEffect(id: entry.id, in: cardNamespace)
+            .opacity(selectedEntry?.id == entry.id ? 0 : 1)
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    selectedEntry = entry
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    entryToEdit = entry
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.orange)
+            }
+            .listRowBackground(Color.sunBackground)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+    }
+
+    // MARK: - Edit update handler
+
+    private func handleUpdate(_ updated: BestOfEntry) {
+        if let idx = bestMomentsToday.firstIndex(where: { $0.id == updated.id }) {
+            bestMomentsToday[idx] = updated
+        } else if let idx = otherToday.firstIndex(where: { $0.id == updated.id }) {
+            otherToday[idx] = updated
+        } else if fallbackEntry?.id == updated.id {
+            fallbackEntry = updated
+        }
     }
 
     // MARK: - New Year's Day view
@@ -116,16 +199,18 @@ struct TodayView: View {
 
             Text(Date().formatted(.dateTime.month(.wide).day()))
                 .font(.system(size: 32, weight: .bold))
+                .fontDesign(.serif)
                 .foregroundStyle(Color.sunText)
 
             Text(contextLabel)
                 .font(.system(size: 10, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(Color.sunSecondary)
+                .foregroundStyle(hasToday ? Color.sunSecondary : Color.sunAccent)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
-                .background(Color.sunSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .background(hasToday ? Color.sunSurface : Color.sunAccent.opacity(0.12))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(hasToday ? Color.white.opacity(0.1) : Color.sunAccent.opacity(0.35), lineWidth: 1))
                 .padding(.top, 4)
         }
         .textCase(nil)
@@ -150,6 +235,7 @@ struct TodayView: View {
 
             Text(entry.entry)
                 .font(.system(size: 16, weight: .bold))
+                .fontDesign(.serif)
                 .foregroundStyle(Color.sunText)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -189,58 +275,24 @@ struct TodayView: View {
     // MARK: - Load
 
     private func load(force: Bool = false) async {
+        // Stale-while-revalidate: serve disk cache instantly, refresh in background
+        if !force, let cached = NotionService.shared.bestOfDiskCache() {
+            applyEntries(cached)
+            isLoading = false
+            do {
+                let fresh = try await NotionService.shared.fetchBestOf(force: true)
+                applyEntries(fresh)
+            } catch is CancellationError {
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+            } catch { /* silently fail — user already sees cached data */ }
+            return
+        }
+        // No disk cache (first-ever launch) or pull-to-refresh
         isLoading = true
         defer { isLoading = false }
         do {
-            let cal = Calendar(identifier: .gregorian)
-            let now = Date()
-            let todayMonth = cal.component(.month, from: now)
-            let todayDay   = cal.component(.day, from: now)
-
-            if todayMonth == 1 && todayDay == 1 {
-                isNewYearsDay = true
-                bestMomentsToday = []
-                otherToday = []
-                fallbackEntry = nil
-                return
-            }
-            isNewYearsDay = false
-
             let all = try await NotionService.shared.fetchBestOf(force: force)
-
-            // Filter entries that match today's month+day, exclude year-only entries (YYYY-01-01)
-            let todayEntries = all.filter { entry in
-                !entry.isYearOnly &&
-                cal.component(.month, from: entry.date) == todayMonth &&
-                cal.component(.day, from: entry.date) == todayDay
-            }
-
-            // Tier 1: Best Moments first (primary category), newest year first
-            bestMomentsToday = todayEntries
-                .filter { $0.category == .bestMoments }
-                .sorted { $0.year > $1.year }
-
-            // Tier 2: All other categories (except Improvements), newest year first
-            otherToday = todayEntries
-                .filter { $0.category != .bestMoments && $0.category != .improvements }
-                .sorted { $0.year > $1.year }
-
-            // Tier 3: Nothing for today — stable fallback via UserDefaults (same entry all day)
-            let todayKey = "sunzzari_fallback_\(DateFormatter.sunYYYYMMdd.string(from: now))"
-            if bestMomentsToday.isEmpty && otherToday.isEmpty {
-                let unassigned = all.filter { $0.isYearOnly && $0.category != .improvements }
-                if let savedID = UserDefaults.standard.string(forKey: todayKey),
-                   let saved = unassigned.first(where: { $0.id == savedID }) {
-                    fallbackEntry = saved
-                } else {
-                    fallbackEntry = unassigned.randomElement()
-                    if let chosen = fallbackEntry {
-                        UserDefaults.standard.set(chosen.id, forKey: todayKey)
-                    }
-                }
-            } else {
-                fallbackEntry = nil
-            }
+            applyEntries(all)
         } catch is CancellationError {
             return
         } catch let urlErr as URLError where urlErr.code == .cancelled {
@@ -249,13 +301,42 @@ struct TodayView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    private func applyEntries(_ all: [BestOfEntry]) {
+        let cal = Calendar(identifier: .gregorian)
+        let now = Date()
+        let todayMonth = cal.component(.month, from: now)
+        let todayDay   = cal.component(.day, from: now)
+
+        if todayMonth == 1 && todayDay == 1 {
+            isNewYearsDay = true
+            bestMomentsToday = []
+            otherToday = []
+            fallbackEntry = nil
+            return
+        }
+        isNewYearsDay = false
+
+        let todayEntries = all.filter { entry in
+            !entry.isYearOnly &&
+            cal.component(.month, from: entry.date) == todayMonth &&
+            cal.component(.day, from: entry.date) == todayDay
+        }
+
+        bestMomentsToday = todayEntries
+            .filter { $0.category == .bestMoments }
+            .sorted { $0.year > $1.year }
+
+        otherToday = todayEntries
+            .filter { $0.category != .bestMoments && $0.category != .improvements }
+            .sorted { $0.year > $1.year }
+
+        // Tier 3 fallback: delegate to DailySetupService — same pick as the notification
+        if bestMomentsToday.isEmpty && otherToday.isEmpty {
+            fallbackEntry = DailySetupService.shared.selectEntry(for: now, from: all)
+        } else {
+            fallbackEntry = nil
+        }
+    }
 }
 
-// MARK: - DateFormatter helpers
-private extension DateFormatter {
-    static let sunYYYYMMdd: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-}

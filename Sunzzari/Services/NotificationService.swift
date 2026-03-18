@@ -8,46 +8,55 @@ final class NotificationService: @unchecked Sendable {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     }
 
-    /// Schedules one-time 9am notifications for the next 30 days using
-    /// random unassigned Best Of entries (date == 1996-01-01).
-    func scheduleOnThisDay(unassigned: [BestOfEntry]) async {
+    /// Fires a test notification in 5 seconds using the real notification format.
+    func sendTestNotification() async {
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = "Today in Sunzzari"
+        content.body  = "✨ Met at Cliffs of ID — 2025"
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "sunzzari-test-\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: trigger
+        )
+        try? await center.add(request)
+    }
+
+    /// Safety-net: schedules 9am notifications for the next 30 days using DailySetupService.selectEntry.
+    /// Provides coverage for days the app is never opened and the 12:01am trigger doesn't run.
+    /// DailySetupService.runDailySetup() overwrites today's notification with fresher data when it runs.
+    func scheduleOnThisDay(allEntries: [BestOfEntry]) async {
         let center = UNUserNotificationCenter.current()
 
-        // Clear all existing Sunzzari notifications
-        let pending = await center.pendingNotificationRequests()
+        // Clear existing 30-day schedule
+        let pending  = await center.pendingNotificationRequests()
         let toRemove = pending
             .filter { $0.identifier.hasPrefix("sunzzari-otd-") || $0.identifier.hasPrefix("sunzzari-fallback-") }
             .map(\.identifier)
         center.removePendingNotificationRequests(withIdentifiers: toRemove)
 
-        guard !unassigned.isEmpty else { return }
-
         let cal = Calendar.current
-        var pool = unassigned.shuffled()
-        var poolIndex = 0
 
         for daysAhead in 0..<30 {
             guard let date = cal.date(byAdding: .day, value: daysAhead, to: Date()) else { continue }
 
-            let entry = pool[poolIndex % pool.count]
-            poolIndex += 1
+            // Delegate to the single source of truth
+            guard let entry = DailySetupService.shared.selectEntry(for: date, from: allEntries) else { continue }
 
-            var components = cal.dateComponents([.year, .month, .day], from: date)
-            components.hour   = 9
-            components.minute = 0
+            var comps      = cal.dateComponents([.year, .month, .day], from: date)
+            comps.hour     = 9
+            comps.minute   = 0
 
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            let trigger    = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let content    = UNMutableNotificationContent()
+            content.title  = "Today in Sunzzari"
+            content.body   = "\(entry.category.emoji) \(entry.entry) — \(entry.year)"
+            content.sound  = .default
 
-            let content = UNMutableNotificationContent()
-            content.title = "\(entry.category.emoji) \(entry.category.rawValue)"
-            content.body  = entry.entry
-            content.sound = .default
-
-            let dateKey = String(format: "%04d-%02d-%02d",
-                components.year  ?? 0,
-                components.month ?? 0,
-                components.day   ?? 0)
-
+            let dateKey = DailySetupService.shared.dateString(for: date)
             let request = UNNotificationRequest(
                 identifier: "sunzzari-fallback-\(dateKey)",
                 content:    content,
