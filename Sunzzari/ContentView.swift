@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @State private var selectedTab = 0
@@ -6,6 +7,7 @@ struct ContentView: View {
     @State private var showStatusSheet = false
     @State private var showThoughtActionSheet = false
     @State private var showIdentitySetup = false
+    @State private var hideFloatingButtons = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -106,7 +108,8 @@ struct ContentView: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
-            // Floating buttons — thought-action / status / boop, always top-right, above all tabs
+            // Floating buttons — hidden on More page and overflow tabs so they don't block content
+            if !hideFloatingButtons {
             VStack {
                 HStack {
                     Spacer()
@@ -158,6 +161,7 @@ struct ContentView: View {
                 Spacer()
             }
             .padding(.top) // respects safe area (below Dynamic Island / status bar)
+            } // end if !hideFloatingButtons
         }
         .sheet(isPresented: $showThoughtActionSheet) {
             ThoughtActionView()
@@ -171,6 +175,13 @@ struct ContentView: View {
         .sheet(isPresented: $showIdentitySetup) {
             SettingsView(onComplete: { showIdentitySetup = false })
                 .interactiveDismissDisabled(true)
+        }
+        // Hide floating buttons on the More page or any overflow tab (tag ≥ 4)
+        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
+            let onOverflow = selectedTab >= 4
+            let onMoreList = Self.isMoreNavigationActive()
+            let shouldHide = onOverflow || onMoreList
+            if shouldHide != hideFloatingButtons { hideFloatingButtons = shouldHide }
         }
         .task {
             // Show identity picker on first launch
@@ -193,5 +204,17 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Helpers
+
+    /// Returns true when iOS is showing the More navigation list (not a tab within it).
+    private static func isMoreNavigationActive() -> Bool {
+        guard
+            let scene = UIApplication.shared.connectedScenes
+                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+            let tabBar = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController as? UITabBarController
+        else { return false }
+        return tabBar.selectedViewController === tabBar.moreNavigationController
     }
 }
