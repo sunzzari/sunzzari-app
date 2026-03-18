@@ -150,8 +150,6 @@ struct AddDinoView: View {
                         .foregroundStyle(Color.sunSecondary)
                 }
             }
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 

@@ -34,7 +34,7 @@ struct BestOfView: View {
                 } else {
                     VStack(spacing: 0) {
                         categoryFilter.padding(.vertical, 10)
-                        Color.sunSurface.frame(height: 0.5)
+                        Color.white.opacity(0.1).frame(height: 0.5)
                         entryList
                     }
                 }
@@ -43,7 +43,6 @@ struct BestOfView: View {
             }
             .navigationTitle("Best Of")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .overlay {
@@ -189,33 +188,43 @@ struct BestOfView: View {
                 else { expandedYears.insert(year) }
             }
         } label: {
-            HStack(spacing: 8) {
-                Text(String(year))
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.sunText)
+            HStack(spacing: 0) {
+                // Amber left accent bar — matches travel map group header style
+                Rectangle()
+                    .fill(Color.sunAccent)
+                    .frame(width: 3)
 
-                let count = entries.filter { $0.year == year }.count
-                Text("\(count)")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.sunAccent)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.sunAccent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                HStack(spacing: 8) {
+                    Text(String(year))
+                        .font(.system(size: 14, weight: .bold))
+                        .fontDesign(.serif)
+                        .foregroundStyle(Color.sunText)
 
-                Spacer()
+                    let count = entries.filter { $0.year == year }.count
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.sunAccent)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.sunAccent.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
 
-                if collapsible {
-                    Image(systemName: expandedYears.contains(year) ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.sunSecondary)
+                    Spacer()
+
+                    if collapsible {
+                        Image(systemName: expandedYears.contains(year) ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sunSecondary)
+                    }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             }
+            .background(Color.white.opacity(0.05))
             .textCase(nil)
-            .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
     }
 
     // MARK: - Category filter
@@ -232,9 +241,11 @@ struct BestOfView: View {
                         .tracking(0.8)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
-                        .background(selectedCategory == nil ? Color.sunAccent.opacity(0.18) : Color.sunSurface)
+                        .background(selectedCategory == nil ? Color.sunAccent.opacity(0.12) : Color.clear)
                         .foregroundStyle(selectedCategory == nil ? Color.sunAccent : Color.sunSecondary)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(selectedCategory == nil ? Color.sunAccent.opacity(1) : Color.white.opacity(0.2), lineWidth: 1))
+                        .shadow(color: selectedCategory == nil ? Color.sunAccent.opacity(0.4) : .clear, radius: 6, y: 0)
                 }
                 ForEach(BestOfEntry.Category.allCases, id: \.self) { cat in
                     Button {
@@ -274,6 +285,19 @@ struct BestOfView: View {
     // MARK: - Load
 
     private func load(force: Bool = false) async {
+        // Stale-while-revalidate: serve disk cache instantly, refresh in background
+        if !force, let cached = NotionService.shared.bestOfDiskCache() {
+            entries = cached
+            isLoading = false
+            do {
+                let fresh = try await NotionService.shared.fetchBestOf(force: true)
+                entries = fresh
+            } catch is CancellationError {
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+            } catch { /* silently fail — user already sees cached data */ }
+            return
+        }
+        // No disk cache (first-ever launch) or pull-to-refresh
         isLoading = true
         defer { isLoading = false }
         do {

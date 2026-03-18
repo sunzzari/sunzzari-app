@@ -25,6 +25,7 @@ struct NitsAndBugsView: View {
     @State private var title: String = ""
     @State private var details: String = ""
     @State private var submitted = false
+    @State private var testSent = false
 
     private var canSubmit: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -134,13 +135,49 @@ struct NitsAndBugsView: View {
                                 .foregroundStyle(Color.sunSecondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
                         }
+
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                            .padding(.vertical, 4)
+
+                        // Test notification
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("TEST NOTIFICATION")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.sunSecondary)
+                                .kerning(1.5)
+
+                            Button {
+                                Task { await NotificationService.shared.sendTestNotification() }
+                                testSent = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { testSent = false }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "bell.fill")
+                                    Text(testSent ? "Background the app now →" : "Fire in 5 sec")
+                                        .font(.headline)
+                                        .foregroundStyle(Color.sunBackground)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(testSent ? Color.green.opacity(0.8) : Color.sunSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                )
+                            }
+
+                            Text("Fires a sample \"Best Moments\" notification. Background the app to see it.")
+                                .font(.caption)
+                                .foregroundStyle(Color.sunSecondary)
+                        }
                     }
                     .padding(20)
                 }
             }
             .navigationTitle("Nits & Bugs")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }

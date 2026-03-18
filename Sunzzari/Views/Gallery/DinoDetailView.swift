@@ -7,6 +7,7 @@ struct DinoDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var showEditDino = false
+    @State private var isLoadingShare = false
 
     var body: some View {
         NavigationStack {
@@ -16,7 +17,7 @@ struct DinoDetailView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         // Full-width photo
-                        AsyncImageView(urlString: photo.cloudinaryURL, cornerRadius: 0)
+                        AsyncImageView(urlString: photo.cloudinaryURL ?? "", cornerRadius: 0)
                             .frame(maxWidth: .infinity)
                             .frame(height: 380)
                             .clipped()
@@ -79,18 +80,47 @@ struct DinoDetailView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(Color.sunAccent)
+                    HStack(spacing: 16) {
+                        Button {
+                            Task { await shareImage() }
+                        } label: {
+                            if isLoadingShare {
+                                ProgressView().tint(Color.sunAccent)
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                                    .foregroundStyle(Color.sunAccent)
+                            }
+                        }
+                        Button("Done") { dismiss() }
+                            .foregroundStyle(Color.sunAccent)
+                    }
                 }
             }
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .sheet(isPresented: $showEditDino) {
             EditDinoView(photo: photo) { updated in
                 onEdit?(updated)
                 dismiss()
             }
+        }
+    }
+
+    // MARK: - Share
+
+    private func shareImage() async {
+        isLoadingShare = true
+        defer { isLoadingShare = false }
+        guard let urlString = photo.cloudinaryURL, let url = URL(string: urlString),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = UIImage(data: data) else { return }
+        await MainActor.run {
+            let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let root = windowScene.windows.first?.rootViewController else { return }
+            var top = root
+            while let presented = top.presentedViewController { top = presented }
+            vc.popoverPresentationController?.sourceView = top.view
+            top.present(vc, animated: true)
         }
     }
 }

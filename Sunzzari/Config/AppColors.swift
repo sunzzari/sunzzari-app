@@ -1,11 +1,11 @@
 import SwiftUI
 
 extension Color {
-    static let sunBackground = Color(hex: "#000000")
-    static let sunAccent     = Color(hex: "#E8B86D")
-    static let sunSurface    = Color(hex: "#1C1C1E")
+    static let sunBackground = Color(hex: "#030712")
+    static let sunAccent     = Color(hex: "#FBBF24")
+    static let sunSurface    = Color(hex: "#1F2937")
     static let sunText       = Color(hex: "#FFFFFF")
-    static let sunSecondary  = Color(hex: "#8E8E93")
+    static let sunSecondary  = Color.white.opacity(0.4)
 
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)

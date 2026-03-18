@@ -7,8 +7,14 @@ struct GalleryView: View {
     @State private var showAddDino = false
     @State private var showBulkImport = false
     @State private var errorMessage: String?
+    @State private var favoritesOnly = false
 
     private let columns = [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]
+
+    private var displayPhotos: [DinosaurPhoto] {
+        let base = favoritesOnly ? photos.filter(\.isFavorite) : photos
+        return base.filter(\.isFavorite) + base.filter { !$0.isFavorite }
+    }
 
     var body: some View {
         NavigationStack {
@@ -24,19 +30,48 @@ struct GalleryView: View {
                         subtitle: "Add your first dino photo to start the collection!"
                     )
                 } else {
+                    VStack(spacing: 0) {
+                    // Filter bar
+                    HStack(spacing: 8) {
+                        Button {
+                            favoritesOnly.toggle()
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: favoritesOnly ? "star.fill" : "star")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text("Favorites")
+                                    .font(.system(size: 13, weight: favoritesOnly ? .semibold : .regular))
+                            }
+                            .foregroundStyle(favoritesOnly ? Color.sunAccent : Color.sunSecondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(favoritesOnly ? Color.sunAccent.opacity(0.12) : Color.sunSurface)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(
+                                favoritesOnly ? Color.sunAccent.opacity(0.8) : Color.white.opacity(0.15),
+                                lineWidth: 1
+                            ))
+                            .shadow(color: favoritesOnly ? Color.sunAccent.opacity(0.3) : .clear, radius: 6)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+
+                    Color.white.opacity(0.1).frame(height: 0.5)
+
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 4) {
-                            ForEach(photos) { photo in
-                                GalleryCell(photo: photo)
+                            ForEach(displayPhotos) { photo in
+                                GalleryCell(photo: photo, onFavoriteTap: { toggleFavorite(photo) })
                                     .onTapGesture { selectedPhoto = photo }
-                                    .onLongPressGesture {
-                                        toggleFavorite(photo)
-                                    }
                             }
                         }
                         .padding(4)
                     }
                     .refreshable { await loadPhotos(force: true) }
+                    } // VStack
                 }
 
                 // FABs
@@ -78,7 +113,6 @@ struct GalleryView: View {
             }
             .navigationTitle("Gallery")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .sheet(item: $selectedPhoto) { photo in
@@ -107,6 +141,19 @@ struct GalleryView: View {
     }
 
     private func loadPhotos(force: Bool = false) async {
+        // Stale-while-revalidate: serve disk cache instantly, refresh in background
+        if !force, let cached = NotionService.shared.dinosaursDiskCache() {
+            photos = cached
+            isLoading = false
+            do {
+                let fresh = try await NotionService.shared.fetchDinosaurs(force: true)
+                photos = fresh
+            } catch is CancellationError {
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+            } catch { /* silently fail — user already sees cached data */ }
+            return
+        }
+        // No disk cache (first-ever launch) or pull-to-refresh
         isLoading = true
         defer { isLoading = false }
         do {
@@ -134,6 +181,7 @@ struct GalleryView: View {
 // MARK: - Gallery Cell
 private struct GalleryCell: View {
     let photo: DinosaurPhoto
+    let onFavoriteTap: () -> Void
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -146,14 +194,17 @@ private struct GalleryCell: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            if photo.isFavorite {
-                Image(systemName: "star.fill")
+            Button {
+                onFavoriteTap()
+            } label: {
+                Image(systemName: photo.isFavorite ? "star.fill" : "star")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.sunAccent)
+                    .foregroundStyle(photo.isFavorite ? Color.sunAccent : Color.white.opacity(0.8))
                     .padding(6)
                     .background(.ultraThinMaterial, in: Circle())
                     .padding(6)
             }
+            .buttonStyle(.plain)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }

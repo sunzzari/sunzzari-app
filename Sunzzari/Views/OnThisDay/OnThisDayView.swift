@@ -69,7 +69,6 @@ struct OnThisDayView: View {
             }
             .navigationTitle("On This Day")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .sheet(isPresented: $showAddMemory, onDismiss: { Task { await load() } }) {
@@ -106,7 +105,8 @@ struct OnThisDayView: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
                 .background(Color.sunSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .padding(.vertical, 8)
     }
@@ -132,6 +132,19 @@ struct OnThisDayView: View {
     }
 
     private func load(force: Bool = false) async {
+        // Stale-while-revalidate: serve disk cache instantly, refresh in background
+        if !force, let cached = NotionService.shared.memoriesDiskCache() {
+            todaysMemories = cached.filter { $0.occursOn(monthDay: Date()) }
+            isLoading = false
+            do {
+                let fresh = try await NotionService.shared.fetchMemories(force: true)
+                todaysMemories = fresh.filter { $0.occursOn(monthDay: Date()) }
+            } catch is CancellationError {
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+            } catch { /* silently fail — user already sees cached data */ }
+            return
+        }
+        // No disk cache (first-ever launch) or pull-to-refresh
         isLoading = true
         defer { isLoading = false }
         do {

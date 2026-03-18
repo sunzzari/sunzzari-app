@@ -110,8 +110,6 @@ struct EditDinoView: View {
                     Button("Cancel") { dismiss() }.foregroundStyle(Color.sunSecondary)
                 }
             }
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 

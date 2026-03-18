@@ -34,6 +34,7 @@ struct TravelView: View {
                     VStack(spacing: 12) {
                         Text("Our Travel Map")
                             .font(.largeTitle.weight(.bold))
+                            .fontDesign(.serif)
                             .foregroundStyle(Color.sunText)
 
                         Text("Every place we've been, every adventure we've taken — all pinned on the map.")
@@ -64,9 +65,8 @@ struct TravelView: View {
                     Spacer()
                 }
             }
-            .navigationTitle("✈️ Travel")
+            .navigationTitle("Travel")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .sheet(isPresented: $showSafari) {

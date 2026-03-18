@@ -138,8 +138,6 @@ struct BulkImportView: View {
                     }
                 }
             }
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 

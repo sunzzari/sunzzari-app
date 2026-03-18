@@ -6,17 +6,18 @@ struct CategoryChip: View {
     var isSelected: Bool = false
 
     var body: some View {
-        Text(label.uppercased())
-            .font(.system(size: 10, weight: .bold))
+        Text(label)
+            .font(.system(size: 11, weight: .medium))
             .foregroundStyle(isSelected ? Color.sunBackground : Color(hex: colorHex))
-            .tracking(0.8)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(
                 isSelected
                     ? Color(hex: colorHex)
-                    : Color(hex: colorHex).opacity(0.18)
+                    : Color(hex: colorHex).opacity(0.12)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color(hex: colorHex).opacity(isSelected ? 1 : 0.35), lineWidth: 1))
+            .shadow(color: isSelected ? Color(hex: colorHex).opacity(0.4) : .clear, radius: 6, y: 0)
     }
 }

@@ -25,9 +25,8 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $query, prompt: "Search Best Of...")
-            .toolbarBackground(Color.sunBackground, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .searchable(text: $query, prompt: "Search Best Of...")
         }
         .task { await loadAll() }
     }
