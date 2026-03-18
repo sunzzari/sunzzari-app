@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 
 struct ContentView: View {
     @State private var selectedTab = 0
@@ -208,13 +209,25 @@ struct ContentView: View {
 
     // MARK: - Helpers
 
-    /// Returns true when iOS is showing the More navigation list (not a tab within it).
+    /// Returns true when iOS is showing the More navigation list.
+    /// SwiftUI wraps UITabBarController inside UIHostingController, so we can't cast rootViewController
+    /// directly. Instead we traverse the UIView tree to find the UITabBar and inspect its selected item:
+    /// when More is active, the selected item title is "More" (system-set).
     private static func isMoreNavigationActive() -> Bool {
         guard
             let scene = UIApplication.shared.connectedScenes
-                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-            let tabBar = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController as? UITabBarController
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+            let window = scene.windows.first(where: { $0.isKeyWindow })
         else { return false }
-        return tabBar.selectedViewController === tabBar.moreNavigationController
+
+        guard let tabBar = findTabBar(in: window) else { return false }
+        // More tab item is system-created with title "More"; app tabs have distinct titles
+        return tabBar.selectedItem?.title == "More"
+    }
+
+    private static func findTabBar(in view: UIView) -> UITabBar? {
+        if let bar = view as? UITabBar { return bar }
+        return view.subviews.lazy.compactMap { findTabBar(in: $0) }.first
     }
 }
