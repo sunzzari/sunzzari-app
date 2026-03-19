@@ -55,8 +55,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             // Safety-net: schedule 30-day fallback pool for days the app isn't opened
             let allEntries = (try? await NotionService.shared.fetchBestOf()) ?? []
             await NotificationService.shared.scheduleOnThisDay(allEntries: allEntries)
-            // Schedule 12:01am midnight triggers for the next 30 nights
-            await DailySetupService.shared.scheduleMidnightTriggers()
+            // Clear any stale midnight trigger notifications left from previous builds
+            let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
+            let stale = pending.filter { $0.identifier.hasPrefix("sunzzari-midnight-") }.map(\.identifier)
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: stale)
         }
         return true
     }
@@ -81,13 +83,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        let id = notification.request.identifier
-        if id.hasPrefix("sunzzari-midnight-") {
-            // 12:01am trigger fired while app is in foreground — run daily setup for the new day
-            Task { await DailySetupService.shared.runDailySetup(force: true) }
-            completionHandler([]) // no banner for the midnight trigger
-        } else {
-            completionHandler([.banner, .sound])
-        }
+        completionHandler([.banner, .sound])
     }
 }

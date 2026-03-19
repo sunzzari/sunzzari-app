@@ -3,7 +3,7 @@ import UserNotifications
 
 /// Single source of truth for "which entry to show on a given day."
 /// Both TodayView and notifications call selectEntry() — they will always agree.
-/// runDailySetup() is called at 12:01am (via midnight trigger) or first foreground of the day.
+/// runDailySetup() is called on first foreground of the day (ContentView.onChange .active).
 final class DailySetupService: @unchecked Sendable {
     static let shared = DailySetupService()
     private init() {}
@@ -98,45 +98,6 @@ final class DailySetupService: @unchecked Sendable {
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
         try? await center.add(request)
-    }
-
-    // MARK: - 12:01am midnight triggers
-
-    /// Schedules a minimal 12:01am local notification for each of the next 30 nights.
-    /// When the app is in the foreground at midnight, AppDelegate catches it and calls runDailySetup().
-    /// On any other morning, ContentView.onChange(.active) catches it on first foreground.
-    func scheduleMidnightTriggers() async {
-        let center = UNUserNotificationCenter.current()
-        let cal    = Calendar.current
-
-        let pending  = await center.pendingNotificationRequests()
-        let toRemove = pending
-            .filter { $0.identifier.hasPrefix("sunzzari-midnight-") }
-            .map(\.identifier)
-        center.removePendingNotificationRequests(withIdentifiers: toRemove)
-
-        for daysAhead in 1...30 {
-            guard let date = cal.date(byAdding: .day, value: daysAhead, to: Date()) else { continue }
-            var comps      = cal.dateComponents([.year, .month, .day], from: date)
-            comps.hour     = 0
-            comps.minute   = 1
-
-            let content    = UNMutableNotificationContent()
-            content.title  = "Today in Sunzzari"
-            content.body   = "✨ A new day"
-            content.sound  = nil
-            if #available(iOS 15.0, *) {
-                content.interruptionLevel = .passive
-            }
-
-            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-            let request = UNNotificationRequest(
-                identifier: "sunzzari-midnight-\(dateString(for: date))",
-                content:    content,
-                trigger:    trigger
-            )
-            try? await center.add(request)
-        }
     }
 
     // MARK: - Helpers
