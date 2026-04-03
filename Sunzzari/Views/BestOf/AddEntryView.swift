@@ -12,7 +12,7 @@ struct AddEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var entryText = ""
     @State private var category: BestOfEntry.Category = .funnyMoment
-    @State private var hasDate = false
+    @State private var hasDate = true
     @State private var selectedYear = 2025
     @State private var date = Date()
     @State private var notes = ""
@@ -182,6 +182,11 @@ struct AddEntryView: View {
                 notes:    notes
             )
             try await NotionService.shared.createBestOfEntry(entry)
+            let senderName = AppIdentity.current?.rawValue ?? "Someone"
+            await StatusService.shared.sendPush(
+                title: "\(senderName) added a Best Of",
+                body:  "\(entry.category.emoji) \(entry.entry)"
+            )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             dismiss()
         } catch {

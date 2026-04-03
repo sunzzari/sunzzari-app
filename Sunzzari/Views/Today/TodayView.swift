@@ -30,18 +30,22 @@ struct TodayView: View {
                     .scrollContentBackground(.hidden)
                 } else {
                     List {
-                        Section {
-                            if hasToday {
-                                // Tier 1: Best Moments for today (highest priority)
-                                ForEach(bestMomentsToday) { entry in
-                                    entryRow(entry)
-                                }
-                                // Tier 2: Other categories for today
-                                ForEach(otherToday) { entry in
-                                    entryRow(entry)
-                                }
-                            } else if let entry = fallbackEntry {
-                                // Tier 3: Random unassigned fallback
+                        // Always-visible date header (empty section, header only)
+                        Section { } header: { dateHeader }
+
+                        // Section 1: On This Day (date-matched entries)
+                        if hasToday {
+                            Section {
+                                ForEach(bestMomentsToday) { entry in entryRow(entry) }
+                                ForEach(otherToday) { entry in entryRow(entry) }
+                            } header: {
+                                onThisDaySectionHeader
+                            }
+                        }
+
+                        // Section 2: Remember This? (unassigned fallback — always shown)
+                        if let entry = fallbackEntry {
+                            Section {
                                 fallbackCard(entry)
                                     .matchedGeometryEffect(id: entry.id, in: cardNamespace)
                                     .opacity(selectedEntry?.id == entry.id ? 0 : 1)
@@ -62,7 +66,14 @@ struct TodayView: View {
                                     .listRowBackground(Color.sunBackground)
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
-                            } else {
+                            } header: {
+                                rememberThisSectionHeader
+                            }
+                        }
+
+                        // Empty state: nothing at all
+                        if !hasToday && fallbackEntry == nil {
+                            Section {
                                 Text("Nothing to show today — check back later!")
                                     .font(.subheadline)
                                     .foregroundStyle(Color.sunSecondary)
@@ -71,8 +82,6 @@ struct TodayView: View {
                                     .listRowBackground(Color.sunBackground)
                                     .listRowSeparator(.hidden)
                             }
-                        } header: {
-                            dateHeader
                         }
                     }
                     .listStyle(.plain)
@@ -187,11 +196,7 @@ struct TodayView: View {
     // MARK: - Date header
 
     private var dateHeader: some View {
-        let contextLabel = hasToday
-            ? "ON THIS DAY · \(todayCount)"
-            : "JUST BECAUSE"
-
-        return VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(Date().formatted(.dateTime.weekday(.wide)).uppercased())
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1.2)
@@ -201,21 +206,30 @@ struct TodayView: View {
                 .font(.system(size: 32, weight: .bold))
                 .fontDesign(.serif)
                 .foregroundStyle(Color.sunText)
-
-            Text(contextLabel)
-                .font(.system(size: 10, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(hasToday ? Color.sunSecondary : Color.sunAccent)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(hasToday ? Color.sunSurface : Color.sunAccent.opacity(0.12))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(hasToday ? Color.white.opacity(0.1) : Color.sunAccent.opacity(0.35), lineWidth: 1))
-                .padding(.top, 4)
         }
         .textCase(nil)
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 16))
+    }
+
+    // MARK: - Section headers
+
+    private var onThisDaySectionHeader: some View {
+        Text("ON THIS DAY · \(todayCount)")
+            .font(.system(size: 11, weight: .bold))
+            .tracking(1.2)
+            .foregroundStyle(Color.sunSecondary)
+            .textCase(nil)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+    }
+
+    private var rememberThisSectionHeader: some View {
+        Text("REMEMBER THIS?")
+            .font(.system(size: 11, weight: .bold))
+            .tracking(1.2)
+            .foregroundStyle(Color.sunAccent)
+            .textCase(nil)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
     // MARK: - Fallback card
@@ -331,11 +345,27 @@ struct TodayView: View {
             .filter { $0.category != .bestMoments && $0.category != .improvements }
             .sorted { $0.year > $1.year }
 
-        // Tier 3 fallback: delegate to DailySetupService — same pick as the notification
-        if bestMomentsToday.isEmpty && otherToday.isEmpty {
-            fallbackEntry = DailySetupService.shared.selectEntry(for: now, from: all)
+        // "Remember This?" section:
+        // - When no On This Day entries: use the SAME Tier-3 pick as the notification (DailySetupService)
+        //   so the notification and landing page always match.
+        // - When On This Day entries exist: pick a separate bonus unassigned entry (notification is
+        //   already covered by the date-matched content above).
+        let notifEntry = DailySetupService.shared.selectEntry(for: now, from: all)
+        if let notifEntry, notifEntry.isYearOnly {
+            // No date matches — notification IS the Remember This content. Use the same pick.
+            fallbackEntry = notifEntry
         } else {
-            fallbackEntry = nil
+            // Date-matched entries exist — pick an additional unassigned entry as a bonus.
+            let pool = all.filter { $0.isYearOnly && $0.category != .improvements }
+            let rememberKey = "sunzzari_remember_\(DailySetupService.shared.dateString(for: now))"
+            if let savedID = UserDefaults.standard.string(forKey: rememberKey),
+               let saved = pool.first(where: { $0.id == savedID }) {
+                fallbackEntry = saved
+            } else {
+                let picked = pool.randomElement()
+                if let chosen = picked { UserDefaults.standard.set(chosen.id, forKey: rememberKey) }
+                fallbackEntry = picked
+            }
         }
     }
 }
