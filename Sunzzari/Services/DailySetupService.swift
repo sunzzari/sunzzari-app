@@ -60,14 +60,36 @@ final class DailySetupService: @unchecked Sendable {
         UserDefaults.standard.bool(forKey: "\(Self.setupDonePrefix)\(dateString(for: date))")
     }
 
-    /// Fetches fresh entries, picks today's entry, schedules today's 9am notification.
-    /// Idempotent — skips if already run today unless force == true.
+    /// Fetches fresh entries, syncs today's Tier-3 pick with Notion (so both phones agree),
+    /// then schedules today's 9am notification. Idempotent unless force == true.
     func runDailySetup(force: Bool = false) async {
         let today = Date()
         let doneKey = "\(Self.setupDonePrefix)\(dateString(for: today))"
         guard force || !UserDefaults.standard.bool(forKey: doneKey) else { return }
 
         guard let entries = try? await NotionService.shared.fetchBestOf(force: true) else { return }
+
+        // Sync the Tier-3 fallback pick through Notion so both phones show the same entry.
+        // Only applies when there are no date-matched entries (pure Tier-3 day).
+        let todayStr = dateString(for: today)
+        let udKey = "\(Self.pickPrefix)\(todayStr)"
+        let pool = entries.filter { $0.isYearOnly && $0.category != .improvements }
+        if !pool.isEmpty {
+            if let remoteID = await StatusService.shared.fetchTodayPick(for: todayStr),
+               pool.first(where: { $0.id == remoteID }) != nil {
+                // Partner already picked — adopt their choice
+                UserDefaults.standard.set(remoteID, forKey: udKey)
+            } else if let localID = UserDefaults.standard.string(forKey: udKey) {
+                // We already picked locally — publish so partner sees it
+                await StatusService.shared.storeTodayPick(dateStr: todayStr, entryID: localID)
+            } else {
+                // First phone to run today — pick and publish
+                if let chosen = pool.randomElement() {
+                    UserDefaults.standard.set(chosen.id, forKey: udKey)
+                    await StatusService.shared.storeTodayPick(dateStr: todayStr, entryID: chosen.id)
+                }
+            }
+        }
 
         guard let entry = selectEntry(for: today, from: entries) else { return }
         await scheduleNineAM(for: today, entry: entry)

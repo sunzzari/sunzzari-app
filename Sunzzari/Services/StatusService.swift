@@ -141,9 +141,31 @@ final class StatusService: @unchecked Sendable {
 
     // MARK: - APNs push (via Vercel backend)
 
+    private let pendingTokenKey = "sunzzari_pending_apns_token"
+
     /// Store this device's APNs token in its own Notion Status page.
-    /// Call this from AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken.
+    /// Always caches the token in UserDefaults first. If identity is not yet set
+    /// (first-launch race condition), the Notion write is deferred — call
+    /// retryTokenStorage() after identity is confirmed in SettingsView.
     func storeDeviceToken(_ token: String) async {
+        UserDefaults.standard.set(token, forKey: pendingTokenKey)
+        guard AppIdentity.current != nil else { return }
+        let ownPageID = AppIdentity.isBranch
+            ? Constants.Status.branchPageID
+            : Constants.Status.hummingbirdPageID
+        try? await patchPage(id: ownPageID, body: [
+            "properties": [
+                "DeviceToken": ["rich_text": [["text": ["content": token]]]]
+            ]
+        ])
+    }
+
+    /// Re-attempt token storage after identity is confirmed.
+    /// Call this from SettingsView when the user selects their identity.
+    func retryTokenStorage() async {
+        guard AppIdentity.current != nil else { return }
+        guard let token = UserDefaults.standard.string(forKey: pendingTokenKey),
+              !token.isEmpty else { return }
         let ownPageID = AppIdentity.isBranch
             ? Constants.Status.branchPageID
             : Constants.Status.hummingbirdPageID
@@ -184,6 +206,37 @@ final class StatusService: @unchecked Sendable {
               let rtArr = (props["DeviceToken"] as? [String: Any])?["rich_text"] as? [[String: Any]]
         else { return nil }
         return rtArr.compactMap { $0["plain_text"] as? String }.joined().nilIfEmpty
+    }
+
+    // MARK: - Shared Today pick (Today tab unification)
+
+    /// Reads the shared Tier-3 pick from the Hummingbird Notion page.
+    /// Format stored in TodayPick property: "YYYY-MM-DD:entryID"
+    /// Returns the entryID only if the stored date matches today's dateStr.
+    func fetchTodayPick(for dateStr: String) async -> String? {
+        guard let url = URL(string: "\(notionBase)/pages/\(Constants.Status.hummingbirdPageID)") else { return nil }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        notionHeaders.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let props = json["properties"] as? [String: Any],
+              let rtArr = (props["TodayPick"] as? [String: Any])?["rich_text"] as? [[String: Any]]
+        else { return nil }
+        let value = rtArr.compactMap { $0["plain_text"] as? String }.joined()
+        let parts = value.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, String(parts[0]) == dateStr else { return nil }
+        return String(parts[1])
+    }
+
+    /// Writes the shared Tier-3 pick to the Hummingbird Notion page.
+    func storeTodayPick(dateStr: String, entryID: String) async {
+        let value = "\(dateStr):\(entryID)"
+        try? await patchPage(id: Constants.Status.hummingbirdPageID, body: [
+            "properties": [
+                "TodayPick": ["rich_text": [["text": ["content": value]]]]
+            ]
+        ])
     }
 
     // MARK: - ntfy mood notification

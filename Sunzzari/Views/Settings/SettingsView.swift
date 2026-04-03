@@ -59,6 +59,8 @@ struct SettingsView: View {
         return Button {
             selected = person
             AppIdentity.current = person
+            // Re-attempt device token storage now that identity is confirmed
+            Task { await StatusService.shared.retryTokenStorage() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 onComplete()
             }
