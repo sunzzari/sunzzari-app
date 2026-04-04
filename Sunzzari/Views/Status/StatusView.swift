@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreLocation
 
 struct StatusView: View {
     @Environment(\.dismiss) private var dismiss
