@@ -8,20 +8,18 @@ struct StatusView: View {
     @State private var branch: StatusEntry?
     @State private var isLoading = true
     @State private var error: String?
+    @State private var isSaving = false
 
     // Mood slider values
     @State private var hMood: Int = 50
     @State private var bMood: Int = 50
-    @State private var hMoodCommitted: Int = 50
-    @State private var bMoodCommitted: Int = 50
 
     // Adjective selections
     @State private var hAdjective: String = ""
     @State private var bAdjective: String = ""
 
-    // Custom adjective text inputs
-    @State private var hCustomText: String = ""
-    @State private var bCustomText: String = ""
+    // Custom adjective text input
+    @State private var customText: String = ""
 
     static let adjectives: [(label: String, emoji: String)] = [
         ("Happy!",    "😄"),
@@ -80,7 +78,7 @@ struct StatusView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 0) {
-                            // Split panels — own panel is editable, partner panel is read-only
+                            // Split panels
                             HStack(alignment: .top, spacing: 0) {
                                 moodPanel(
                                     emoji: "🕊️",
@@ -155,26 +153,16 @@ struct StatusView: View {
                     .tracking(0.5)
             }
 
-            // Slider — editable only for own panel
-            BatterySlider(value: mood, isEditable: isEditable) { newVal in
-                let committed = pageID == Constants.Status.hummingbirdPageID ? hMoodCommitted : bMoodCommitted
-                guard newVal != committed else { return }
-                if pageID == Constants.Status.hummingbirdPageID { hMoodCommitted = newVal }
-                else { bMoodCommitted = newVal }
-                Task {
-                    try? await StatusService.shared.updateMood(newVal, for: pageID)
-                    await StatusService.shared.sendMoodNotification(mood: newVal, fromName: fromName)
-                }
-            }
+            // Slider — local state only, no immediate send
+            BatterySlider(value: mood, isEditable: isEditable) { _ in }
 
-            // Adjective chips
-            adjectiveGrid(selected: adjective, pageID: pageID, fromName: fromName, isEditable: isEditable)
+            // Adjective chips — local state only
+            adjectiveGrid(selected: adjective, isEditable: isEditable)
 
             // Custom text input — own panel only
             if isEditable {
-                let customBinding = pageID == Constants.Status.hummingbirdPageID ? $hCustomText : $bCustomText
                 HStack(spacing: 6) {
-                    TextField("or type one...", text: customBinding)
+                    TextField("or type one...", text: $customText)
                         .font(.system(size: 12))
                         .foregroundStyle(Color.sunText)
                         .padding(.horizontal, 10)
@@ -184,16 +172,10 @@ struct StatusView: View {
                         .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
                         .submitLabel(.done)
                         .onSubmit {
-                            let text = customBinding.wrappedValue.trimmingCharacters(in: .whitespaces)
+                            let text = customText.trimmingCharacters(in: .whitespaces)
                             guard !text.isEmpty else { return }
                             adjective.wrappedValue = text
-                            customBinding.wrappedValue = ""
-                            Task {
-                                try? await StatusService.shared.updateAdjective(text, for: pageID)
-                                await StatusService.shared.sendAdjectiveNotification(
-                                    adjective: text, fromName: fromName
-                                )
-                            }
+                            customText = ""
                         }
                 }
             }
@@ -204,6 +186,47 @@ struct StatusView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(Color.sunSecondary.opacity(0.7))
             }
+
+            // Submit button — own panel only
+            if isEditable {
+                Button {
+                    isSaving = true
+                    Task {
+                        await StatusService.shared.sendStatusUpdate(
+                            mood: mood.wrappedValue,
+                            adjective: adjective.wrappedValue,
+                            fromName: fromName,
+                            pageID: pageID
+                        )
+                        // Refresh timestamps
+                        if let (h, b) = try? await StatusService.shared.fetchBoth() {
+                            hummingbird = h
+                            branch = b
+                        }
+                        isSaving = false
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isSaving {
+                            ProgressView()
+                                .tint(Color.sunBackground)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .font(.system(size: 12))
+                        }
+                        Text(isSaving ? "Sending..." : "Send Status")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.sunBackground)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.sunAccent)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSaving)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,8 +236,6 @@ struct StatusView: View {
 
     private func adjectiveGrid(
         selected: Binding<String>,
-        pageID: String,
-        fromName: String,
         isEditable: Bool
     ) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
@@ -222,17 +243,7 @@ struct StatusView: View {
                 let isSelected = selected.wrappedValue == item.label
                 Button {
                     guard isEditable else { return }
-                    let newAdj = isSelected ? "" : item.label
-                    selected.wrappedValue = newAdj
-                    Task {
-                        try? await StatusService.shared.updateAdjective(newAdj, for: pageID)
-                        if !newAdj.isEmpty {
-                            await StatusService.shared.sendAdjectiveNotification(
-                                adjective: "\(item.label) \(item.emoji)",
-                                fromName: fromName
-                            )
-                        }
-                    }
+                    selected.wrappedValue = isSelected ? "" : item.label
                 } label: {
                     HStack(spacing: 3) {
                         Text(item.emoji).font(.system(size: 11))
@@ -271,8 +282,8 @@ struct StatusView: View {
             let (h, b) = try await StatusService.shared.fetchBoth()
             hummingbird = h
             branch = b
-            hMood = h.mood;  hMoodCommitted = h.mood
-            bMood = b.mood;  bMoodCommitted = b.mood
+            hMood = h.mood
+            bMood = b.mood
             hAdjective = h.adjective
             bAdjective = b.adjective
         } catch {

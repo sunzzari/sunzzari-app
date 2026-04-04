@@ -239,6 +239,33 @@ final class StatusService: @unchecked Sendable {
         ])
     }
 
+    // MARK: - Combined status update (mood + adjective in one Notion patch + one notification)
+
+    func sendStatusUpdate(mood: Int, adjective: String, fromName: String, pageID: String) async {
+        let isoNow = isoString(for: Date())
+        var props: [String: Any] = [
+            "Mood":          ["number": mood],
+            "MoodUpdatedAt": ["date": ["start": isoNow]]
+        ]
+        props["Adjective"] = ["rich_text": [["text": ["content": adjective]]]]
+        try? await patchPage(id: pageID, body: ["properties": props])
+
+        let emoji = moodEmoji(for: mood)
+        var body = "\(fromName) is feeling \(emoji) (\(mood)%)"
+        if !adjective.isEmpty { body += " — \(adjective)" }
+
+        await sendPush(title: "Status update", body: body)
+
+        guard let url = URL(string: "\(ntfyBase)/\(Constants.Status.ntfyTopic)") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Status update", forHTTPHeaderField: "X-Title")
+        req.setValue("default", forHTTPHeaderField: "X-Priority")
+        req.setValue("status,\(deviceTag)", forHTTPHeaderField: "X-Tags")
+        req.httpBody = body.data(using: .utf8)
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
     // MARK: - ntfy mood notification
 
     func sendMoodNotification(mood: Int, fromName: String) async {
