@@ -289,6 +289,11 @@ struct TodayView: View {
     // MARK: - Load
 
     private func load(force: Bool = false) async {
+        // Ensure Notion sync for today's Tier-3 pick has completed before picking the
+        // fallback entry. runDailySetup is idempotent — instant on all loads after
+        // the first one each day.
+        await DailySetupService.shared.runDailySetup()
+
         // Stale-while-revalidate: serve disk cache instantly, refresh in background
         if !force, let cached = NotionService.shared.bestOfDiskCache() {
             applyEntries(cached)
@@ -345,27 +350,17 @@ struct TodayView: View {
             .filter { $0.category != .bestMoments && $0.category != .improvements }
             .sorted { $0.year > $1.year }
 
-        // "Remember This?" section:
-        // - When no On This Day entries: use the SAME Tier-3 pick as the notification (DailySetupService)
-        //   so the notification and landing page always match.
-        // - When On This Day entries exist: pick a separate bonus unassigned entry (notification is
-        //   already covered by the date-matched content above).
+        // "Remember This?" section — always uses the Notion-synced Tier-3 pick from
+        // DailySetupService so both phones show the same entry.
         let notifEntry = DailySetupService.shared.selectEntry(for: now, from: all)
         if let notifEntry, notifEntry.isYearOnly {
             // No date matches — notification IS the Remember This content. Use the same pick.
             fallbackEntry = notifEntry
         } else {
-            // Date-matched entries exist — pick an additional unassigned entry as a bonus.
+            // Date-matched entries exist — pick a Tier-3 entry for "Remember This?"
+            // using the same Notion-synced key as runDailySetup() so both phones agree.
             let pool = all.filter { $0.isYearOnly && $0.category != .improvements }
-            let rememberKey = "sunzzari_remember_\(DailySetupService.shared.dateString(for: now))"
-            if let savedID = UserDefaults.standard.string(forKey: rememberKey),
-               let saved = pool.first(where: { $0.id == savedID }) {
-                fallbackEntry = saved
-            } else {
-                let picked = pool.randomElement()
-                if let chosen = picked { UserDefaults.standard.set(chosen.id, forKey: rememberKey) }
-                fallbackEntry = picked
-            }
+            fallbackEntry = DailySetupService.shared.selectEntry(for: now, from: pool)
         }
     }
 }

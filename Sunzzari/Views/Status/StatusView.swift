@@ -282,10 +282,25 @@ struct StatusView: View {
             let (h, b) = try await StatusService.shared.fetchBoth()
             hummingbird = h
             branch = b
-            hMood = h.mood
-            bMood = b.mood
-            hAdjective = h.adjective
-            bAdjective = b.adjective
+            // If own Notion entry has no location yet, inject last-known coordinate
+            // from UserDefaults so the map shows a pin immediately after first location fix.
+            if let coord = LocationService.shared.lastKnownCoordinate {
+                if AppIdentity.isHummingbird && h.latitude == nil {
+                    hummingbird = StatusEntry(id: h.id, name: h.name, mood: h.mood,
+                                             adjective: h.adjective, moodUpdatedAt: h.moodUpdatedAt,
+                                             latitude: coord.latitude, longitude: coord.longitude,
+                                             locationUpdatedAt: nil)
+                } else if AppIdentity.isBranch && b.latitude == nil {
+                    branch = StatusEntry(id: b.id, name: b.name, mood: b.mood,
+                                        adjective: b.adjective, moodUpdatedAt: b.moodUpdatedAt,
+                                        latitude: coord.latitude, longitude: coord.longitude,
+                                        locationUpdatedAt: nil)
+                }
+            }
+            hMood = hummingbird?.mood ?? 50
+            bMood = branch?.mood ?? 50
+            hAdjective = hummingbird?.adjective ?? ""
+            bAdjective = branch?.adjective ?? ""
         } catch {
             self.error = error.localizedDescription
         }
