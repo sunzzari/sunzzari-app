@@ -9,7 +9,6 @@ struct WinePickerView: View {
     private enum PickerStep { case landing, preview, loading, result }
 
     @State private var step: PickerStep = .landing
-    @State private var context: WinePickerContext = .groceryShelf
     @State private var selectedImage: UIImage?
     @State private var resultText: String = ""
     @State private var errorMessage: String?
@@ -90,29 +89,11 @@ struct WinePickerView: View {
                     Text("Wine Picker")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(Color.sunText)
-                    Text("Show us a shelf or menu")
+                    Text("Snap a shelf or menu and we'll pick")
                         .font(.subheadline)
                         .foregroundStyle(Color.sunSecondary)
                 }
                 .padding(.top, 24)
-
-                // Context toggle
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("WHAT ARE WE LOOKING AT?")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.sunSecondary)
-                        .tracking(1.2)
-
-                    HStack(spacing: 8) {
-                        contextChip(label: "Grocery Shelf", selected: context == .groceryShelf) {
-                            context = .groceryShelf
-                        }
-                        contextChip(label: "Restaurant Menu", selected: context == .restaurantMenu) {
-                            context = .restaurantMenu
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Photo buttons
                 VStack(spacing: 12) {
@@ -155,21 +136,6 @@ struct WinePickerView: View {
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
-
-                // Context reminder chip
-                HStack(spacing: 6) {
-                    Image(systemName: context == .groceryShelf ? "cart" : "fork.knife")
-                        .font(.caption.weight(.semibold))
-                    Text(context == .groceryShelf ? "Grocery Shelf" : "Restaurant Menu")
-                        .font(.caption.weight(.semibold))
-                        .tracking(0.5)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.sunAccent.opacity(0.15))
-                .foregroundStyle(Color.sunAccent)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Primary CTA
                 Button {
@@ -286,19 +252,6 @@ struct WinePickerView: View {
     // MARK: - Helpers
 
     @ViewBuilder
-    private func contextChip(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(selected ? Color.sunAccent : Color.sunSurface)
-                .foregroundStyle(selected ? Color.sunBackground : Color.sunSecondary)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-    }
-
-    @ViewBuilder
     private func photoButton(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
@@ -333,7 +286,7 @@ struct WinePickerView: View {
         guard let image = selectedImage else { return }
         step = .loading
         do {
-            let text = try await AnthropicService.shared.analyzeWineImage(image, context: context)
+            let text = try await AnthropicService.shared.analyzeWineImage(image)
             resultText = text
             step = .result
         } catch {

@@ -23,19 +23,11 @@ final class AnthropicService: @unchecked Sendable {
     Be direct and confident. If a label is hard to read, note it briefly.
     """
 
-    func analyzeWineImage(_ image: UIImage, context: WinePickerContext) async throws -> String {
+    func analyzeWineImage(_ image: UIImage) async throws -> String {
         guard let compressed = compress(image) else {
             throw AnthropicError.compressionFailed
         }
         let base64 = compressed.base64EncodedString()
-
-        let userText: String
-        switch context {
-        case .groceryShelf:
-            userText = "We're at a grocery store. Which wine on this shelf should we buy?"
-        case .restaurantMenu:
-            userText = "We're at a restaurant. Which wine on this list should we order?"
-        }
 
         let body: [String: Any] = [
             "model": Constants.Anthropic.model,
@@ -45,7 +37,7 @@ final class AnthropicService: @unchecked Sendable {
                 "role": "user",
                 "content": [
                     ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": base64]],
-                    ["type": "text", "text": userText]
+                    ["type": "text", "text": "Look at this photo. Figure out if it's a grocery shelf, wine shop, restaurant menu, or wine list - then recommend the best wine for us."]
                 ]
             ]]
         ]
@@ -235,7 +227,3 @@ final class AnthropicService: @unchecked Sendable {
     }
 }
 
-enum WinePickerContext {
-    case groceryShelf
-    case restaurantMenu
-}
