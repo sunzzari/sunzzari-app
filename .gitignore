@@ -29,3 +29,6 @@ Package.resolved
 
 # CocoaPods (not used but just in case)
 Pods/
+
+# Secrets — never commit
+Sunzzari/Config/Secrets.swift

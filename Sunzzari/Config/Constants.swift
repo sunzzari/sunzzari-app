@@ -3,7 +3,7 @@ import Foundation
 enum Constants {
 
     enum Notion {
-        static let token        = "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"
+        static let token        = Secrets.Notion.token
         static let dinosaursDBID = "6538fcf3-fb3e-42de-a04d-794883895ba3"
         static let memoriesDBID  = "ae560a63-ba2f-4c0d-91c4-dc9de9e8e271"
         static let bestOfDBID       = "8cb7077a-ba21-4c10-a565-c6150fd9295c"
@@ -44,6 +44,6 @@ enum Constants {
         static let branchPageID      = "322f3cdd-67a4-8184-9594-f0bb9f5c100c"
         /// APNs push backend
         static let pushEndpoint = "https://sunzzari-backend.vercel.app/api/push"
-        static let pushSecret   = "d9be2a5c20fd74f0df195d1140a2fe97a9e3bd8b967060a4"
+        static let pushSecret   = Secrets.Push.secret
     }
 }
