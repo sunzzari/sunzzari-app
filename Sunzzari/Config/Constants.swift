@@ -33,9 +33,7 @@ enum Constants {
     }
 
     enum Anthropic {
-        /// Fill in a valid Anthropic API key before building.
-        static let apiKey = "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"
-        static let model  = "claude-sonnet-4-6"
+        static let model = "claude-sonnet-4-6"
     }
 
     enum Status {

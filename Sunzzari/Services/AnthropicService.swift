@@ -4,7 +4,7 @@ import UIKit
 final class AnthropicService: @unchecked Sendable {
     static let shared = AnthropicService()
 
-    private let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    private let endpoint = URL(string: "https://sunzzari-backend.vercel.app/api/analyze")!
 
     // MARK: - Wine Picker (existing)
 
@@ -143,8 +143,7 @@ final class AnthropicService: @unchecked Sendable {
     private func sendRequest(_ body: [String: Any]) async throws -> String {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.setValue(Constants.Anthropic.apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue(Constants.Status.pushSecret, forHTTPHeaderField: "x-sunzzari-secret")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
