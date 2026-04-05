@@ -7,7 +7,7 @@ Once you make changes and push to GitHub, Xcode Cloud automatically builds and d
 ## Prerequisites
 
 - Mac with Xcode installed (free from the Mac App Store)
-- Access to the GitHub repo: `https://github.com/elisafazz/sunzzari-app`
+- Access to the GitHub repo: `https://github.com/sunzzari/sunzzari-app`
 - Git installed (comes with Xcode Command Line Tools)
 
 ---
@@ -17,8 +17,14 @@ Once you make changes and push to GitHub, Xcode Cloud automatically builds and d
 Clone the repo to your Mac:
 
 ```bash
-git clone https://github.com/elisafazz/sunzzari-app.git
+git clone https://github.com/sunzzari/sunzzari-app.git
 cd sunzzari-app
+```
+
+If you already cloned the old repo, update your remote:
+
+```bash
+git remote set-url origin https://github.com/sunzzari/sunzzari-app.git
 ```
 
 Open the project in Xcode:
