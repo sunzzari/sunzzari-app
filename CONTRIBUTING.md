@@ -1,27 +1,40 @@
 # How to Edit the Sunzzari App
 
-Once you make changes and push to GitHub, Xcode Cloud automatically builds and delivers the update to both phones via TestFlight. No USB or manual steps needed.
+---
+
+## Two Repos — Know Which One to Edit
+
+| Repo | URL | What it controls | Auto-deploy |
+|------|-----|-----------------|-------------|
+| **sunzzari-app** | github.com/sunzzari/sunzzari-app | iOS app (all Swift/UI code) | Xcode Cloud → TestFlight |
+| **sunzzari-backend** | github.com/sunzzari/sunzzari-backend | Push notification server (APNs endpoint) | Vercel auto-deploy |
+
+**99% of the time you want `sunzzari-app`.** The backend is only touched if the push notification server itself needs changes (rare).
+
+Note: there is a `backend/` subfolder inside `sunzzari-app` — this is a stale copy and is not deployed anywhere. Ignore it. All real backend changes go in `sunzzari-backend`.
+
+Both repos are public (required for Vercel on a free org plan).
 
 ---
 
-## Prerequisites
+## Prerequisites (for app changes)
 
 - Mac with Xcode installed (free from the Mac App Store)
-- Access to the GitHub repo: `https://github.com/sunzzari/sunzzari-app`
 - Git installed (comes with Xcode Command Line Tools)
+- Access to: `https://github.com/sunzzari/sunzzari-app`
 
 ---
 
 ## First-Time Setup
 
-Clone the repo to your Mac:
+Clone the app repo:
 
 ```bash
 git clone https://github.com/sunzzari/sunzzari-app.git
 cd sunzzari-app
 ```
 
-If you already cloned the old repo, update your remote:
+If you already cloned the old repo (`elisafazz/sunzzari-app`), update your remote:
 
 ```bash
 git remote set-url origin https://github.com/sunzzari/sunzzari-app.git
@@ -56,13 +69,13 @@ git commit -m "describe what you changed"
 git push
 ```
 
-That's it. Xcode Cloud picks up the push, builds the app (~10-15 min), and TestFlight delivers it to both phones automatically. You'll get a notification on both phones to tap "Update."
+Xcode Cloud picks up the push, builds the app (~10-15 min), and TestFlight delivers it to both phones automatically. You'll get a notification to tap "Update."
 
 ---
 
 ## Monitoring the Build
 
-In Xcode: Report Navigator (the flag icon in the left toolbar) → Cloud tab shows build progress.
+In Xcode: Report Navigator (flag icon in left toolbar) → Cloud tab.
 
 In browser: appstoreconnect.apple.com → Xcode Cloud → Builds
 
@@ -70,17 +83,17 @@ In browser: appstoreconnect.apple.com → Xcode Cloud → Builds
 
 ## Content Changes (no code needed)
 
-Most content in the app comes directly from Notion. To add or edit:
+Most content comes directly from Notion:
 
-- **Best Of entries** — go to the Sunzzari Best Of database in Notion
-- **Memories** — go to the Sunzzari Memories database in Notion
-- **Dinosaur photos** — use the Gallery tab in the app (bulk import or add one at a time)
+- **Best Of entries** — Sunzzari Best Of database in Notion
+- **Memories** — Sunzzari Memories database in Notion
+- **Dinosaur photos** — Gallery tab in the app (bulk import or add one at a time)
 
 No push required for Notion changes — the app fetches live data.
 
 ---
 
-## Key Files
+## Key Files (sunzzari-app)
 
 | File | What it controls |
 |------|-----------------|
