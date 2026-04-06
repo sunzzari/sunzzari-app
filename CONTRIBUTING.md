@@ -13,7 +13,7 @@
 
 Note: there is a `backend/` subfolder inside `sunzzari-app` — this is a stale copy and is not deployed anywhere. Ignore it. All real backend changes go in `sunzzari-backend`.
 
-Both repos are public (required for Vercel on a free org plan).
+Note: `sunzzari-backend` must be public (Vercel free plan requires public org repos). `sunzzari-app` can be made private if desired — Xcode Cloud works with private repos.
 
 ---
 
@@ -39,6 +39,14 @@ If you already cloned the old repo (`elisafazz/sunzzari-app`), update your remot
 ```bash
 git remote set-url origin https://github.com/sunzzari/sunzzari-app.git
 ```
+
+Create your local secrets file (required to build — this file is gitignored and never committed):
+
+```bash
+cp Sunzzari/Config/Secrets.template Sunzzari/Config/Secrets.swift
+```
+
+Then open the new `Secrets.swift` and replace `REPLACE_WITH_NOTION_TOKEN` and `REPLACE_WITH_PUSH_SECRET` with the real values (get them from Elisa).
 
 Open the project in Xcode:
 
@@ -97,7 +105,8 @@ No push required for Notion changes — the app fetches live data.
 
 | File | What it controls |
 |------|-----------------|
-| `Sunzzari/Config/Constants.swift` | API tokens, database IDs |
+| `Sunzzari/Config/Secrets.swift` | API tokens (gitignored — never commit this file) |
+| `Sunzzari/Config/Constants.swift` | Database IDs and other non-secret config |
 | `Sunzzari/Config/AppColors.swift` | Color palette |
 | `Sunzzari/ContentView.swift` | Tab structure |
 | `Sunzzari/Views/Today/TodayView.swift` | Today tab |
