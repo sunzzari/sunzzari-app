@@ -6,6 +6,8 @@
 	<string>Sunzzari shows your location on the shared map so you can see where each other is.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Sunzzari updates your location in the background so your partner always knows where you are.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
