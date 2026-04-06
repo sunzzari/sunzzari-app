@@ -106,23 +106,15 @@ Build stages:
 
 ## Part 4 — Delivering the Build to Both Phones
 
-After Archive - iOS succeeds, two manual steps are required.
+After Archive - iOS succeeds, one manual step is required.
 
-### Step 1: Clear Compliance
-
-App Store Connect → **TestFlight** tab → **Builds** → **iOS** → find the new build → click **Manage Compliance**
-
-Answer the encryption question:
-- Uses encryption? **Yes**
-- Exempt? **Yes** (standard HTTPS/TLS is exempt)
-
-Status changes from "Missing Compliance" to "Ready to Test."
-
-### Step 2: Add Build to Tester Group
+### Add Build to Tester Group
 
 App Store Connect → **TestFlight** tab → **Sunzzari Group** → **Builds** tab → **+** → select the new build → **Add**
 
 Both phones (Elisa + Cathy) will receive a TestFlight notification within a few minutes. Tap **Update** in the TestFlight app.
+
+> Note: "Missing Compliance" warnings are no longer expected — `ITSAppUsesNonExemptEncryption` is set in Info.plist. If you see it anyway, go to TestFlight → Builds → iOS → Manage Compliance → Yes, Exempt.
 
 ---
 
