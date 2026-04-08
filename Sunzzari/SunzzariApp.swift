@@ -83,6 +83,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // Increment badge for remote pushes (local notifications set their own badge)
+        let id = notification.request.identifier
+        if !id.hasPrefix("sunzzari-boop-") && !id.hasPrefix("sunzzari-status-") {
+            let current = UIApplication.shared.applicationIconBadgeNumber
+            UNUserNotificationCenter.current().setBadgeCount(current + 1)
+        }
         completionHandler([.banner, .sound])
     }
 }

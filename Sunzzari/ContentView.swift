@@ -196,6 +196,8 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                // Clear badge when app comes to foreground
+                UNUserNotificationCenter.current().setBadgeCount(0)
                 Task {
                     await BoopService.shared.checkForBoops()
                     await StatusService.shared.checkForStatus()

@@ -313,10 +313,12 @@ final class StatusService: @unchecked Sendable {
             if tags.contains(deviceTag) { continue }
 
             let evID = event["id"] as? String ?? UUID().uuidString
+            let currentBadge = await UIApplication.shared.applicationIconBadgeNumber
             let content = UNMutableNotificationContent()
             content.title = "Status update 💛"
             content.body = message
             content.sound = .default
+            content.badge = NSNumber(value: currentBadge + 1)
             let req = UNNotificationRequest(
                 identifier: "sunzzari-status-\(evID)",
                 content: content,
