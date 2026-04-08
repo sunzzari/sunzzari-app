@@ -43,7 +43,6 @@ module.exports = async function handler(req, res) {
 
   const note = new apn.Notification()
   note.expiry = Math.floor(Date.now() / 1000) + 3600 // expire in 1 hour
-  note.badge = 0
   note.sound = 'default'
   note.alert = { title, body }
   note.topic = process.env.APNS_BUNDLE_ID
