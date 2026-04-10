@@ -31,7 +31,6 @@ final class TripMapBridge {
 
 struct TripMKMap: UIViewRepresentable {
     let annotations: [TripItemAnnotation]
-    let totalMappedCount: Int
     let filterKey: String
     @Binding var selectedID: String?
     let bridge: TripMapBridge
@@ -80,17 +79,19 @@ struct TripMKMap: UIViewRepresentable {
         if !toAdd.isEmpty {
             map.addAnnotations(toAdd)
 
-            let placed = map.annotations.filter { $0 is TripItemAnnotation }.count
-            if !coordinator.didFitAll && totalMappedCount > 0 && placed >= totalMappedCount {
-                coordinator.didFitAll = true
+            // Fit to all pins on first load
+            if !coordinator.hasFittedInitially {
+                coordinator.hasFittedInitially = true
                 coordinator.lastFilterKey = filterKey
                 let anns = map.annotations.filter { !($0 is MKUserLocation) }
-                DispatchQueue.main.async { map.showAnnotations(anns, animated: true) }
+                if !anns.isEmpty {
+                    DispatchQueue.main.async { map.showAnnotations(anns, animated: true) }
+                }
             }
         }
 
         // Re-fit when filter changes
-        if coordinator.didFitAll && filterKey != coordinator.lastFilterKey {
+        if filterKey != coordinator.lastFilterKey {
             coordinator.lastFilterKey = filterKey
             DispatchQueue.main.async {
                 let anns = map.annotations.filter { !($0 is MKUserLocation) }
@@ -117,7 +118,7 @@ struct TripMKMap: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
         @Binding var selectedID: String?
         var isUpdating = false
-        var didFitAll = false
+        var hasFittedInitially = false
         var lastFilterKey: String = ""
 
         init(selectedID: Binding<String?>) {

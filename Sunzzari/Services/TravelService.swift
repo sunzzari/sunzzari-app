@@ -90,9 +90,14 @@ final class TravelService: @unchecked Sendable {
             return cached.items
         }
         do {
+            let filter: [String: Any] = [
+                "property": "Trip",
+                "relation": ["contains": tripId]
+            ]
             let data = try await queryDatabase(
                 id: Constants.Travel.itemsDBID,
-                sorts: [["property": "Name", "direction": "ascending"]]
+                sorts: [["property": "Name", "direction": "ascending"]],
+                filter: filter
             )
             let items = parseItems(from: data, tripId: tripId)
             itemsCache[tripId] = (items, Date())
@@ -108,6 +113,23 @@ final class TravelService: @unchecked Sendable {
             }
             throw error
         }
+    }
+
+    // MARK: - Cached Coordinates (synchronous, no network)
+
+    func applyCachedCoordinates(_ items: [TripItem]) -> [TripItem] {
+        var result = items
+        for i in result.indices where !result[i].hasCoordinates && !result[i].venue.isEmpty {
+            let key = TripItem.geoKey(for: result[i].id)
+            if let cached = UserDefaults.standard.string(forKey: key) {
+                let parts = cached.split(separator: ",")
+                if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
+                    result[i].latitude = lat
+                    result[i].longitude = lon
+                }
+            }
+        }
+        return result
     }
 
     // MARK: - Geocoding

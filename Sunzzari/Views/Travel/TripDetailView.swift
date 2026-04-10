@@ -199,7 +199,6 @@ struct TripDetailView: View {
         ZStack(alignment: .topTrailing) {
             TripMKMap(
                 annotations: annotations,
-                totalMappedCount: items.filter(\.hasCoordinates).count,
                 filterKey: filterKey,
                 selectedID: $selectedID,
                 bridge: bridge
@@ -254,15 +253,16 @@ struct TripDetailView: View {
     // MARK: - Actions
 
     private func selectItem(_ item: TripItem) {
-        selectedID = item.id
         if let lat = item.latitude, let lon = item.longitude {
-            bridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+            DispatchQueue.main.async {
+                self.bridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+            }
         }
-        // Show detail sheet on second tap
-        if detailItem?.id == item.id {
-            return
+        if selectedID == item.id {
+            detailItem = item   // second tap -> open detail
+        } else {
+            selectedID = item.id // first tap -> select + pan only
         }
-        detailItem = item
     }
 
     private func requestUserLocation() {
@@ -277,9 +277,14 @@ struct TripDetailView: View {
         if items.isEmpty { isLoading = true }
         do {
             var fetched = try await TravelService.shared.fetchTripItems(tripId: trip.id, force: force)
-            fetched = await TravelService.shared.geocodeItems(fetched)
+            // Phase 1: show items with cached coordinates immediately
+            fetched = TravelService.shared.applyCachedCoordinates(fetched)
             items = fetched
+            isLoading = false
             isOffline = TravelService.shared.isOffline
+            // Phase 2: geocode remaining items in background
+            let geocoded = await TravelService.shared.geocodeItems(fetched)
+            items = geocoded
         } catch is CancellationError {
             return
         } catch let urlErr as URLError where urlErr.code == .cancelled {

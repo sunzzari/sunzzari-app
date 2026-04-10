@@ -180,8 +180,9 @@ struct ContentView: View {
         // Hide floating buttons on the More page or any overflow tab (tag ≥ 4)
         .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
             let onOverflow = selectedTab >= 4
+            let onTravel = selectedTab == 3
             let onMoreList = Self.isMoreNavigationActive()
-            let shouldHide = onOverflow || onMoreList
+            let shouldHide = onOverflow || onMoreList || onTravel
             if shouldHide != hideFloatingButtons { hideFloatingButtons = shouldHide }
         }
         .task {

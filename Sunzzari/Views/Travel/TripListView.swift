@@ -78,13 +78,21 @@ struct TripListView: View {
     }
 
     private func loadTrips(force: Bool = false) async {
+        // Show cached data immediately while network loads
+        if trips.isEmpty, let cached = TravelService.shared.tripsDiskCache() {
+            trips = cached
+            isOffline = true
+        }
         if trips.isEmpty { isLoading = true }
         do {
             trips = try await TravelService.shared.fetchTrips(force: force)
             isOffline = TravelService.shared.isOffline
+        } catch is CancellationError {
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
-            // Try disk cache on first load failure
-            if let cached = TravelService.shared.tripsDiskCache() {
+            if trips.isEmpty, let cached = TravelService.shared.tripsDiskCache() {
                 trips = cached
                 isOffline = true
             }
