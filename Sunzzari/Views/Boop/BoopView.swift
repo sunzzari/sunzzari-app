@@ -6,10 +6,10 @@ private let boopPresets: [String] = [
     "I love you 💛",
     "Miss you! 🦕",
     "BAAAAAABE 🌟",
-    "Hi hi hi 👋",
+    "HIIIIIIIIII 👋",
     "Feed me 🍜",
     "HUMMINGBIRD NEEDS A BRANCH 🌿",
-    "I'm bored, entertain me 😏",
+    "poop 💩",
     "Coming to rub your butt 🍑",
 ]
 

@@ -23,7 +23,9 @@ enum Constants {
     }
 
     enum Travel {
-        static let mapURL = URL(string: "https://elisa-travel-map.vercel.app")!
+        static let tripsDBID = "72792a7e-eb9e-468a-a376-fd1e7284401c"
+        static let itemsDBID = "9947ef07-3483-472b-b452-f2ebc23edabe"
+        static let legsDBID  = "fee283c0-9ee7-46ff-8758-fbc58fba496d"
     }
 
     enum Boop {
