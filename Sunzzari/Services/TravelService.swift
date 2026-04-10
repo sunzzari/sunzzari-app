@@ -252,8 +252,12 @@ final class TravelService: @unchecked Sendable {
                 coverImageURL:  coverURL
             )
         }.sorted { a, b in
-            if a.sortKey != b.sortKey { return a.sortKey < b.sortKey }
-            return (a.departureDate ?? "") > (b.departureDate ?? "")
+            let today = Date()
+            let aDate = a.departureDateParsed
+            let bDate = b.departureDateParsed
+            let aDist = aDate.map { abs($0.timeIntervalSince(today)) } ?? .infinity
+            let bDist = bDate.map { abs($0.timeIntervalSince(today)) } ?? .infinity
+            return aDist < bDist
         }
     }
 
