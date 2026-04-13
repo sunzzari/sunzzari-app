@@ -11,6 +11,8 @@ private let boopPresets: [String] = [
     "HUMMINGBIRD NEEDS A BRANCH 🌿",
     "poop 💩",
     "Coming to rub your butt 🍑",
+    "KIIIIISSSSSSS 💋",
+    "🤘",
 ]
 
 struct BoopView: View {
