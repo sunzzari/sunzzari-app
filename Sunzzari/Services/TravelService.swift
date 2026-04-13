@@ -5,6 +5,21 @@ final class TravelService: @unchecked Sendable {
     static let shared = TravelService()
     private let baseURL = "https://api.notion.com/v1"
 
+    // Bump this when geocoding logic changes to clear stale caches
+    private static let geocodeVersion = 2
+    private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
+
+    private init() {
+        let stored = UserDefaults.standard.integer(forKey: Self.geocodeVersionKey)
+        if stored < Self.geocodeVersion {
+            let defaults = UserDefaults.standard
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("sunzzari_travel_geo_") {
+                defaults.removeObject(forKey: key)
+            }
+            defaults.set(Self.geocodeVersion, forKey: Self.geocodeVersionKey)
+        }
+    }
+
     // MARK: - Memory cache
 
     private var tripsCache: (trips: [Trip], at: Date)?
@@ -153,15 +168,32 @@ final class TravelService: @unchecked Sendable {
             needsNetwork.append((index, item))
         }
 
+        // Pre-resolve unique cities to regions for search bias
+        var cityRegions: [String: MKCoordinateRegion] = [:]
+        let uniqueCities = Set(needsNetwork.map(\.item.legCity).filter { !$0.isEmpty })
+        for city in uniqueCities {
+            let cityReq = MKLocalSearch.Request()
+            cityReq.naturalLanguageQuery = city
+            if let resp = try? await MKLocalSearch(request: cityReq).start(),
+               let first = resp.mapItems.first {
+                cityRegions[city] = MKCoordinateRegion(
+                    center: first.placemark.coordinate,
+                    latitudinalMeters: 50_000, longitudinalMeters: 50_000
+                )
+            }
+        }
+
         // Second pass: geocode uncached items via network
         await withTaskGroup(of: (Int, Double, Double)?.self) { group in
             for (index, item) in needsNetwork {
+                let region = cityRegions[item.legCity]
                 group.addTask {
-                    let query = [item.name, item.venue, item.legCity]
+                    let query = [item.venue, item.legCity]
                         .filter { !$0.isEmpty }
-                        .joined(separator: " ")
+                        .joined(separator: ", ")
                     let request = MKLocalSearch.Request()
                     request.naturalLanguageQuery = query
+                    if let region { request.region = region }
                     do {
                         let response = try await MKLocalSearch(request: request).start()
                         if let first = response.mapItems.first {

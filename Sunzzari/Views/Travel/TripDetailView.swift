@@ -16,7 +16,6 @@ struct TripDetailView: View {
     @State private var selectedID: String?
     @State private var bridge = TripMapBridge()
     @State private var isFullscreen = false
-    @State private var showLegend = false
 
     // Filters
     @State private var activeStatuses: Set<TripItem.ItemStatus> = []
@@ -196,7 +195,7 @@ struct TripDetailView: View {
     }
 
     private var mapLayer: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             TripMKMap(
                 annotations: annotations,
                 filterKey: filterKey,
@@ -205,36 +204,28 @@ struct TripDetailView: View {
             )
             .ignoresSafeArea(edges: .bottom)
 
-            // Map controls
+            // Map controls - top right
             VStack(spacing: 8) {
-                // Fullscreen toggle
                 mapButton(icon: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
                     withAnimation { isFullscreen.toggle() }
                 }
 
-                // Show all pins
                 mapButton(icon: "arrow.up.left.and.down.right.magnifyingglass") {
                     bridge.fitAll()
                 }
 
-                // Legend toggle
-                mapButton(icon: "list.bullet") {
-                    withAnimation { showLegend.toggle() }
-                }
-
-                // Center on user
                 mapButton(icon: "location.fill") {
                     bridge.centerOnUser()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .padding(12)
 
-            // Type legend overlay
-            if showLegend {
-                TripTypeLegend(activeTypes: $activeTypes, isVisible: $showLegend)
-                    .padding(.top, 180)
-                    .padding(.trailing, 12)
-            }
+            // Type legend - bottom left (always visible)
+            TripTypeLegend(activeTypes: $activeTypes)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.leading, 12)
+                .padding(.bottom, sizeClass == .regular ? 16 : 140)
         }
     }
 
