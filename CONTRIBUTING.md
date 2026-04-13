@@ -8,11 +8,10 @@ Complete reference — from making a code change to both phones receiving the up
 
 ```
 Edit code → git push → Xcode Cloud builds (~10-15 min) → Archive succeeds
-→ Clear compliance in App Store Connect → Add build to Sunzzari Group
 → Both phones get TestFlight notification → Tap Update
 ```
 
-**Nothing is fully automatic.** After each successful build, two manual steps in App Store Connect are required before the update reaches the phones.
+**Fully automatic.** After pushing, Xcode Cloud builds the app and delivers it to TestFlight. Both phones get a notification when it's ready.
 
 ---
 
@@ -22,7 +21,6 @@ Edit code → git push → Xcode Cloud builds (~10-15 min) → Archive succeeds
 |------|-------|-------|
 | Edit code and push to GitHub | Yes | Yes (needs Mac + Xcode) |
 | Monitor build in App Store Connect | Yes (Apple Developer account) | No |
-| Clear compliance + add build to group | Yes | No |
 | Receive TestFlight update on phone | Yes | Yes |
 | Add/edit Notion content (no code) | Yes | Yes |
 
@@ -73,10 +71,9 @@ All Swift source files are under `Sunzzari/`. Key files:
 | `Sunzzari/Views/Hub/HubView.swift` | Hub tab (restaurants, wine, activities) |
 | `ci_scripts/ci_post_clone.sh` | Xcode Cloud setup script — do not edit |
 
-**3. Test on device before pushing**
-- Connect iPhone via USB
-- Select your device in the Xcode toolbar (top center)
-- Press Cmd+R to build and run directly on your phone
+**3. Test before pushing**
+- Press Cmd+R to build and run in the Simulator (or on a plugged-in iPhone)
+- The Simulator works for most UI and code changes. A physical device is only needed for hardware-specific features like push notifications or camera.
 
 **4. Push to GitHub**
 ```bash
@@ -104,17 +101,11 @@ Build stages:
 
 ---
 
-## Part 4 — Delivering the Build to Both Phones
+## Part 4 — Receiving the Update
 
-After Archive - iOS succeeds, one manual step is required.
+After Archive - iOS succeeds, the build is automatically delivered to TestFlight. Both phones (Elisa + Cathy) will receive a TestFlight notification within a few minutes. Tap **Update** in the TestFlight app.
 
-### Add Build to Tester Group
-
-App Store Connect → **TestFlight** tab → **Sunzzari Group** → **Builds** tab → **+** → select the new build → **Add**
-
-Both phones (Elisa + Cathy) will receive a TestFlight notification within a few minutes. Tap **Update** in the TestFlight app.
-
-> Note: "Missing Compliance" warnings are no longer expected — `ITSAppUsesNonExemptEncryption` is set in Info.plist. If you see it anyway, go to TestFlight → Builds → iOS → Manage Compliance → Yes, Exempt.
+No manual steps needed in App Store Connect -- compliance is handled via `ITSAppUsesNonExemptEncryption` in Info.plist, and builds are auto-distributed to the Sunzzari Group.
 
 ---
 
