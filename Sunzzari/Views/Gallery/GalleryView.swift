@@ -17,20 +17,21 @@ struct GalleryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.sunBackground.ignoresSafeArea()
+        // Reached as a nested destination from HubView (which owns the NavigationStack).
+        // Do NOT wrap in another NavigationStack — nested stacks cause double nav bars.
+        ZStack {
+            Color.sunBackground.ignoresSafeArea()
 
-                if isLoading {
-                    LoadingView()
-                } else if photos.isEmpty {
-                    EmptyStateView(
-                        systemImage: "photo.badge.plus",
-                        title: "No dinosaurs yet",
-                        subtitle: "Add your first dino photo to start the collection!"
-                    )
-                } else {
-                    VStack(spacing: 0) {
+            if isLoading {
+                LoadingView()
+            } else if photos.isEmpty {
+                EmptyStateView(
+                    systemImage: "photo.badge.plus",
+                    title: "No dinosaurs yet",
+                    subtitle: "Add your first dino photo to start the collection!"
+                )
+            } else {
+                VStack(spacing: 0) {
                     // Filter bar
                     HStack(spacing: 8) {
                         Button {
@@ -111,10 +112,9 @@ struct GalleryView: View {
                     .padding(.bottom, 8)
                 }
             }
-            .navigationTitle("Gallery")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-        }
+        .navigationTitle("Gallery")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .sheet(item: $selectedPhoto) { photo in
             DinoDetailView(photo: photo, onFavoriteToggle: { toggleFavorite($0) }, onEdit: { updated in
                 if let idx = photos.firstIndex(where: { $0.id == updated.id }) {

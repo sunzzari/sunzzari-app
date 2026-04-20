@@ -262,13 +262,15 @@ final class NotionService: @unchecked Sendable {
         if let json = dbResult.json, (200...299).contains(dbResult.status),
            let cover = extractCover(json) { return cover }
 
-        // 3. Search by ID — returns full object with cover regardless of endpoint access
+        // 3. Search by ID — try pages first (most common for this app's use),
+        //    then databases. Using a hardcoded "database" filter here was a bug:
+        //    it excluded page objects entirely, which is what the 3 Hub cover IDs are.
         let searchURL = URL(string: "\(baseURL)/search")!
         var searchReq = URLRequest(url: searchURL)
         searchReq.httpMethod = "POST"
         headers.forEach { searchReq.setValue($1, forHTTPHeaderField: $0) }
         searchReq.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "filter": ["value": "database", "property": "object"]
+            "filter": ["value": "page", "property": "object"]
         ])
         if let (data, response) = try? await URLSession.shared.data(for: searchReq),
            let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),

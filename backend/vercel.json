@@ -1,9 +1,0 @@
-{
-  "version": 2,
-  "functions": {
-    "api/push.js": {
-      "memory": 128,
-      "maxDuration": 10
-    }
-  }
-}

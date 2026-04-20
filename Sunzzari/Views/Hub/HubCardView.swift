@@ -3,12 +3,26 @@ import SwiftUI
 struct HubCardView: View {
     let title: String
     let subtitle: String
+    let assetName: String?
     let coverURL: String?
+
+    init(title: String, subtitle: String, assetName: String? = nil, coverURL: String? = nil) {
+        self.title = title
+        self.subtitle = subtitle
+        self.assetName = assetName
+        self.coverURL = coverURL
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             GeometryReader { geo in
-                if let urlStr = coverURL, let url = URL(string: urlStr) {
+                if let assetName {
+                    Image(assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                } else if let urlStr = coverURL, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):

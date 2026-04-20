@@ -1,52 +1,78 @@
 import SwiftUI
+import UIKit
+
+// 6 one-tap boops elevated from BoopView presets (user-selected 2026-04-19)
+private let homeBoops: [String] = [
+    "HUMMINGBIRD NEEDS A BRANCH 🌿",
+    "Coming to rub your butt 🍑",
+    "poop 💩",
+    "🤘",
+    "Miss you! 🦕",
+    "Come cuddle me 🫶",
+]
 
 struct TodayView: View {
-    @State private var bestMomentsToday: [BestOfEntry] = []
-    @State private var otherToday: [BestOfEntry] = []
-    @State private var fallbackEntry: BestOfEntry? = nil
+    // Memory = strict date-match (month/day hits); Nudge = strict Tier-3 year-only pick
+    @State private var memoryEntries: [BestOfEntry] = []
+    @State private var nudgeEntry: BestOfEntry? = nil
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isNewYearsDay = false
+
+    // Boop tile state
+    @State private var sendingBoop: String? = nil
+    @State private var toastMessage: String? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
+    @State private var showCustomBoop = false
 
     @State private var selectedEntry: BestOfEntry? = nil
     @State private var entryToEdit: BestOfEntry? = nil
     @Namespace private var cardNamespace
 
-    private var hasToday: Bool { !bestMomentsToday.isEmpty || !otherToday.isEmpty }
-    private var todayCount: Int { bestMomentsToday.count + otherToday.count }
+    private var hasMemory: Bool { !memoryEntries.isEmpty }
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.sunBackground.ignoresSafeArea()
 
                 if isLoading {
                     skeletonView
-                } else if isNewYearsDay {
-                    List {
-                        Section { newYearView } header: { dateHeader }
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                 } else {
                     List {
-                        // Always-visible date header (empty section, header only)
                         Section { } header: { dateHeader }
 
-                        // Section 1: On This Day (date-matched entries)
-                        if hasToday {
+                        // NEW YEAR'S DAY banner (kept above boops so priority-1 Boop
+                        // still works on Jan 1 — regression from Session 46 first pass)
+                        if isNewYearsDay {
                             Section {
-                                ForEach(bestMomentsToday) { entry in entryRow(entry) }
-                                ForEach(otherToday) { entry in entryRow(entry) }
-                            } header: {
-                                onThisDaySectionHeader
+                                newYearView
                             }
                         }
 
-                        // Section 2: Remember This? (unassigned fallback — always shown)
-                        if let entry = fallbackEntry {
+                        // BOOPS (one-tap) — always rendered, including NYD
+                        Section {
+                            boopGrid
+                                .listRowBackground(Color.sunBackground)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
+                        } header: {
+                            sectionHeader("BOOPS", accent: true)
+                        }
+
+                        // MEMORY (date-matched only)
+                        if hasMemory {
                             Section {
-                                fallbackCard(entry)
+                                ForEach(memoryEntries) { entry in entryRow(entry) }
+                            } header: {
+                                sectionHeader("MEMORY · \(memoryEntries.count)", accent: false)
+                            }
+                        }
+
+                        // NUDGE (Tier-3 year-only only)
+                        if let entry = nudgeEntry {
+                            Section {
+                                nudgeCard(entry)
                                     .matchedGeometryEffect(id: entry.id, in: cardNamespace)
                                     .opacity(selectedEntry?.id == entry.id ? 0 : 1)
                                     .onTapGesture {
@@ -67,12 +93,11 @@ struct TodayView: View {
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                             } header: {
-                                rememberThisSectionHeader
+                                sectionHeader("NUDGE", accent: true)
                             }
                         }
 
-                        // Empty state: nothing at all
-                        if !hasToday && fallbackEntry == nil {
+                        if !hasMemory && nudgeEntry == nil {
                             Section {
                                 Text("Nothing to show today — check back later!")
                                     .font(.subheadline)
@@ -88,10 +113,34 @@ struct TodayView: View {
                     .scrollContentBackground(.hidden)
                     .refreshable { await load(force: true) }
                 }
+
+                // Transient toast
+                if let msg = toastMessage {
+                    Text(msg)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sunBackground)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.sunAccent)
+                        .clipShape(Capsule())
+                        .shadow(color: Color.sunAccent.opacity(0.45), radius: 10, x: 0, y: 4)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-            .navigationTitle("Today")
+            .navigationTitle("Home")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCustomBoop = true
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .foregroundStyle(Color.sunAccent)
+                    }
+                }
+            }
         }
         .overlay {
             if let entry = selectedEntry {
@@ -125,13 +174,91 @@ struct TodayView: View {
                 handleUpdate(updated)
             }
         }
+        .sheet(isPresented: $showCustomBoop) {
+            BoopView()
+        }
         .task { await load() }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
     }
 
-    // MARK: - Entry row (Tier 1 + Tier 2)
+    // MARK: - Boop grid (3 columns × 2 rows)
+
+    private var boopGrid: some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+            spacing: 10
+        ) {
+            ForEach(homeBoops, id: \.self) { preset in
+                boopTile(preset)
+            }
+        }
+    }
+
+    private func boopTile(_ preset: String) -> some View {
+        Button {
+            Task { await sendOneTapBoop(preset) }
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.sunSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+
+                if sendingBoop == preset {
+                    ProgressView()
+                        .tint(Color.sunAccent)
+                } else {
+                    Text(preset)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.sunText)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.7)
+                        .padding(8)
+                }
+            }
+            .frame(height: 80)
+        }
+        .buttonStyle(.plain)
+        .disabled(sendingBoop != nil)
+    }
+
+    private func sendOneTapBoop(_ message: String) async {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        sendingBoop = message
+        defer { sendingBoop = nil }
+        // Toast is fire-and-forget — do NOT await it here, otherwise `sendingBoop`
+        // stays locked for the 1.8s toast duration instead of just the send duration.
+        do {
+            try await BoopService.shared.send(message: message)
+            showToast("Boop sent 💛")
+        } catch {
+            showToast("Send failed — try again")
+        }
+    }
+
+    @MainActor
+    private func showToast(_ message: String) {
+        // Cancel any in-flight toast so the newer one wins — single shared
+        // @State collides if two sends fire within 1.8s of each other.
+        toastTask?.cancel()
+        toastTask = Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.2)) { toastMessage = message }
+            do {
+                try await Task.sleep(nanoseconds: 1_800_000_000)
+                withAnimation(.easeIn(duration: 0.25)) { toastMessage = nil }
+            } catch {
+                // Cancelled — a newer toast is taking over; leave the view state
+                // alone so the new one's message isn't stomped.
+            }
+        }
+    }
+
+    // MARK: - Entry row
 
     @ViewBuilder
     private func entryRow(_ entry: BestOfEntry) -> some View {
@@ -157,15 +284,11 @@ struct TodayView: View {
             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
     }
 
-    // MARK: - Edit update handler
-
     private func handleUpdate(_ updated: BestOfEntry) {
-        if let idx = bestMomentsToday.firstIndex(where: { $0.id == updated.id }) {
-            bestMomentsToday[idx] = updated
-        } else if let idx = otherToday.firstIndex(where: { $0.id == updated.id }) {
-            otherToday[idx] = updated
-        } else if fallbackEntry?.id == updated.id {
-            fallbackEntry = updated
+        if let idx = memoryEntries.firstIndex(where: { $0.id == updated.id }) {
+            memoryEntries[idx] = updated
+        } else if nudgeEntry?.id == updated.id {
+            nudgeEntry = updated
         }
     }
 
@@ -193,7 +316,7 @@ struct TodayView: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
-    // MARK: - Date header
+    // MARK: - Date header + section headers
 
     private var dateHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -212,29 +335,18 @@ struct TodayView: View {
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 16))
     }
 
-    // MARK: - Section headers
-
-    private var onThisDaySectionHeader: some View {
-        Text("ON THIS DAY · \(todayCount)")
+    private func sectionHeader(_ label: String, accent: Bool) -> some View {
+        Text(label)
             .font(.system(size: 11, weight: .bold))
             .tracking(1.2)
-            .foregroundStyle(Color.sunSecondary)
+            .foregroundStyle(accent ? Color.sunAccent : Color.sunSecondary)
             .textCase(nil)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
-    private var rememberThisSectionHeader: some View {
-        Text("REMEMBER THIS?")
-            .font(.system(size: 11, weight: .bold))
-            .tracking(1.2)
-            .foregroundStyle(Color.sunAccent)
-            .textCase(nil)
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-    }
+    // MARK: - Nudge card
 
-    // MARK: - Fallback card
-
-    private func fallbackCard(_ entry: BestOfEntry) -> some View {
+    private func nudgeCard(_ entry: BestOfEntry) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 CategoryChip(label: entry.category.rawValue, colorHex: entry.category.colorHex)
@@ -289,12 +401,8 @@ struct TodayView: View {
     // MARK: - Load
 
     private func load(force: Bool = false) async {
-        // Ensure Notion sync for today's Tier-3 pick has completed before picking the
-        // fallback entry. runDailySetup is idempotent — instant on all loads after
-        // the first one each day.
         await DailySetupService.shared.runDailySetup()
 
-        // Stale-while-revalidate: serve disk cache instantly, refresh in background
         if !force, let cached = NotionService.shared.bestOfDiskCache() {
             applyEntries(cached)
             isLoading = false
@@ -303,10 +411,9 @@ struct TodayView: View {
                 applyEntries(fresh)
             } catch is CancellationError {
             } catch let urlErr as URLError where urlErr.code == .cancelled {
-            } catch { /* silently fail — user already sees cached data */ }
+            } catch { }
             return
         }
-        // No disk cache (first-ever launch) or pull-to-refresh
         isLoading = true
         defer { isLoading = false }
         do {
@@ -321,6 +428,7 @@ struct TodayView: View {
         }
     }
 
+    // STRICT split: Memory = date-matched, Nudge = Tier-3 year-only (no mixing)
     private func applyEntries(_ all: [BestOfEntry]) {
         let cal = Calendar(identifier: .gregorian)
         let now = Date()
@@ -329,39 +437,29 @@ struct TodayView: View {
 
         if todayMonth == 1 && todayDay == 1 {
             isNewYearsDay = true
-            bestMomentsToday = []
-            otherToday = []
-            fallbackEntry = nil
+            memoryEntries = []
+            nudgeEntry = nil
             return
         }
         isNewYearsDay = false
 
-        let todayEntries = all.filter { entry in
-            !entry.isYearOnly &&
-            cal.component(.month, from: entry.date) == todayMonth &&
-            cal.component(.day, from: entry.date) == todayDay
-        }
+        // Memory: every date-matched entry today, excluding improvements
+        memoryEntries = all
+            .filter { entry in
+                !entry.isYearOnly &&
+                entry.category != .improvements &&
+                cal.component(.month, from: entry.date) == todayMonth &&
+                cal.component(.day, from: entry.date) == todayDay
+            }
+            .sorted { lhs, rhs in
+                // Best Moments first, then by year descending
+                if lhs.category == .bestMoments && rhs.category != .bestMoments { return true }
+                if lhs.category != .bestMoments && rhs.category == .bestMoments { return false }
+                return lhs.year > rhs.year
+            }
 
-        bestMomentsToday = todayEntries
-            .filter { $0.category == .bestMoments }
-            .sorted { $0.year > $1.year }
-
-        otherToday = todayEntries
-            .filter { $0.category != .bestMoments && $0.category != .improvements }
-            .sorted { $0.year > $1.year }
-
-        // "Remember This?" section — always uses the Notion-synced Tier-3 pick from
-        // DailySetupService so both phones show the same entry.
-        let notifEntry = DailySetupService.shared.selectEntry(for: now, from: all)
-        if let notifEntry, notifEntry.isYearOnly {
-            // No date matches — notification IS the Remember This content. Use the same pick.
-            fallbackEntry = notifEntry
-        } else {
-            // Date-matched entries exist — pick a Tier-3 entry for "Remember This?"
-            // using the same Notion-synced key as runDailySetup() so both phones agree.
-            let pool = all.filter { $0.isYearOnly && $0.category != .improvements }
-            fallbackEntry = DailySetupService.shared.selectEntry(for: now, from: pool)
-        }
+        // Nudge: strict Tier-3 year-only pick, excluding improvements
+        let nudgePool = all.filter { $0.isYearOnly && $0.category != .improvements }
+        nudgeEntry = DailySetupService.shared.selectEntry(for: now, from: nudgePool)
     }
 }
-
