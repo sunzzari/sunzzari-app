@@ -33,21 +33,23 @@ struct UtilityView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                List {
-                    ForEach(rows) { row in
-                        NavigationLink(destination: row.destination) {
-                            rowLabel(row)
+                VStack(spacing: 0) {
+                    PageHeader("More")
+
+                    List {
+                        ForEach(rows) { row in
+                            NavigationLink(destination: row.destination) {
+                                rowLabel(row)
+                            }
+                            .listRowBackground(Color.sunSurface)
+                            .listRowSeparatorTint(Color.white.opacity(0.06))
                         }
-                        .listRowBackground(Color.sunSurface)
-                        .listRowSeparatorTint(Color.white.opacity(0.06))
                     }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
             }
-            .navigationTitle("More")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

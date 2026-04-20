@@ -20,18 +20,7 @@ struct ThoughtActionView: View {
             Color.sunBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Thought-Action")
-                            .font(.system(size: 22, weight: .bold))
-                            .fontDesign(.serif)
-                            .foregroundStyle(Color.sunText)
-                        Text("tap the circle when done — it disappears")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.sunSecondary)
-                    }
-                    Spacer()
+                PageHeader("Thought-Action") {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .semibold))
@@ -41,11 +30,6 @@ struct ThoughtActionView: View {
                             .clipShape(Circle())
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-
-                Divider().background(Color.white.opacity(0.1))
 
                 if isLoading {
                     Spacer()

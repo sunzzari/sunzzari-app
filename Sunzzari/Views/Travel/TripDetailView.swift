@@ -273,8 +273,9 @@ struct TripDetailView: View {
             items = fetched
             isLoading = false
             isOffline = TravelService.shared.isOffline
-            // Phase 2: geocode remaining items in background
-            let geocoded = await TravelService.shared.geocodeItems(fetched)
+            // Phase 2: geocode remaining items in background, biased by trip location
+            // so "Paris"/"Rome" resolve to the right country.
+            let geocoded = await TravelService.shared.geocodeItems(fetched, tripLocation: trip.location)
             items = geocoded
         } catch is CancellationError {
             return

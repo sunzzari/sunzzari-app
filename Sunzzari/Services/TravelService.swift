@@ -6,7 +6,7 @@ final class TravelService: @unchecked Sendable {
     private let baseURL = "https://api.notion.com/v1"
 
     // Bump this when geocoding logic changes to clear stale caches
-    private static let geocodeVersion = 2
+    private static let geocodeVersion = 3
     private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
 
     private init() {
@@ -149,7 +149,7 @@ final class TravelService: @unchecked Sendable {
 
     // MARK: - Geocoding
 
-    func geocodeItems(_ items: [TripItem]) async -> [TripItem] {
+    func geocodeItems(_ items: [TripItem], tripLocation: String = "") async -> [TripItem] {
         var result = items
         let toGeocode = items.enumerated().filter { !$0.element.hasCoordinates && !$0.element.venue.isEmpty }
 
@@ -168,16 +168,17 @@ final class TravelService: @unchecked Sendable {
             needsNetwork.append((index, item))
         }
 
-        // Pre-resolve unique cities to regions for search bias
+        // Trip location anchors the search to the right country/continent. Without it,
+        // ambiguous city names like "Paris" or "Rome" resolve to Paris, TX / Rome, GA.
+        let locationContexts = Self.splitTripLocation(tripLocation)
+
+        // Pre-resolve unique cities to regions for search bias — biased by trip location
         var cityRegions: [String: MKCoordinateRegion] = [:]
         let uniqueCities = Set(needsNetwork.map(\.item.legCity).filter { !$0.isEmpty })
         for city in uniqueCities {
-            let cityReq = MKLocalSearch.Request()
-            cityReq.naturalLanguageQuery = city
-            if let resp = try? await MKLocalSearch(request: cityReq).start(),
-               let first = resp.mapItems.first {
+            if let coord = await Self.resolveCity(city, locationContexts: locationContexts) {
                 cityRegions[city] = MKCoordinateRegion(
-                    center: first.placemark.coordinate,
+                    center: coord,
                     latitudinalMeters: 50_000, longitudinalMeters: 50_000
                 )
             }
@@ -187,24 +188,9 @@ final class TravelService: @unchecked Sendable {
         await withTaskGroup(of: (Int, Double, Double)?.self) { group in
             for (index, item) in needsNetwork {
                 let region = cityRegions[item.legCity]
+                let contexts = locationContexts
                 group.addTask {
-                    let query = [item.venue, item.legCity]
-                        .filter { !$0.isEmpty }
-                        .joined(separator: ", ")
-                    let request = MKLocalSearch.Request()
-                    request.naturalLanguageQuery = query
-                    if let region { request.region = region }
-                    do {
-                        let response = try await MKLocalSearch(request: request).start()
-                        if let first = response.mapItems.first {
-                            let lat = first.placemark.coordinate.latitude
-                            let lon = first.placemark.coordinate.longitude
-                            return (index, lat, lon)
-                        }
-                    } catch {
-                        print("[TravelService] geocode failed for '\(query)': \(error.localizedDescription)")
-                    }
-                    return nil
+                    await Self.geocodeItem(item, index: index, region: region, locationContexts: contexts)
                 }
             }
 
@@ -219,6 +205,68 @@ final class TravelService: @unchecked Sendable {
         }
 
         return result
+    }
+
+    // Split a trip location ("France/Italy", "Japan", "France, Italy") into ordered
+    // country/region hints. Empty array means no hint available.
+    private static func splitTripLocation(_ raw: String) -> [String] {
+        raw.split(whereSeparator: { "/,&".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    // Try resolving a city against each trip location context in order. Returns the
+    // first match; falls back to an unbiased search if nothing matches.
+    private static func resolveCity(_ city: String, locationContexts: [String]) async -> CLLocationCoordinate2D? {
+        for context in locationContexts {
+            let req = MKLocalSearch.Request()
+            req.naturalLanguageQuery = "\(city), \(context)"
+            if let resp = try? await MKLocalSearch(request: req).start(),
+               let first = resp.mapItems.first {
+                return first.placemark.coordinate
+            }
+        }
+        // Fallback: no location context or no contextual hit
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = city
+        if let resp = try? await MKLocalSearch(request: req).start(),
+           let first = resp.mapItems.first {
+            return first.placemark.coordinate
+        }
+        return nil
+    }
+
+    // Geocode a single item, appending the trip location to the query so ambiguous
+    // venue names resolve to the correct country.
+    private static func geocodeItem(
+        _ item: TripItem,
+        index: Int,
+        region: MKCoordinateRegion?,
+        locationContexts: [String]
+    ) async -> (Int, Double, Double)? {
+        let baseQuery = [item.venue, item.legCity]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+
+        // Try each location context; first hit wins
+        let queries: [String] = locationContexts.isEmpty
+            ? [baseQuery]
+            : locationContexts.map { "\(baseQuery), \($0)" } + [baseQuery]
+
+        for query in queries {
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = query
+            if let region { request.region = region }
+            do {
+                let response = try await MKLocalSearch(request: request).start()
+                if let first = response.mapItems.first {
+                    return (index, first.placemark.coordinate.latitude, first.placemark.coordinate.longitude)
+                }
+            } catch {
+                print("[TravelService] geocode failed for '\(query)': \(error.localizedDescription)")
+            }
+        }
+        return nil
     }
 
     // MARK: - Notion API

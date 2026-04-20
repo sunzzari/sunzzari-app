@@ -6,40 +6,42 @@ struct HubView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        NavigationLink(destination: RestaurantHubView()) {
-                            HubCardView(title: "Restaurants", subtitle: "My Guide", assetName: "hubRestaurants")
-                        }
-                        .buttonStyle(.plain)
+                VStack(spacing: 0) {
+                    PageHeader("Hub")
 
-                        NavigationLink(destination: WineHubView()) {
-                            HubCardView(title: "Wine", subtitle: "My Collection", assetName: "hubWine")
-                        }
-                        .buttonStyle(.plain)
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            NavigationLink(destination: RestaurantHubView()) {
+                                HubCardView(title: "Restaurants", subtitle: "My Guide", assetName: "hubRestaurants")
+                            }
+                            .buttonStyle(.plain)
 
-                        NavigationLink(destination: ActivitiesHubView()) {
-                            HubCardView(title: "Activities", subtitle: "Things To Do", assetName: "hubActivities")
-                        }
-                        .buttonStyle(.plain)
+                            NavigationLink(destination: WineHubView()) {
+                                HubCardView(title: "Wine", subtitle: "My Collection", assetName: "hubWine")
+                            }
+                            .buttonStyle(.plain)
 
-                        NavigationLink(destination: TravelView()) {
-                            HubCardView(title: "Travel", subtitle: "Our Trips")
-                        }
-                        .buttonStyle(.plain)
+                            NavigationLink(destination: ActivitiesHubView()) {
+                                HubCardView(title: "Activities", subtitle: "Things To Do", assetName: "hubActivities")
+                            }
+                            .buttonStyle(.plain)
 
-                        NavigationLink(destination: GalleryView()) {
-                            HubCardView(title: "Gallery", subtitle: "Our Memories")
+                            NavigationLink(destination: TravelView()) {
+                                HubCardView(title: "Travel", subtitle: "Our Trips", symbolName: "map.fill")
+                            }
+                            .buttonStyle(.plain)
+
+                            NavigationLink(destination: GalleryView()) {
+                                HubCardView(title: "Gallery", subtitle: "Our Memories", symbolName: "photo.stack.fill")
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 20)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 20)
                 }
             }
-            .navigationTitle("Hub")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }

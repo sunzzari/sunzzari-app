@@ -5,12 +5,14 @@ struct HubCardView: View {
     let subtitle: String
     let assetName: String?
     let coverURL: String?
+    let symbolName: String?
 
-    init(title: String, subtitle: String, assetName: String? = nil, coverURL: String? = nil) {
+    init(title: String, subtitle: String, assetName: String? = nil, coverURL: String? = nil, symbolName: String? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.assetName = assetName
         self.coverURL = coverURL
+        self.symbolName = symbolName
     }
 
     var body: some View {
@@ -32,15 +34,15 @@ struct HubCardView: View {
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .clipped()
                         case .failure, .empty:
-                            placeholder
+                            symbolTile
                                 .frame(width: geo.size.width, height: geo.size.height)
                         @unknown default:
-                            placeholder
+                            symbolTile
                                 .frame(width: geo.size.width, height: geo.size.height)
                         }
                     }
                 } else {
-                    placeholder
+                    symbolTile
                         .frame(width: geo.size.width, height: geo.size.height)
                 }
             }
@@ -66,10 +68,17 @@ struct HubCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var placeholder: some View {
-        LinearGradient(
-            colors: [Color.sunSurface, Color(hex: "#374151")],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
+    private var symbolTile: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.sunSurface, Color(hex: "#374151")],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            if let symbolName {
+                Image(systemName: symbolName)
+                    .font(.system(size: 64, weight: .light))
+                    .foregroundStyle(Color.sunAccent.opacity(0.85))
+            }
+        }
     }
 }

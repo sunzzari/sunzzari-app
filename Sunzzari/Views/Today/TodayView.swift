@@ -36,82 +36,95 @@ struct TodayView: View {
             ZStack(alignment: .top) {
                 Color.sunBackground.ignoresSafeArea()
 
-                if isLoading {
-                    skeletonView
-                } else {
-                    List {
-                        Section { } header: { dateHeader }
-
-                        // NEW YEAR'S DAY banner (kept above boops so priority-1 Boop
-                        // still works on Jan 1 — regression from Session 46 first pass)
-                        if isNewYearsDay {
-                            Section {
-                                newYearView
-                            }
-                        }
-
-                        // BOOPS (one-tap) — always rendered, including NYD
-                        Section {
-                            boopGrid
-                                .listRowBackground(Color.sunBackground)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
-                        } header: {
-                            sectionHeader("BOOPS", accent: true)
-                        }
-
-                        // MEMORY (date-matched only)
-                        if hasMemory {
-                            Section {
-                                ForEach(memoryEntries) { entry in entryRow(entry) }
-                            } header: {
-                                sectionHeader("MEMORY · \(memoryEntries.count)", accent: false)
-                            }
-                        }
-
-                        // NUDGE (Tier-3 year-only only)
-                        if let entry = nudgeEntry {
-                            Section {
-                                nudgeCard(entry)
-                                    .matchedGeometryEffect(id: entry.id, in: cardNamespace)
-                                    .opacity(selectedEntry?.id == entry.id ? 0 : 1)
-                                    .onTapGesture {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            selectedEntry = entry
-                                        }
-                                    }
-                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                        Button {
-                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                            entryToEdit = entry
-                                        } label: {
-                                            Label("Edit", systemImage: "pencil")
-                                        }
-                                        .tint(.orange)
-                                    }
-                                    .listRowBackground(Color.sunBackground)
-                                    .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
-                            } header: {
-                                sectionHeader("NUDGE", accent: true)
-                            }
-                        }
-
-                        if !hasMemory && nudgeEntry == nil {
-                            Section {
-                                Text("Nothing to show today — check back later!")
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color.sunSecondary)
-                                    .padding(.vertical, 20)
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .listRowBackground(Color.sunBackground)
-                                    .listRowSeparator(.hidden)
-                            }
+                VStack(spacing: 0) {
+                    PageHeader(headerDateString) {
+                        Button {
+                            showCustomBoop = true
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color.sunAccent)
+                                .padding(8)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Circle())
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .refreshable { await load(force: true) }
+
+                    if isLoading {
+                        skeletonView
+                    } else {
+                        List {
+                            // NEW YEAR'S DAY banner (kept above boops so priority-1 Boop
+                            // still works on Jan 1 — regression from Session 46 first pass)
+                            if isNewYearsDay {
+                                Section {
+                                    newYearView
+                                }
+                            }
+
+                            // BOOPS (one-tap) — always rendered, including NYD
+                            Section {
+                                boopGrid
+                                    .listRowBackground(Color.sunBackground)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
+                            } header: {
+                                sectionHeader("BOOPS", accent: true)
+                            }
+
+                            // MEMORY (date-matched only)
+                            if hasMemory {
+                                Section {
+                                    ForEach(memoryEntries) { entry in entryRow(entry) }
+                                } header: {
+                                    sectionHeader("MEMORY · \(memoryEntries.count)", accent: false)
+                                }
+                            }
+
+                            // NUDGE (Tier-3 year-only only)
+                            if let entry = nudgeEntry {
+                                Section {
+                                    nudgeCard(entry)
+                                        .matchedGeometryEffect(id: entry.id, in: cardNamespace)
+                                        .opacity(selectedEntry?.id == entry.id ? 0 : 1)
+                                        .onTapGesture {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                selectedEntry = entry
+                                            }
+                                        }
+                                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                            Button {
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                entryToEdit = entry
+                                            } label: {
+                                                Label("Edit", systemImage: "pencil")
+                                            }
+                                            .tint(.orange)
+                                        }
+                                        .listRowBackground(Color.sunBackground)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                                } header: {
+                                    sectionHeader("NUDGE", accent: true)
+                                }
+                            }
+
+                            if !hasMemory && nudgeEntry == nil {
+                                Section {
+                                    Text("Nothing to show today — check back later!")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Color.sunSecondary)
+                                        .padding(.vertical, 20)
+                                        .frame(maxWidth: .infinity, alignment: .center)
+                                        .listRowBackground(Color.sunBackground)
+                                        .listRowSeparator(.hidden)
+                                }
+                            }
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .refreshable { await load(force: true) }
+                    }
                 }
 
                 // Transient toast
@@ -128,19 +141,7 @@ struct TodayView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .navigationTitle("Home")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showCustomBoop = true
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .foregroundStyle(Color.sunAccent)
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .overlay {
             if let entry = selectedEntry {
@@ -316,23 +317,10 @@ struct TodayView: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
-    // MARK: - Date header + section headers
+    // MARK: - Section headers
 
-    private var dateHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(Date().formatted(.dateTime.weekday(.wide)).uppercased())
-                .font(.system(size: 11, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(Color.sunSecondary)
-
-            Text(Date().formatted(.dateTime.month(.wide).day()))
-                .font(.system(size: 32, weight: .bold))
-                .fontDesign(.serif)
-                .foregroundStyle(Color.sunText)
-        }
-        .textCase(nil)
-        .padding(.bottom, 4)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 16))
+    private var headerDateString: String {
+        Date().formatted(.dateTime.weekday(.wide).month(.wide).day())
     }
 
     private func sectionHeader(_ label: String, accent: Bool) -> some View {

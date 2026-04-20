@@ -22,6 +22,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if launchOptions?[UIApplication.LaunchOptionsKey.location] != nil {
             LocationService.shared.startSignificantLocationChanges()
         }
+        // Shared HTTP cache sized for gallery thumbnails — AsyncImage piggybacks on URLCache.shared.
+        URLCache.shared = URLCache(memoryCapacity: 50_000_000, diskCapacity: 500_000_000)
         // ── Global nav bar appearance (must run before any views are created) ──
         // Uses UINavigationBarAppearance so .toolbarBackground() in views cannot
         // override the serif font — this is the only reliable approach in iOS 15+.

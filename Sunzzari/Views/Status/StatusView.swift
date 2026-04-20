@@ -38,13 +38,7 @@ struct StatusView: View {
             Color.sunBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Text("Status")
-                        .font(.system(size: 22, weight: .bold))
-                        .fontDesign(.serif)
-                        .foregroundStyle(Color.sunText)
-                    Spacer()
+                PageHeader("Status") {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .semibold))
@@ -54,11 +48,6 @@ struct StatusView: View {
                             .clipShape(Circle())
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-
-                Divider().background(Color.white.opacity(0.1))
 
                 if isLoading {
                     Spacer()

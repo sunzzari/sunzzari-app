@@ -188,7 +188,7 @@ private struct GalleryCell: View {
             Color.clear
                 .aspectRatio(1, contentMode: .fit)
                 .overlay(
-                    AsyncImageView(urlString: photo.cloudinaryURL, cornerRadius: 8)
+                    AsyncImageView(urlString: photo.cloudinaryURL, cornerRadius: 8, thumbnailWidth: 500)
                         .scaledToFill()
                         .clipped()
                 )
