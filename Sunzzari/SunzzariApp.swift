@@ -1,6 +1,10 @@
 import SwiftUI
 import UserNotifications
 
+extension Notification.Name {
+    static let openWeeklyBestOf = Notification.Name("sunzzari.openWeeklyBestOf")
+}
+
 @main
 struct SunzzariApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -68,6 +72,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             // Safety-net: schedule 30-day fallback pool for days the app isn't opened
             let allEntries = (try? await NotionService.shared.fetchBestOf()) ?? []
             await NotificationService.shared.scheduleOnThisDay(allEntries: allEntries)
+            // Weekly Sunday 8pm prompt for batch Best Of capture
+            await NotificationService.shared.scheduleWeeklyBestOfPrompt()
             // Clear any stale midnight trigger notifications left from previous builds
             let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
             let stale = pending.filter { $0.identifier.hasPrefix("sunzzari-midnight-") }.map(\.identifier)
@@ -103,5 +109,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             UNUserNotificationCenter.current().setBadgeCount(current + 1)
         }
         completionHandler([.banner, .sound])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.notification.request.content.userInfo["destination"] as? String == "weekly-bestof" {
+            NotificationCenter.default.post(name: .openWeeklyBestOf, object: nil)
+        }
+        completionHandler()
     }
 }

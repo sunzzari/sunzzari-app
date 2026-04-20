@@ -8,6 +8,31 @@ final class NotificationService: @unchecked Sendable {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     }
 
+    /// Schedules a repeating Sunday 8pm local-time notification prompting both
+    /// Elisa and Cathy to log weekly Best Of entries. Tapping the notification
+    /// deep-links into WeeklyBestOfInputView via AppDelegate's didReceive handler.
+    /// Safe to call on every app launch — UNUserNotificationCenter dedupes on identifier.
+    func scheduleWeeklyBestOfPrompt() async {
+        let content = UNMutableNotificationContent()
+        content.title = "Weekly Best Of"
+        content.body  = "Any highlights from the week? Best bites, moments, funny stuff..."
+        content.sound = .default
+        content.userInfo = ["destination": "weekly-bestof"]
+
+        var comps = DateComponents()
+        comps.weekday = 1   // Sunday
+        comps.hour    = 20
+        comps.minute  = 0
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+        let request = UNNotificationRequest(
+            identifier: "sunzzari-weekly-bestof",
+            content: content,
+            trigger: trigger
+        )
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
     /// Fires a test notification in 5 seconds using the real notification format.
     func sendTestNotification() async {
         let center = UNUserNotificationCenter.current()

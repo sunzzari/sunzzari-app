@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0
     @State private var showIdentitySetup = false
+    @State private var showWeeklyBestOf = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -65,6 +66,12 @@ struct ContentView: View {
         .sheet(isPresented: $showIdentitySetup) {
             SettingsView(onComplete: { showIdentitySetup = false })
                 .interactiveDismissDisabled(true)
+        }
+        .sheet(isPresented: $showWeeklyBestOf) {
+            WeeklyBestOfInputView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openWeeklyBestOf)) { _ in
+            showWeeklyBestOf = true
         }
         .task {
             if AppIdentity.current == nil {
