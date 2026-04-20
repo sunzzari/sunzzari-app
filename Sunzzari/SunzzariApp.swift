@@ -44,6 +44,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let tabAppearance = UITabBarAppearance()
         tabAppearance.configureWithOpaqueBackground()
         tabAppearance.backgroundColor = UIColor(red: 0x1F/255, green: 0x29/255, blue: 0x37/255, alpha: 1) // sunSurface
+        // Serif tab-bar labels so UIKit chrome matches the SwiftUI .fontDesign(.serif) inheritance.
+        let tabLabelDescriptor = UIFont.systemFont(ofSize: 10, weight: .medium).fontDescriptor.withDesign(.serif)
+        if let td = tabLabelDescriptor {
+            let font = UIFont(descriptor: td, size: 10)
+            tabAppearance.stackedLayoutAppearance.normal.titleTextAttributes[.font]   = font
+            tabAppearance.stackedLayoutAppearance.selected.titleTextAttributes[.font] = font
+            tabAppearance.inlineLayoutAppearance.normal.titleTextAttributes[.font]    = font
+            tabAppearance.inlineLayoutAppearance.selected.titleTextAttributes[.font]  = font
+            tabAppearance.compactInlineLayoutAppearance.normal.titleTextAttributes[.font]   = font
+            tabAppearance.compactInlineLayoutAppearance.selected.titleTextAttributes[.font] = font
+        }
         UITabBar.appearance().standardAppearance    = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance  = tabAppearance
 

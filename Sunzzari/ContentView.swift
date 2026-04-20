@@ -39,6 +39,7 @@ struct ContentView: View {
                     .tag(4)
             }
             .tint(.sunAccent)
+            .fontDesign(.serif)
 
             // Warm ambient glow — two-point radial system matching travel map body::before
             GeometryReader { geo in
