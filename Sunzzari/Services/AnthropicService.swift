@@ -138,6 +138,77 @@ final class AnthropicService: @unchecked Sendable {
         return try parseRestaurantAutofill(text)
     }
 
+    // MARK: - Restaurant Claude Search
+
+    /// Given a natural-language query, asks Claude to return ordered IDs of matching
+    /// restaurants from the passed-in list. Empty array means no match. Throws on
+    /// network/parse failure so callers can surface an inline error.
+    func searchRestaurants(query: String, restaurants: [Restaurant]) async throws -> [String] {
+        let compact: [[String: Any]] = restaurants.map { r in
+            var obj: [String: Any] = [
+                "id": r.id,
+                "name": r.name,
+                "beenThere": r.beenThere,
+                "location": r.location,
+                "neighborhood": r.neighborhood,
+                "goodFor": r.goodFor,
+                "topDishes": r.topDishes,
+                "comments": r.comments
+            ]
+            if let pref = r.preference?.rawValue { obj["preference"] = pref }
+            return obj
+        }
+        let corpusData = try JSONSerialization.data(withJSONObject: compact)
+        let corpusStr = String(data: corpusData, encoding: .utf8) ?? "[]"
+
+        let system = """
+        You filter a restaurant list by a natural-language query. Return ONLY a JSON \
+        array of restaurant IDs that match, ordered most-relevant first. Return an \
+        empty array [] if none match. No markdown, no prose. Be strict: honor \
+        explicit constraints (neighborhood, city, time-of-day via goodFor, \
+        been-there status). "beenThere: false" means the user hasn't been there. \
+        Prefer preference "Top Choice" and "Great" over "Good" when ranking ties.
+        """
+
+        let body: [String: Any] = [
+            "model": Constants.Anthropic.model,
+            "max_tokens": 1024,
+            "system": system,
+            "messages": [[
+                "role": "user",
+                "content": [[
+                    "type": "text",
+                    "text": """
+                    Query: "\(query)"
+
+                    Restaurants:
+                    \(corpusStr)
+
+                    Return ONLY the JSON array of matching IDs.
+                    """
+                ]]
+            ]]
+        ]
+
+        let text = try await sendRequest(body)
+        return try parseIDArray(text)
+    }
+
+    private func parseIDArray(_ text: String) throws -> [String] {
+        let start = text.firstIndex(of: "[")
+        let end = text.lastIndex(of: "]")
+        guard let s = start, let e = end, s < e else {
+            throw AnthropicError.apiError("Claude did not return a JSON array")
+        }
+        let jsonStr = String(text[s...e])
+        guard let data = jsonStr.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else {
+            throw AnthropicError.apiError("Could not parse restaurant ID list from Claude")
+        }
+        return arr
+    }
+
     // MARK: - Private helpers
 
     private func sendRequest(_ body: [String: Any]) async throws -> String {

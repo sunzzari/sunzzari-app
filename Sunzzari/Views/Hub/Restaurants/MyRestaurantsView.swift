@@ -10,6 +10,13 @@ struct MyRestaurantsView: View {
     @State private var selectedLocations: Set<String> = []
     @State private var selectedGoodFor: Set<String> = []
 
+    // Claude AI search
+    @State private var claudeQuery: String = ""
+    @State private var claudeResults: [String]? = nil
+    @State private var isSearching: Bool = false
+    @State private var claudeError: String? = nil
+    @FocusState private var claudeFieldFocused: Bool
+
     enum BeenThereFilter: String, CaseIterable {
         case all = "All"; case yes = "Yes"; case no = "No"
     }
@@ -27,7 +34,7 @@ struct MyRestaurantsView: View {
     }
 
     private var filtered: [Restaurant] {
-        restaurants.filter { r in
+        let chipFiltered = restaurants.filter { r in
             let beenOK: Bool
             switch beenThereFilter {
             case .all: beenOK = true
@@ -39,6 +46,11 @@ struct MyRestaurantsView: View {
             let gfOK = selectedGoodFor.isEmpty || !selectedGoodFor.isDisjoint(with: r.goodFor)
             return beenOK && prefOK && locOK && gfOK
         }
+        // When Claude search is active, preserve its ranking and intersect with chip filters
+        guard let ids = claudeResults else { return chipFiltered }
+        let chipSet = Set(chipFiltered.map(\.id))
+        let byId = Dictionary(uniqueKeysWithValues: restaurants.map { ($0.id, $0) })
+        return ids.compactMap { chipSet.contains($0) ? byId[$0] : nil }
     }
 
     var body: some View {
@@ -49,8 +61,10 @@ struct MyRestaurantsView: View {
                 skeletonView
             } else {
                 VStack(spacing: 0) {
+                    claudeSearchBar
                     filterBar
                     Color.white.opacity(0.1).frame(height: 0.5)
+                    claudeBanner
                     restaurantList
                 }
             }
@@ -116,6 +130,115 @@ struct MyRestaurantsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable { await load(force: true) }
+    }
+
+    // MARK: - Claude Search Bar
+
+    private var claudeSearchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.sunAccent)
+
+            TextField("Ask Claude...", text: $claudeQuery)
+                .font(.system(size: 14))
+                .foregroundStyle(Color.sunText)
+                .focused($claudeFieldFocused)
+                .submitLabel(.search)
+                .onSubmit { Task { await runClaudeSearch() } }
+
+            if isSearching {
+                ProgressView().scaleEffect(0.7)
+            } else if claudeResults != nil || !claudeQuery.isEmpty {
+                Button {
+                    clearClaudeSearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.sunSecondary)
+                }
+            } else if !claudeQuery.isEmpty {
+                // no-op placeholder: kept structure for readability
+                EmptyView()
+            }
+
+            Button {
+                Task { await runClaudeSearch() }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(claudeQuery.trimmingCharacters(in: .whitespaces).isEmpty
+                                     ? Color.sunSecondary
+                                     : Color.sunAccent)
+            }
+            .disabled(claudeQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.sunSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+
+    @ViewBuilder
+    private var claudeBanner: some View {
+        if let err = claudeError {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(Color.sunText)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.1))
+        } else if let ids = claudeResults {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(Color.sunAccent)
+                Text(ids.isEmpty
+                     ? "Claude couldn't find a match"
+                     : "Claude found \(ids.count) match\(ids.count == 1 ? "" : "es")")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.sunText)
+                Spacer()
+                Button("Clear") { clearClaudeSearch() }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.sunAccent)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.sunAccent.opacity(0.08))
+        }
+    }
+
+    private func runClaudeSearch() async {
+        let trimmed = claudeQuery.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        isSearching = true
+        claudeError = nil
+        defer { isSearching = false }
+        do {
+            let ids = try await AnthropicService.shared.searchRestaurants(
+                query: trimmed,
+                restaurants: restaurants
+            )
+            claudeResults = ids
+            claudeFieldFocused = false
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } catch {
+            claudeError = error.localizedDescription
+            claudeResults = nil
+        }
+    }
+
+    private func clearClaudeSearch() {
+        claudeQuery = ""
+        claudeResults = nil
+        claudeError = nil
     }
 
     // MARK: - Filters
