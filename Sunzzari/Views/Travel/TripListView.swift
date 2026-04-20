@@ -4,6 +4,11 @@ struct TripListView: View {
     @State private var trips: [Trip] = []
     @State private var isLoading = true
     @State private var isOffline = false
+    @State private var showCompleted = false
+
+    private var visibleTrips: [Trip] {
+        showCompleted ? trips : trips.filter { $0.status != .completed }
+    }
 
     private let columns = [GridItem(.adaptive(minimum: 340), spacing: 16)]
 
@@ -35,8 +40,8 @@ struct TripListView: View {
                     }
 
                     LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(trips) { trip in
-                            NavigationLink(value: trip.id) {
+                        ForEach(visibleTrips) { trip in
+                            NavigationLink(destination: TripDetailView(trip: trip)) {
                                 TripCard(trip: trip, gradient: gradients[abs(trip.id.hashValue) % gradients.count])
                             }
                             .buttonStyle(.plain)
@@ -53,9 +58,14 @@ struct TripListView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color.sunSurface, for: .navigationBar)
-        .navigationDestination(for: String.self) { tripId in
-            if let trip = trips.first(where: { $0.id == tripId }) {
-                TripDetailView(trip: trip)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Toggle("Show completed", isOn: $showCompleted)
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(Color.sunAccent)
+                }
             }
         }
         .task {
