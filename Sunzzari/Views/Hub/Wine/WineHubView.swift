@@ -49,7 +49,7 @@ struct WineHubView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunText)
                 Text(subtitle)
                     .font(.subheadline)
@@ -59,7 +59,7 @@ struct WineHubView: View {
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .padding(.vertical, 12)

@@ -50,7 +50,7 @@ struct AddWineView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         Text(type.rawValue)
-                                            .font(.system(size: 13, weight: .semibold))
+                                            .font(.system(size: 13, weight: .semibold, design: .serif))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
                                             .background(
@@ -134,7 +134,7 @@ struct AddWineView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         Text(String(repeating: "⭐", count: r.stars))
-                                            .font(.system(size: 14))
+                                            .font(.system(size: 14, design: .serif))
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 6)
                                             .background(
@@ -224,7 +224,7 @@ struct AddWineView: View {
                 HStack(spacing: 10) {
                     ProgressView().tint(Color.sunAccent)
                     Text("Claude is reading the label...")
-                        .font(.system(size: 14))
+                        .font(.system(size: 14, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -235,9 +235,9 @@ struct AddWineView: View {
                 Button { showSourceDialog = true } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold, design: .serif))
                         Text("Autofill from Photo")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold, design: .serif))
                     }
                     .frame(maxWidth: .infinity)
                     .padding()

@@ -196,13 +196,13 @@ struct BestOfView: View {
 
                 HStack(spacing: 8) {
                     Text(String(year))
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14, weight: .bold, design: .serif))
                         .fontDesign(.serif)
                         .foregroundStyle(Color.sunText)
 
                     let count = entries.filter { $0.year == year }.count
                     Text("\(count)")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10, weight: .bold, design: .serif))
                         .foregroundStyle(Color.sunAccent)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -213,7 +213,7 @@ struct BestOfView: View {
 
                     if collapsible {
                         Image(systemName: expandedYears.contains(year) ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                     }
                 }
@@ -237,7 +237,7 @@ struct BestOfView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     Text("ALL")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10, weight: .bold, design: .serif))
                         .tracking(0.8)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)

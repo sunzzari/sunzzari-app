@@ -41,7 +41,7 @@ struct StatusView: View {
                 PageHeader("Status") {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                             .padding(8)
                             .background(Color.white.opacity(0.08))
@@ -111,7 +111,7 @@ struct StatusView: View {
                     let raw = UIDevice.current.identifierForVendor?.uuidString
                         .replacingOccurrences(of: "-", with: "").lowercased() ?? "?"
                     Text("Debug — device prefix: \(String(raw.prefix(6)))")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .medium, design: .serif))
                         .foregroundStyle(Color(hex: "#FBBF24"))
                         .padding(.vertical, 6)
                 }
@@ -138,7 +138,7 @@ struct StatusView: View {
             HStack(spacing: 6) {
                 Text(emoji).font(.title3)
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 10, weight: .medium, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                     .tracking(0.5)
             }
@@ -153,7 +153,7 @@ struct StatusView: View {
             if isEditable {
                 HStack(spacing: 6) {
                     TextField("or type one...", text: $customText)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12, design: .serif))
                         .foregroundStyle(Color.sunText)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
@@ -173,7 +173,7 @@ struct StatusView: View {
             // Last updated timestamp
             if let ts = updatedAt {
                 Text("last updated \(relativeTime(ts))")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10, design: .serif))
                     .foregroundStyle(Color.sunSecondary.opacity(0.7))
             }
 
@@ -203,10 +203,10 @@ struct StatusView: View {
                                 .scaleEffect(0.8)
                         } else {
                             Image(systemName: "paperplane.fill")
-                                .font(.system(size: 12))
+                                .font(.system(size: 12, design: .serif))
                         }
                         Text(isSaving ? "Sending..." : "Send Status")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
                     }
                     .foregroundStyle(Color.sunBackground)
                     .frame(maxWidth: .infinity)
@@ -236,9 +236,9 @@ struct StatusView: View {
                     selected.wrappedValue = isSelected ? "" : item.label
                 } label: {
                     HStack(spacing: 3) {
-                        Text(item.emoji).font(.system(size: 11))
+                        Text(item.emoji).font(.system(size: 11, design: .serif))
                         Text(item.label)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 10, weight: .medium, design: .serif))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }

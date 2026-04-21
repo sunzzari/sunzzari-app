@@ -87,7 +87,7 @@ struct CycleView: View {
                 }
                 Spacer()
                 Text(monthYearString(for: currentMonth))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                 Spacer()
@@ -102,7 +102,7 @@ struct CycleView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 4) {
                 ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
                     Text(d)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .medium, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                         .frame(maxWidth: .infinity)
                 }
@@ -187,7 +187,7 @@ struct CycleView: View {
             }
 
             Text("\(day)")
-                .font(.system(size: 13, weight: hasPeriod || isToday ? .semibold : .regular))
+                .font(.system(size: 13, weight: hasPeriod || isToday ? .semibold : .regular, design: .serif))
                 .foregroundStyle(hasPeriod ? Color.white : (isToday ? Color.sunAccent : Color.sunText))
         }
         .frame(width: 28, height: 28)
@@ -201,7 +201,7 @@ struct CycleView: View {
                 .fill(Color(hex: color).opacity(opacity))
                 .frame(width: 8, height: 8)
             Text(label)
-                .font(.system(size: 10))
+                .font(.system(size: 10, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
     }
@@ -225,23 +225,23 @@ struct CycleView: View {
                 if let predicted = entry.predictedNext {
                     let days = max(0, cal.dateComponents([.day], from: Date(), to: predicted).day ?? 0)
                     Text(shortDateString(predicted))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold, design: .serif))
                         .fontDesign(.serif)
                         .foregroundStyle(Color.sunText)
                     Text("in \(days) day\(days == 1 ? "" : "s")")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 } else {
                     Text("No prediction")
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
                 Text("avg \(entry.avgCycle)d")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             } else {
                 Text("No data yet")
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             }
         }
@@ -259,12 +259,12 @@ struct CycleView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Recent")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
 
             if entries.isEmpty {
                 Text("No entries yet. Tap + to add your first period start.")
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                     .padding(.top, 4)
             } else {
@@ -274,11 +274,11 @@ struct CycleView: View {
                         CategoryChip(label: entry.person.rawValue, colorHex: entry.person.colorHex)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(shortDateString(entry.periodStart))
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: 14, weight: .medium, design: .serif))
                                 .foregroundStyle(Color.sunText)
                             if let length = entry.cycleLength {
                                 Text("\(length)d cycle")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: 12, design: .serif))
                                     .foregroundStyle(Color.sunSecondary)
                             }
                         }
@@ -287,10 +287,10 @@ struct CycleView: View {
                         if isLatest, let predicted = entry.predictedNext {
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("Next")
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 10, design: .serif))
                                     .foregroundStyle(Color.sunSecondary)
                                 Text(shortDateString(predicted))
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: 12, weight: .medium, design: .serif))
                                     .foregroundStyle(Color.sunAccent)
                             }
                         }

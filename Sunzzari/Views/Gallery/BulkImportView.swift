@@ -21,7 +21,7 @@ struct BulkImportView: View {
                         VStack(spacing: 20) {
                             Spacer()
                             Image(systemName: "photo.stack.fill")
-                                .font(.system(size: 64))
+                                .font(.system(size: 64, design: .serif))
                                 .foregroundStyle(Color.sunAccent)
 
                             Text("Select Photos")

@@ -36,7 +36,7 @@ struct AddDinoView: View {
                                 } else {
                                     VStack(spacing: 12) {
                                         Image(systemName: "camera.fill")
-                                            .font(.system(size: 40))
+                                            .font(.system(size: 40, design: .serif))
                                             .foregroundStyle(Color.sunAccent)
                                         Text("Tap to choose a photo")
                                             .font(.subheadline)

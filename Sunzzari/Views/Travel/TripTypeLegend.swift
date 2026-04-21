@@ -34,7 +34,7 @@ struct TripTypeLegend: View {
                                     .frame(width: 28, height: 28)
                             }
                             Image(systemName: type.sfSymbol)
-                                .font(.system(size: 10))
+                                .font(.system(size: 10, design: .serif))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 30, height: 30)

@@ -99,14 +99,14 @@ struct SwipeGuideView: View {
     private func rowView(_ row: SwipeRow) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(row.category)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 14, weight: .medium, design: .serif))
                 .foregroundStyle(Color.sunText)
 
             HStack(spacing: 16) {
                 if personFilter == .all || personFilter == .elisa {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Elisa")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                         cardChip(name: shortName(row.elisaCard),
                                  color: cardColor(row.elisaCard),
@@ -116,7 +116,7 @@ struct SwipeGuideView: View {
                 if personFilter == .all || personFilter == .cathy {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Cathy")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                         cardChip(name: shortName(row.cathyCard),
                                  color: cardColor(row.cathyCard),
@@ -129,9 +129,9 @@ struct SwipeGuideView: View {
             if !row.note.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .serif))
                     Text(row.note)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, design: .serif))
                 }
                 .foregroundStyle(Color.sunAccent.opacity(0.8))
             }
@@ -144,10 +144,10 @@ struct SwipeGuideView: View {
         if let name {
             HStack(spacing: 4) {
                 Text(name)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11, weight: .medium, design: .serif))
                     .foregroundStyle(Color(hex: color))
                 Text(multiplier)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunAccent)
             }
             .padding(.horizontal, 8)
@@ -157,7 +157,7 @@ struct SwipeGuideView: View {
             .overlay(Capsule().stroke(Color(hex: color).opacity(0.35), lineWidth: 1))
         } else {
             Text("—")
-                .font(.system(size: 12))
+                .font(.system(size: 12, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
     }
@@ -187,7 +187,7 @@ struct SwipeGuideView: View {
     private func filterPill(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: .medium, design: .serif))
                 .foregroundStyle(active ? Color.sunBackground : Color.sunText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)

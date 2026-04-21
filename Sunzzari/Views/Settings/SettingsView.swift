@@ -13,11 +13,11 @@ struct SettingsView: View {
                 // Header
                 VStack(spacing: 6) {
                     Text("My Identity")
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(size: 26, weight: .bold, design: .serif))
                         .fontDesign(.serif)
                         .foregroundStyle(Color.sunText)
                     Text("Who are you?")
-                        .font(.system(size: 14))
+                        .font(.system(size: 14, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
                 .padding(.top, 40)
@@ -44,7 +44,7 @@ struct SettingsView: View {
 
                 // Footer note
                 Text("You can change this anytime in the Settings tab.")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, design: .serif))
                     .foregroundStyle(Color.sunSecondary.opacity(0.6))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -67,18 +67,18 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 16) {
                 Text(emoji)
-                    .font(.system(size: 40))
+                    .font(.system(size: 40, design: .serif))
                     .frame(width: 56, height: 56)
                     .background(Color.white.opacity(0.07))
                     .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(name)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 18, weight: .bold, design: .serif))
                         .fontDesign(.serif)
                         .foregroundStyle(Color.sunText)
                     Text(subtitle)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 
@@ -86,7 +86,7 @@ struct SettingsView: View {
 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 22))
+                        .font(.system(size: 22, design: .serif))
                         .foregroundStyle(Color.sunAccent)
                 }
             }

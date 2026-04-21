@@ -63,17 +63,17 @@ struct BenefitsView: View {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(b.benefit)
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(.system(size: 14, weight: .medium, design: .serif))
                                         .foregroundStyle(Color.sunText)
                                     Text(b.notes)
-                                        .font(.system(size: 12))
+                                        .font(.system(size: 12, design: .serif))
                                         .foregroundStyle(Color.sunSecondary)
                                 }
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 4) {
                                     CategoryChip(label: b.type.rawValue, colorHex: b.type.colorHex)
                                     Text(b.person)
-                                        .font(.system(size: 11))
+                                        .font(.system(size: 11, design: .serif))
                                         .foregroundStyle(Color.sunSecondary)
                                 }
                             }
@@ -82,7 +82,7 @@ struct BenefitsView: View {
                         }
                     } header: {
                         Text(group.cardName)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
                             .foregroundStyle(Color(hex: group.cardColorHex))
                             .textCase(nil)
                     }

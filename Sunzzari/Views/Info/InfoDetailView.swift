@@ -16,7 +16,7 @@ struct InfoDetailView: View {
             } else if let error = errorMessage {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 36))
+                        .font(.system(size: 36, design: .serif))
                         .foregroundStyle(Color.sunAccent)
                     Text(error)
                         .foregroundStyle(Color.sunSecondary)
@@ -60,7 +60,7 @@ struct InfoDetailView: View {
         switch block {
         case .heading2(let text):
             Text(text)
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: 20, weight: .bold, design: .serif))
                 .fontDesign(.serif)
                 .foregroundStyle(Color.sunText)
                 .padding(.top, 24)
@@ -68,7 +68,7 @@ struct InfoDetailView: View {
 
         case .heading3(let text):
             Text(text)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
                 .padding(.top, 16)
                 .padding(.bottom, 4)
@@ -82,7 +82,7 @@ struct InfoDetailView: View {
 
         case .paragraph(let text):
             Text(text)
-                .font(.system(size: 15))
+                .font(.system(size: 15, design: .serif))
                 .foregroundStyle(Color.sunText.opacity(0.85))
                 .padding(.vertical, 4)
         }
@@ -98,12 +98,12 @@ struct InfoDetailView: View {
 
             if let urlStr = url, let link = URL(string: urlStr) {
                 Link(text, destination: link)
-                    .font(.system(size: 15))
+                    .font(.system(size: 15, design: .serif))
                     .foregroundStyle(Color(hex: entry.category.color))
                     .underline(false)
             } else {
                 Text(text)
-                    .font(.system(size: 15))
+                    .font(.system(size: 15, design: .serif))
                     .foregroundStyle(Color.sunText.opacity(0.9))
             }
 
@@ -161,8 +161,8 @@ struct InfoDetailView: View {
     private func cellText(_ text: String, isHeader: Bool, flex: Int) -> some View {
         Text(text)
             .font(isHeader
-                ? .system(size: 13, weight: .semibold)
-                : .system(size: 13))
+                ? .system(size: 13, weight: .semibold, design: .serif)
+                : .system(size: 13, design: .serif))
             .foregroundStyle(isHeader ? Color(hex: entry.category.color) : Color.sunText.opacity(0.85))
             .lineLimit(nil)
             .padding(.horizontal, 12)

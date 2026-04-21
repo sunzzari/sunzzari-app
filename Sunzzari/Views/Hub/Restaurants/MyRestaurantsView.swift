@@ -82,7 +82,7 @@ struct MyRestaurantsView: View {
                     Spacer()
                     NavigationLink(destination: RestaurantMapView(restaurants: filtered)) {
                         Image(systemName: "map.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: 16, design: .serif))
                             .foregroundStyle(Color.sunAccent)
                             .padding(14)
                             .background(Color.sunSurface)
@@ -143,11 +143,11 @@ struct MyRestaurantsView: View {
     private var claudeSearchBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles")
-                .font(.system(size: 14))
+                .font(.system(size: 14, design: .serif))
                 .foregroundStyle(Color.sunAccent)
 
             TextField("Ask Claude...", text: $claudeQuery)
-                .font(.system(size: 14))
+                .font(.system(size: 14, design: .serif))
                 .foregroundStyle(Color.sunText)
                 .focused($claudeFieldFocused)
                 .submitLabel(.search)
@@ -160,7 +160,7 @@ struct MyRestaurantsView: View {
                     clearClaudeSearch()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: 16, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
             } else if !claudeQuery.isEmpty {
@@ -172,7 +172,7 @@ struct MyRestaurantsView: View {
                 Task { await runClaudeSearch() }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 20, design: .serif))
                     .foregroundStyle(claudeQuery.trimmingCharacters(in: .whitespaces).isEmpty
                                      ? Color.sunSecondary
                                      : Color.sunAccent)
@@ -327,9 +327,9 @@ struct MyRestaurantsView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold, design: .serif))
                             Text("Clear All")
-                                .font(.system(size: 13))
+                                .font(.system(size: 13, design: .serif))
                         }
                         .foregroundStyle(Color.sunSecondary)
                         .padding(.horizontal, 12)
@@ -362,11 +362,11 @@ struct MyRestaurantsView: View {
     private func dropdownLabel(_ title: String, value: String?) -> some View {
         HStack(spacing: 4) {
             Text(value ?? title)
-                .font(.system(size: 13, weight: value != nil ? .semibold : .regular))
+                .font(.system(size: 13, weight: value != nil ? .semibold : .regular, design: .serif))
                 .foregroundStyle(value != nil ? Color.sunAccent : Color.sunSecondary)
                 .lineLimit(1)
             Image(systemName: "chevron.down")
-                .font(.system(size: 10))
+                .font(.system(size: 10, design: .serif))
                 .foregroundStyle(value != nil ? Color.sunAccent : Color.sunSecondary)
         }
         .padding(.horizontal, 12)

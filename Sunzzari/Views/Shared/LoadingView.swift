@@ -23,7 +23,7 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: systemImage)
-                .font(.system(size: 56))
+                .font(.system(size: 56, design: .serif))
                 .foregroundStyle(Color.sunAccent.opacity(0.6))
             Text(title)
                 .font(.headline)

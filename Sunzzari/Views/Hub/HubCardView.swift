@@ -54,11 +54,11 @@ struct HubCardView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold, design: .serif))
                     .tracking(1.2)
                     .foregroundStyle(.white.opacity(0.7))
                 Text(title)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 28, weight: .bold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(.white)
             }
@@ -76,7 +76,7 @@ struct HubCardView: View {
             )
             if let symbolName {
                 Image(systemName: symbolName)
-                    .font(.system(size: 64, weight: .light))
+                    .font(.system(size: 64, weight: .light, design: .serif))
                     .foregroundStyle(Color.sunAccent.opacity(0.85))
             }
         }

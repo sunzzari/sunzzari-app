@@ -68,7 +68,7 @@ struct AddCycleEntryView: View {
                         }
 
                         Text("Tip: Link \"Previous Entry\" in Notion for auto cycle length calculation.")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                             .multilineTextAlignment(.center)
                     }
@@ -128,7 +128,7 @@ struct AddCycleEntryView: View {
     private func formField<C: View>(label: String, icon: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: icon)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 13, weight: .medium, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
             content()
         }

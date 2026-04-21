@@ -14,7 +14,7 @@ struct PageHeader<Trailing: View>: View {
         VStack(spacing: 0) {
             HStack {
                 Text(title)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 22, weight: .bold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                 Spacer()

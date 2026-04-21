@@ -18,7 +18,7 @@ struct ActivityCardView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top) {
                     Text(activity.name)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 15, weight: .bold, design: .serif))
                         .fontDesign(.serif)
                         .foregroundStyle(Color.sunText)
                         .lineLimit(2)
@@ -49,7 +49,7 @@ struct ActivityCardView: View {
                     HStack(spacing: 5) {
                         ForEach(badges, id: \.0) { badge, hex in
                             Text(badge)
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9, weight: .bold, design: .serif))
                                 .tracking(0.5)
                                 .foregroundStyle(Color(hex: hex))
                                 .padding(.horizontal, 6)

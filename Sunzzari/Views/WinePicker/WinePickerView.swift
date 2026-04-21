@@ -84,10 +84,10 @@ struct WinePickerView: View {
                 // Header
                 VStack(spacing: 8) {
                     Image(systemName: "wand.and.stars")
-                        .font(.system(size: 48))
+                        .font(.system(size: 48, design: .serif))
                         .foregroundStyle(Color.sunAccent)
                     Text("Wine Picker")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 28, weight: .bold, design: .serif))
                         .foregroundStyle(Color.sunText)
                     Text("Snap a shelf or menu and we'll pick")
                         .font(.subheadline)
@@ -201,13 +201,13 @@ struct WinePickerView: View {
                             Image(systemName: "wineglass")
                                 .font(.caption.weight(.semibold))
                             Text("SOMMELIER PICK")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold, design: .serif))
                                 .tracking(1.2)
                         }
                         .foregroundStyle(Color.sunAccent)
 
                         Text(resultText)
-                            .font(.system(size: 15))
+                            .font(.system(size: 15, design: .serif))
                             .foregroundStyle(Color.sunText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -261,7 +261,7 @@ struct WinePickerView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunText)
                 Text(subtitle)
                     .font(.subheadline)
@@ -271,7 +271,7 @@ struct WinePickerView: View {
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .padding(.vertical, 16)

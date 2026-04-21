@@ -40,9 +40,9 @@ struct GalleryView: View {
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: favoritesOnly ? "star.fill" : "star")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: 11, weight: .semibold, design: .serif))
                                 Text("Favorites")
-                                    .font(.system(size: 13, weight: favoritesOnly ? .semibold : .regular))
+                                    .font(.system(size: 13, weight: favoritesOnly ? .semibold : .regular, design: .serif))
                             }
                             .foregroundStyle(favoritesOnly ? Color.sunAccent : Color.sunSecondary)
                             .padding(.horizontal, 12)

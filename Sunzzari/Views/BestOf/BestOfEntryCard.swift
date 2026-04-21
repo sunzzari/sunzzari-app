@@ -19,20 +19,20 @@ struct BestOfEntryCard: View {
                         Text(entry.isYearOnly
                              ? String(entry.year)
                              : entry.date.formatted(.dateTime.month(.abbreviated).year()))
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                     }
                 }
 
                 Text(entry.entry)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 16, weight: .bold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if !entry.notes.isEmpty {
                     Text(entry.notes)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                         .lineLimit(2)
                 }

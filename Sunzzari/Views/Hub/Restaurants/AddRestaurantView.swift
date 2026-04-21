@@ -53,7 +53,7 @@ struct AddRestaurantView: View {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                         } label: {
                                             Text(pref.rawValue)
-                                                .font(.system(size: 14, weight: .semibold))
+                                                .font(.system(size: 14, weight: .semibold, design: .serif))
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
                                                 .background(
@@ -114,7 +114,7 @@ struct AddRestaurantView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         Text(tag)
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(.system(size: 11, weight: .semibold, design: .serif))
                                             .lineLimit(1)
                                             .minimumScaleFactor(0.7)
                                             .frame(maxWidth: .infinity)
@@ -209,7 +209,7 @@ struct AddRestaurantView: View {
                                 ProgressView().tint(Color.sunAccent)
                             } else {
                                 Image(systemName: "sparkles")
-                                    .font(.system(size: 18, weight: .semibold))
+                                    .font(.system(size: 18, weight: .semibold, design: .serif))
                                     .foregroundStyle(aiQuery.isEmpty ? Color.sunSecondary : Color.sunAccent)
                             }
                         }

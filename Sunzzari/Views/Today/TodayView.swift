@@ -42,7 +42,7 @@ struct TodayView: View {
                             showCustomBoop = true
                         } label: {
                             Image(systemName: "square.and.pencil")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold, design: .serif))
                                 .foregroundStyle(Color.sunAccent)
                                 .padding(8)
                                 .background(Color.white.opacity(0.08))
@@ -130,7 +130,7 @@ struct TodayView: View {
                 // Transient toast
                 if let msg = toastMessage {
                     Text(msg)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.sunBackground)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
@@ -214,7 +214,7 @@ struct TodayView: View {
                         .tint(Color.sunAccent)
                 } else {
                     Text(preset)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.sunText)
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
@@ -299,15 +299,15 @@ struct TodayView: View {
         let newYear = Calendar(identifier: .gregorian).component(.year, from: Date())
         return VStack(spacing: 16) {
             Text("🎆")
-                .font(.system(size: 72))
+                .font(.system(size: 72, design: .serif))
             Text("Happy New Year")
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 28, weight: .bold, design: .serif))
                 .foregroundStyle(Color.sunText)
             Text(String(newYear))
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunAccent)
             Text("See you on the other side")
-                .font(.system(size: 14))
+                .font(.system(size: 14, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -325,7 +325,7 @@ struct TodayView: View {
 
     private func sectionHeader(_ label: String, accent: Bool) -> some View {
         Text(label)
-            .font(.system(size: 11, weight: .bold))
+            .font(.system(size: 11, weight: .bold, design: .serif))
             .tracking(1.2)
             .foregroundStyle(accent ? Color.sunAccent : Color.sunSecondary)
             .textCase(nil)
@@ -341,21 +341,21 @@ struct TodayView: View {
                 Spacer()
                 if !entry.isUnassigned {
                     Text(String(entry.year))
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10, weight: .bold, design: .serif))
                         .tracking(0.8)
                         .foregroundStyle(Color.sunSecondary)
                 }
             }
 
             Text(entry.entry)
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 16, weight: .bold, design: .serif))
                 .fontDesign(.serif)
                 .foregroundStyle(Color.sunText)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if !entry.notes.isEmpty {
                 Text(entry.notes)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                     .lineLimit(3)
             }

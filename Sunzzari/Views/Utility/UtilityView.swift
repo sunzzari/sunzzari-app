@@ -57,12 +57,12 @@ struct UtilityView: View {
     private func rowLabel(_ row: Row) -> some View {
         HStack(spacing: 14) {
             Image(systemName: row.symbol)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold, design: .serif))
                 .foregroundStyle(Color(hex: row.colorHex))
                 .frame(width: 28, height: 28)
 
             Text(row.label)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunText)
 
             Spacer()

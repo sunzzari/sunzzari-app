@@ -151,7 +151,7 @@ struct MyWineView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         Text("Cooking")
-                            .font(.system(size: 13, weight: cookingOnly ? .semibold : .regular))
+                            .font(.system(size: 13, weight: cookingOnly ? .semibold : .regular, design: .serif))
                             .foregroundStyle(cookingOnly ? Color.sunAccent : Color.sunSecondary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
@@ -171,9 +171,9 @@ struct MyWineView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.system(size: 10, weight: .semibold, design: .serif))
                                 Text("Clear All")
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 13, design: .serif))
                             }
                             .foregroundStyle(Color.sunSecondary)
                             .padding(.horizontal, 12)
@@ -207,11 +207,11 @@ struct MyWineView: View {
     private func dropdownLabel(_ title: String, value: String?) -> some View {
         HStack(spacing: 4) {
             Text(value ?? title)
-                .font(.system(size: 13, weight: value != nil ? .semibold : .regular))
+                .font(.system(size: 13, weight: value != nil ? .semibold : .regular, design: .serif))
                 .foregroundStyle(value != nil ? Color.sunAccent : Color.sunSecondary)
                 .lineLimit(1)
             Image(systemName: "chevron.down")
-                .font(.system(size: 10))
+                .font(.system(size: 10, design: .serif))
                 .foregroundStyle(value != nil ? Color.sunAccent : Color.sunSecondary)
         }
         .padding(.horizontal, 12)

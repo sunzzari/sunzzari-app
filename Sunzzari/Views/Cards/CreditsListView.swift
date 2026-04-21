@@ -93,7 +93,7 @@ struct CreditsListView: View {
                             } header: {
                                 HStack(spacing: 6) {
                                     Text(freq.shortLabel)
-                                        .font(.system(size: 11, weight: .bold))
+                                        .font(.system(size: 11, weight: .bold, design: .serif))
                                         .foregroundStyle(Color(hex: freq.colorHex))
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
@@ -102,7 +102,7 @@ struct CreditsListView: View {
                                         .overlay(Capsule().stroke(Color(hex: freq.colorHex).opacity(0.35), lineWidth: 1))
 
                                     Text(periodLabel(for: freq))
-                                        .font(.system(size: 11))
+                                        .font(.system(size: 11, design: .serif))
                                         .foregroundStyle(Color.sunSecondary)
                                 }
                                 .textCase(nil)
@@ -128,7 +128,7 @@ struct CreditsListView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(credit.credit)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
 
@@ -138,7 +138,7 @@ struct CreditsListView: View {
                                  colorHex: credit.person == .elisa ? "#F472B6" : (credit.person == .cathy ? "#A78BFA" : "#FBBF24"))
                     if let amount = credit.amountDollars {
                         Text("$\(Int(amount))")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11, weight: .bold, design: .serif))
                             .foregroundStyle(Color.sunAccent)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
@@ -154,9 +154,9 @@ struct CreditsListView: View {
                 Button { markUnused(credit) } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11, weight: .bold, design: .serif))
                         Text("Used")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold, design: .serif))
                     }
                     .foregroundStyle(Color(hex: "#34D399"))
                     .padding(.horizontal, 10)
@@ -169,7 +169,7 @@ struct CreditsListView: View {
             } else {
                 Button { markUsed(credit) } label: {
                     Text("Mark Used")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.sunAccent)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -238,7 +238,7 @@ struct CreditsListView: View {
     private func filterPill(_ label: String, colorHex: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: .medium, design: .serif))
                 .foregroundStyle(active ? Color.sunBackground : Color(hex: colorHex))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

@@ -23,7 +23,7 @@ struct ThoughtActionView: View {
                 PageHeader("Thought-Action") {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                             .padding(8)
                             .background(Color.white.opacity(0.08))
@@ -39,13 +39,13 @@ struct ThoughtActionView: View {
                     Spacer()
                     VStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.trianglebadge.exclamationmark")
-                            .font(.system(size: 32))
+                            .font(.system(size: 32, design: .serif))
                             .foregroundStyle(Color.sunSecondary.opacity(0.4))
                         Text("Nothing here")
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                         Text("Write something, then check it off when done.")
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, design: .serif))
                             .foregroundStyle(Color.sunSecondary.opacity(0.6))
                             .multilineTextAlignment(.center)
                     }
@@ -70,10 +70,10 @@ struct ThoughtActionView: View {
                 // Input area
                 HStack(spacing: 10) {
                     Text(myAuthor == "Branch" ? "🌿" : "🕊️")
-                        .font(.system(size: 18))
+                        .font(.system(size: 18, design: .serif))
 
                     TextField("write something...", text: $newText, axis: .vertical)
-                        .font(.system(size: 15))
+                        .font(.system(size: 15, design: .serif))
                         .foregroundStyle(Color.sunText)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
@@ -95,7 +95,7 @@ struct ThoughtActionView: View {
                         } else {
                             let isEmpty = newText.trimmingCharacters(in: .whitespaces).isEmpty
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 16, weight: .bold, design: .serif))
                                 .foregroundStyle(isEmpty ? Color.sunSecondary : Color.sunBackground)
                                 .frame(width: 36, height: 36)
                                 .background(isEmpty ? Color.white.opacity(0.1) : Color(hex: "#C084FC"))
@@ -128,22 +128,22 @@ struct ThoughtActionView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.content)
-                    .font(.system(size: 15))
+                    .font(.system(size: 15, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 4) {
                     Text(entry.authorEmoji)
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .serif))
                     Text(entry.author)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 10, weight: .medium, design: .serif))
                         .foregroundStyle(Color(hex: entry.authorColorHex).opacity(0.8))
                     Text("·")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                     Text(relativeTime(entry.date))
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
             }

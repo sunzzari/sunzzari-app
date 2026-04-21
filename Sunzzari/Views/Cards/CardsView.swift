@@ -46,7 +46,7 @@ struct CardsView: View {
     private func hubCell(title: String, subtitle: String, icon: String, color: String) -> some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 28))
+                .font(.system(size: 28, design: .serif))
                 .foregroundStyle(Color(hex: color))
                 .frame(width: 56, height: 56)
                 .background(Color(hex: color).opacity(0.15))
@@ -54,18 +54,18 @@ struct CardsView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                 Text(subtitle)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             }
 
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .padding(16)

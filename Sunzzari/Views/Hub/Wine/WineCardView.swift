@@ -12,7 +12,7 @@ struct WineCardView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top) {
                     Text(wine.wineName)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 15, weight: .bold, design: .serif))
                         .fontDesign(.serif)
                         .foregroundStyle(Color.sunText)
                         .lineLimit(2)
@@ -22,7 +22,7 @@ struct WineCardView: View {
                     // Rating stars on right
                     if let rating = wine.rating {
                         Text(rating.rawValue)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, design: .serif))
                     }
                 }
 
@@ -40,7 +40,7 @@ struct WineCardView: View {
                 HStack(spacing: 6) {
                     // Wine type chip
                     Text(wine.wineType.rawValue.uppercased())
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .bold, design: .serif))
                         .tracking(0.5)
                         .foregroundStyle(Color(hex: wine.wineType.colorHex))
                         .padding(.horizontal, 6)
@@ -57,7 +57,7 @@ struct WineCardView: View {
 
                     if wine.useForCooking {
                         Text("COOKING")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .bold, design: .serif))
                             .tracking(0.5)
                             .foregroundStyle(Color.sunAccent)
                             .padding(.horizontal, 6)

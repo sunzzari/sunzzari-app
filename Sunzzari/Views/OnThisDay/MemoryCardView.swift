@@ -17,19 +17,19 @@ struct MemoryCardView: View {
                                  colorHex: memory.category.colorHex)
                     Spacer()
                     Text(memory.date.formatted(.dateTime.month(.abbreviated).day()) + " · " + String(memory.year))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .medium, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 
                 Text(memory.title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 16, weight: .bold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if !memory.notes.isEmpty {
                     Text(memory.notes)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                         .lineLimit(3)
                 }

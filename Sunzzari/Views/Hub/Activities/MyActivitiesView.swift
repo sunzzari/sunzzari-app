@@ -96,9 +96,9 @@ struct MyActivitiesView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold, design: .serif))
                             Text("Clear All")
-                                .font(.system(size: 13))
+                                .font(.system(size: 13, design: .serif))
                         }
                         .foregroundStyle(Color.sunSecondary)
                         .padding(.horizontal, 12)
@@ -119,7 +119,7 @@ struct MyActivitiesView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10, weight: .bold, design: .serif))
                 .tracking(0.8)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)

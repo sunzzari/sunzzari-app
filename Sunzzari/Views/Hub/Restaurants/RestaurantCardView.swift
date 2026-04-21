@@ -14,7 +14,7 @@ struct RestaurantCardView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .top) {
                         Text(restaurant.name)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15, weight: .bold, design: .serif))
                             .fontDesign(.serif)
                             .foregroundStyle(Color.sunText)
                             .lineLimit(2)
@@ -23,7 +23,7 @@ struct RestaurantCardView: View {
 
                         if let pref = restaurant.preference {
                             Text(pref.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9, weight: .bold, design: .serif))
                                 .tracking(0.6)
                                 .foregroundStyle(Color(hex: pref.colorHex))
                                 .padding(.horizontal, 7)
@@ -50,7 +50,7 @@ struct RestaurantCardView: View {
                             HStack(spacing: 5) {
                                 ForEach(visible, id: \.self) { tag in
                                     Text(tag.uppercased())
-                                        .font(.system(size: 9, weight: .bold))
+                                        .font(.system(size: 9, weight: .bold, design: .serif))
                                         .tracking(0.5)
                                         .foregroundStyle(Color.sunSecondary)
                                         .padding(.horizontal, 6)
@@ -60,7 +60,7 @@ struct RestaurantCardView: View {
                                 }
                                 if overflow > 0 {
                                     Text("+\(overflow) more")
-                                        .font(.system(size: 9, weight: .bold))
+                                        .font(.system(size: 9, weight: .bold, design: .serif))
                                         .foregroundStyle(Color.sunSecondary)
                                 }
                             }

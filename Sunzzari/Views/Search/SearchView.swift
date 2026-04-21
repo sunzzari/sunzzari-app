@@ -75,7 +75,7 @@ struct SearchView: View {
     private var promptState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 42))
+                .font(.system(size: 42, design: .serif))
                 .foregroundStyle(Color.sunSecondary.opacity(0.35))
             Text("Search across Best Of")
                 .font(.subheadline)
@@ -88,7 +88,7 @@ struct SearchView: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .bold))
+            .font(.system(size: 10, weight: .bold, design: .serif))
             .tracking(1)
             .foregroundStyle(Color.sunSecondary)
             .textCase(nil)

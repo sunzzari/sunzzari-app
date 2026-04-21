@@ -99,7 +99,7 @@ struct OnThisDayView: View {
             }
             Spacer()
             Text("\(todaysMemories.count) \(todaysMemories.count == 1 ? "MEMORY" : "MEMORIES")")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10, weight: .bold, design: .serif))
                 .tracking(0.8)
                 .foregroundStyle(Color.sunSecondary)
                 .padding(.horizontal, 9)

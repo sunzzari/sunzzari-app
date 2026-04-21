@@ -28,7 +28,7 @@ struct BestOfDetailView: View {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onEdit() }
                             } label: {
                                 Image(systemName: "pencil")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.system(size: 12, weight: .bold, design: .serif))
                                     .foregroundStyle(Color.sunAccent)
                                     .frame(width: 28, height: 28)
                                     .background(Color.sunBackground.opacity(0.9))
@@ -37,7 +37,7 @@ struct BestOfDetailView: View {
                         }
                         Button { onDismiss() } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 12, weight: .bold, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                                 .frame(width: 28, height: 28)
                                 .background(Color.sunBackground.opacity(0.9))
@@ -46,21 +46,21 @@ struct BestOfDetailView: View {
                     }
 
                     Text(entry.entry)
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(size: 26, weight: .bold, design: .serif))
                         .foregroundStyle(Color.sunText)
 
                     if !entry.isUnassigned {
                         Text(entry.isYearOnly
                              ? String(entry.year)
                              : entry.date.formatted(.dateTime.month(.wide).day().year()))
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 13, weight: .medium, design: .serif))
                             .foregroundStyle(Color.sunAccent)
                     }
 
                     if !entry.notes.isEmpty {
                         Color.sunBackground.opacity(0.4).frame(height: 0.5)
                         Text(entry.notes)
-                            .font(.system(size: 15))
+                            .font(.system(size: 15, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }

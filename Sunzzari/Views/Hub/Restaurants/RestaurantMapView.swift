@@ -330,9 +330,9 @@ struct RestaurantMapView: View {
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9, weight: .bold, design: .serif))
                             Text("Clear")
-                                .font(.system(size: 12))
+                                .font(.system(size: 12, design: .serif))
                         }
                         .foregroundStyle(Color.white.opacity(0.5))
                         .padding(.horizontal, 10)
@@ -361,10 +361,10 @@ struct RestaurantMapView: View {
             HStack(spacing: 4) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9, weight: .semibold, design: .serif))
                 }
                 Text(label)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12, weight: .medium, design: .serif))
             }
             .foregroundStyle(isActive ? Color.sunBackground : Color.white.opacity(0.75))
             .padding(.horizontal, 12)
@@ -387,7 +387,7 @@ struct RestaurantMapView: View {
 
         return VStack(alignment: .leading, spacing: 5) {
             Text("RATING")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold, design: .serif))
                 .foregroundStyle(Color.white.opacity(0.4))
                 .tracking(0.8)
                 .padding(.bottom, 1)
@@ -413,7 +413,7 @@ struct RestaurantMapView: View {
                         }
                         .frame(width: 18, height: 18)
                         Text(pref.rawValue)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .medium, design: .serif))
                             .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.7))
                     }
                 }
@@ -442,7 +442,7 @@ struct RestaurantMapView: View {
                     }
                     .frame(width: 18, height: 18)
                     Text("Unrated")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 12, weight: .medium, design: .serif))
                         .foregroundStyle(unratedActive ? Color.white : Color.white.opacity(0.7))
                 }
             }
@@ -451,7 +451,7 @@ struct RestaurantMapView: View {
 
             if anyActive {
                 Button("Clear") { selectedPreferences = [] }
-                    .font(.system(size: 10))
+                    .font(.system(size: 10, design: .serif))
                     .foregroundStyle(Color.white.opacity(0.4))
                     .underline()
                     .padding(.top, 2)
@@ -474,7 +474,7 @@ struct RestaurantMapView: View {
             }
         } label: {
             Image(systemName: "location.fill")
-                .font(.system(size: 16))
+                .font(.system(size: 16, design: .serif))
                 .foregroundStyle(Color.sunAccent)
                 .padding(13)
                 .background(Color.sunSurface)
@@ -492,7 +492,7 @@ struct RestaurantMapView: View {
                 HStack {
                     if let pref = r.preference {
                         Text(pref.rawValue)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .serif))
                             .foregroundStyle(Color(hex: pref.colorHex))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -502,7 +502,7 @@ struct RestaurantMapView: View {
                     }
                     if r.beenThere {
                         Text("Visited")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .serif))
                             .foregroundStyle(Color.white.opacity(0.5))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -513,7 +513,7 @@ struct RestaurantMapView: View {
                     Spacer()
                 }
                 Text(r.name)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 20, weight: .bold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
                 let loc = [r.location, r.neighborhood].filter { !$0.isEmpty }.joined(separator: " · ")
