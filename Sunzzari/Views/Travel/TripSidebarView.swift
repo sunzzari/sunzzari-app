@@ -27,10 +27,10 @@ struct TripSidebarView: View {
             // Header
             HStack {
                 Text("\(items.count) items")
-                    .font(.caption.weight(.medium))
+                    .font(.system(.caption, design: .serif, weight: .medium))
                     .foregroundStyle(Color.sunText)
                 Text("\(mappedCount) mapped")
-                    .font(.caption)
+                    .font(.system(.caption, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                 Spacer()
             }
@@ -55,7 +55,7 @@ struct TripSidebarView: View {
                                 Image(systemName: "questionmark.circle")
                                 Text("Other (\(untypedItems.count))")
                             }
-                            .font(.caption.weight(.semibold))
+                            .font(.system(.caption, design: .serif, weight: .semibold))
                             .foregroundStyle(Color.sunSecondary)
                             .padding(.horizontal, 12)
                             .padding(.top, 16)
@@ -85,7 +85,7 @@ struct TripSidebarView: View {
                 .foregroundStyle(type.color)
             Text("\(type.rawValue) (\(count))")
         }
-        .font(.caption.weight(.semibold))
+        .font(.system(.caption, design: .serif, weight: .semibold))
         .foregroundStyle(Color.sunSecondary)
         .padding(.horizontal, 12)
         .padding(.top, 16)
@@ -106,19 +106,19 @@ struct TripSidebarView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name)
-                        .font(.subheadline.weight(.medium))
+                        .font(.system(.subheadline, design: .serif, weight: .medium))
                         .foregroundStyle(Color.sunText)
                         .lineLimit(1)
 
                     HStack(spacing: 6) {
                         if !item.legCity.isEmpty {
                             Text(item.legCity)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
                         if let date = item.displayDate {
                             Text(date)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
                     }
@@ -130,14 +130,14 @@ struct TripSidebarView: View {
                 if let loc = userLocation, let lat = item.latitude, let lon = item.longitude {
                     let dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
                     Text(formatDistance(dist))
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 
                 // Status badge
                 if let status = item.status {
                     Text(status.rawValue)
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .serif))
                         .foregroundStyle(status.color)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -148,7 +148,7 @@ struct TripSidebarView: View {
                 // Unmapped
                 if !item.hasCoordinates {
                     Image(systemName: "location.slash")
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
             }

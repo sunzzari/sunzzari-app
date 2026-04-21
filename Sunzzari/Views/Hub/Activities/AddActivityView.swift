@@ -83,14 +83,14 @@ struct AddActivityView: View {
                         }
 
                         if let errorMessage {
-                            Text(errorMessage).font(.caption).foregroundStyle(.red)
+                            Text(errorMessage).font(.system(.caption, design: .serif)).foregroundStyle(.red)
                         }
 
                         Button { Task { await save() } } label: {
                             HStack(spacing: 10) {
                                 if isSaving { ProgressView().tint(.sunBackground) }
                                 Text(isSaving ? "Saving..." : "Save Activity")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -116,7 +116,7 @@ struct AddActivityView: View {
     private func formField<C: View>(label: String, icon: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif, weight: .semibold))
                 .foregroundStyle(Color.sunSecondary)
             content()
         }

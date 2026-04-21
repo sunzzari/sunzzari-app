@@ -33,7 +33,7 @@ struct WineCardView: View {
                 ].compactMap { $0 }.joined(separator: " · ")
                 if !producerVintage.isEmpty {
                     Text(producerVintage)
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 
@@ -51,7 +51,7 @@ struct WineCardView: View {
                     // Region
                     if !wine.region.isEmpty {
                         Text(wine.region)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                     }
 

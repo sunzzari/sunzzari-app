@@ -34,13 +34,16 @@ struct NitsAndBugsView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                ScrollView {
+                VStack(spacing: 0) {
+                    SerifNavHeader("Nits & Bugs", showsBack: false)
+
+                    ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
 
                         // Type picker
                         VStack(alignment: .leading, spacing: 12) {
                             Text("TYPE")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                                 .kerning(1.5)
 
@@ -52,7 +55,7 @@ struct NitsAndBugsView: View {
                                         HStack(spacing: 8) {
                                             Text(type.emoji)
                                             Text(type.rawValue)
-                                                .font(.subheadline.weight(.semibold))
+                                                .font(.system(.subheadline, design: .serif, weight: .semibold))
                                                 .foregroundStyle(reportType == type ? Color.sunBackground : Color.sunText)
                                         }
                                         .padding(.horizontal, 16)
@@ -65,19 +68,19 @@ struct NitsAndBugsView: View {
                             }
 
                             Text(reportType.description)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
 
                         // Title field
                         VStack(alignment: .leading, spacing: 12) {
                             Text("WHAT'S THE ISSUE?")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                                 .kerning(1.5)
 
                             TextField("Short summary", text: $title)
-                                .font(.body)
+                                .font(.system(.body, design: .serif))
                                 .foregroundStyle(Color.sunText)
                                 .padding(14)
                                 .background(Color.sunSurface)
@@ -87,7 +90,7 @@ struct NitsAndBugsView: View {
                         // Details field
                         VStack(alignment: .leading, spacing: 12) {
                             Text("DETAILS (OPTIONAL)")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                                 .kerning(1.5)
 
@@ -97,13 +100,13 @@ struct NitsAndBugsView: View {
 
                                 if details.isEmpty {
                                     Text("Steps to reproduce, screen, context...")
-                                        .font(.body)
+                                        .font(.system(.body, design: .serif))
                                         .foregroundStyle(Color.sunSecondary)
                                         .padding(14)
                                 }
 
                                 TextEditor(text: $details)
-                                    .font(.body)
+                                    .font(.system(.body, design: .serif))
                                     .foregroundStyle(Color.sunText)
                                     .scrollContentBackground(.hidden)
                                     .padding(10)
@@ -119,7 +122,7 @@ struct NitsAndBugsView: View {
                             HStack(spacing: 8) {
                                 Text(reportType.emoji)
                                 Text("Send \(reportType.rawValue)")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                                     .foregroundStyle(Color.sunBackground)
                             }
                             .frame(maxWidth: .infinity)
@@ -131,7 +134,7 @@ struct NitsAndBugsView: View {
 
                         if submitted {
                             Text("Sent! Your mail app should have opened.")
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
                         }
@@ -143,7 +146,7 @@ struct NitsAndBugsView: View {
                         // Test notification
                         VStack(alignment: .leading, spacing: 12) {
                             Text("TEST NOTIFICATION")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                                 .kerning(1.5)
 
@@ -155,7 +158,7 @@ struct NitsAndBugsView: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "bell.fill")
                                     Text(testSent ? "Background the app now →" : "Fire in 5 sec")
-                                        .font(.headline)
+                                        .font(.system(.headline, design: .serif))
                                         .foregroundStyle(Color.sunBackground)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -169,16 +172,15 @@ struct NitsAndBugsView: View {
                             }
 
                             Text("Fires a sample \"Best Moments\" notification. Background the app to see it.")
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
                     }
                     .padding(20)
                 }
+                }
             }
-            .navigationTitle("Nits & Bugs")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

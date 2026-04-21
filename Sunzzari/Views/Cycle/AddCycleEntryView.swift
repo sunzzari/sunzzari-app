@@ -62,7 +62,7 @@ struct AddCycleEntryView: View {
 
                         if let err = errorMessage {
                             Text(err)
-                                .font(.footnote)
+                                .font(.system(.footnote, design: .serif))
                                 .foregroundStyle(Color(hex: "#F87171"))
                                 .multilineTextAlignment(.center)
                         }

@@ -54,7 +54,7 @@ struct WeeklyBestOfInputView: View {
                             .padding(.top, 12)
                         } label: {
                             Text("More categories")
-                                .font(.subheadline.weight(.semibold))
+                                .font(.system(.subheadline, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunAccent)
                         }
                         .padding(.horizontal, 4)
@@ -62,14 +62,14 @@ struct WeeklyBestOfInputView: View {
 
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(.red)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
                         if let savedMessage {
                             Text(savedMessage)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunAccent)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -93,11 +93,11 @@ struct WeeklyBestOfInputView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Log this week's highlights")
-                .font(.title3.weight(.bold))
+                .font(.system(.title3, design: .serif, weight: .bold))
                 .fontDesign(.serif)
                 .foregroundStyle(Color.sunText)
             Text("Jot anything memorable. Add a date if you want; otherwise today is fine.")
-                .font(.caption)
+                .font(.system(.caption, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,7 +115,7 @@ struct WeeklyBestOfInputView: View {
                     .clipShape(Capsule())
                 Text(cat.emoji)
                 Text(cat.rawValue)
-                    .font(.headline)
+                    .font(.system(.headline, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(Color.sunText)
             }
@@ -132,7 +132,7 @@ struct WeeklyBestOfInputView: View {
                     Image(systemName: "plus.circle")
                     Text("Add another")
                 }
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif, weight: .semibold))
                 .foregroundStyle(accent)
                 .padding(.vertical, 6)
             }
@@ -176,7 +176,7 @@ struct WeeklyBestOfInputView: View {
                     Text(binding.wrappedValue.hasDate
                          ? binding.wrappedValue.date.formatted(.dateTime.month(.abbreviated).day().year())
                          : "Use today")
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
                 .tint(accent)
@@ -202,7 +202,7 @@ struct WeeklyBestOfInputView: View {
             HStack(spacing: 10) {
                 if isSaving { ProgressView().tint(.sunBackground) }
                 Text(isSaving ? "Saving..." : "Save All (\(totalFilled))")
-                    .font(.headline)
+                    .font(.system(.headline, design: .serif))
             }
             .frame(maxWidth: .infinity)
             .padding()

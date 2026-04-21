@@ -47,7 +47,7 @@ struct AddMemoryView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         Text("\(cat.emoji) \(cat.rawValue)")
-                                            .font(.caption.weight(.semibold))
+                                            .font(.system(.caption, design: .serif, weight: .semibold))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
                                             .background(
@@ -102,10 +102,10 @@ struct AddMemoryView: View {
                                     } else {
                                         VStack(spacing: 8) {
                                             Image(systemName: "photo.badge.plus")
-                                                .font(.title)
+                                                .font(.system(.title, design: .serif))
                                                 .foregroundStyle(Color.sunAccent)
                                             Text("Add a photo")
-                                                .font(.caption)
+                                                .font(.system(.caption, design: .serif))
                                                 .foregroundStyle(Color.sunSecondary)
                                         }
                                     }
@@ -123,7 +123,7 @@ struct AddMemoryView: View {
 
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(.red)
                         }
 
@@ -133,7 +133,7 @@ struct AddMemoryView: View {
                             HStack(spacing: 10) {
                                 if isSaving { ProgressView().tint(.sunBackground) }
                                 Text(isSaving ? "Saving..." : "Save Memory")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -159,7 +159,7 @@ struct AddMemoryView: View {
     private func field<Content: View>(label: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif, weight: .semibold))
                 .foregroundStyle(Color.sunSecondary)
             content()
         }

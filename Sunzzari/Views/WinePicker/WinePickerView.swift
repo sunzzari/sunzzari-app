@@ -90,7 +90,7 @@ struct WinePickerView: View {
                         .font(.system(size: 28, weight: .bold, design: .serif))
                         .foregroundStyle(Color.sunText)
                     Text("Snap a shelf or menu and we'll pick")
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
                 .padding(.top, 24)
@@ -161,7 +161,7 @@ struct WinePickerView: View {
                     step = .landing
                 } label: {
                     Text("Choose a different photo")
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
             }
@@ -179,7 +179,7 @@ struct WinePickerView: View {
                 .tint(Color.sunAccent)
 
             Text("Asking our sommelier…")
-                .font(.subheadline)
+                .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -199,7 +199,7 @@ struct WinePickerView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             Image(systemName: "wineglass")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                             Text("SOMMELIER PICK")
                                 .font(.system(size: 11, weight: .semibold, design: .serif))
                                 .tracking(1.2)
@@ -255,7 +255,7 @@ struct WinePickerView: View {
     private func photoButton(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.title2)
+                .font(.system(.title2, design: .serif))
                 .foregroundStyle(Color.sunAccent)
                 .frame(width: 36)
 
@@ -264,7 +264,7 @@ struct WinePickerView: View {
                     .font(.system(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunText)
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(.system(.subheadline, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             }
 

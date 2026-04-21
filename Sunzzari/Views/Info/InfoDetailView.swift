@@ -10,37 +10,41 @@ struct InfoDetailView: View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
 
-            if isLoading {
-                ProgressView()
-                    .tint(.sunAccent)
-            } else if let error = errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 36, design: .serif))
-                        .foregroundStyle(Color.sunAccent)
-                    Text(error)
-                        .foregroundStyle(Color.sunSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                    Button("Retry") { Task { await load() } }
-                        .foregroundStyle(Color.sunAccent)
-                }
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                            blockView(block)
-                        }
+            VStack(spacing: 0) {
+                SerifNavHeader(entry.title)
+
+                if isLoading {
+                    Spacer()
+                    ProgressView().tint(.sunAccent)
+                    Spacer()
+                } else if let error = errorMessage {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 36, design: .serif))
+                            .foregroundStyle(Color.sunAccent)
+                        Text(error)
+                            .foregroundStyle(Color.sunSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        Button("Retry") { Task { await load() } }
+                            .foregroundStyle(Color.sunAccent)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 20)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                                blockView(block)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 20)
+                    }
                 }
             }
         }
-        .navigationTitle(entry.title)
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color.sunSurface, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .task { await load() }
     }
 

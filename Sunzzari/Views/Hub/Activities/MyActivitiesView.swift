@@ -28,19 +28,19 @@ struct MyActivitiesView: View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
 
-            if isLoading {
-                skeletonView
-            } else {
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                SerifNavHeader("My Activities")
+
+                if isLoading {
+                    skeletonView
+                } else {
                     filterBar
                     Color.white.opacity(0.1).frame(height: 0.5)
                     activityList
                 }
             }
         }
-        .navigationTitle("My Activities")
-        .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .task { await load() }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
@@ -51,7 +51,7 @@ struct MyActivitiesView: View {
         List {
             if filtered.isEmpty {
                 Text("No activities match your filters")
-                    .font(.subheadline)
+                    .font(.system(size: 15, weight: .regular, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 40)

@@ -37,7 +37,7 @@ struct DayTimelineView: View {
                         } label: {
                             VStack(spacing: 2) {
                                 Text(displayString(dateStr))
-                                    .font(.caption2.weight(isSelected ? .bold : .medium))
+                                    .font(.system(.caption2, design: .serif, weight: isSelected ? .bold : .medium))
 
                                 if isToday {
                                     Circle()

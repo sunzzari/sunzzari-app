@@ -33,7 +33,7 @@ struct TripSortPicker: View {
                 Image(systemName: "arrow.up.arrow.down")
                 Text(nearMeActive ? "Distance" : sortMode.rawValue)
             }
-            .font(.caption2.weight(.medium))
+            .font(.system(.caption2, design: .serif, weight: .medium))
             .foregroundStyle(Color.sunText)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)

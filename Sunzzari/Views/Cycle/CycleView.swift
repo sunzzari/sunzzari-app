@@ -25,20 +25,26 @@ struct CycleView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                if isLoading && entries.isEmpty {
-                    ProgressView().tint(.sunAccent)
-                } else {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            calendarSection
-                            nextPeriodSummary
-                            recentEntriesSection
+                VStack(spacing: 0) {
+                    SerifNavHeader("Cycle", showsBack: false)
+
+                    if isLoading && entries.isEmpty {
+                        Spacer()
+                        ProgressView().tint(.sunAccent)
+                        Spacer()
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 20) {
+                                calendarSection
+                                nextPeriodSummary
+                                recentEntriesSection
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 16)
+                            .padding(.bottom, 100)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 100)
+                        .refreshable { await load(force: true) }
                     }
-                    .refreshable { await load(force: true) }
                 }
 
                 // FAB
@@ -51,7 +57,7 @@ struct CycleView: View {
                             showAddSheet = true
                         } label: {
                             Image(systemName: "plus")
-                                .font(.title2.weight(.bold))
+                                .font(.system(.title2, design: .serif, weight: .bold))
                                 .foregroundStyle(Color.sunBackground)
                                 .padding(18)
                                 .background(Color.sunAccent)
@@ -63,10 +69,7 @@ struct CycleView: View {
                     }
                 }
             }
-            .navigationTitle("Cycle")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color.sunSurface, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(isPresented: $showAddSheet, onDismiss: { Task { await load(force: true) } }) {
             AddCycleEntryView(defaultDate: preselectedDate, entries: entries)

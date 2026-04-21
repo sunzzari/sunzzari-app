@@ -38,7 +38,7 @@ struct RestaurantCardView: View {
                         .filter { !$0.isEmpty }.joined(separator: " · ")
                     if !loc.isEmpty {
                         Text(loc)
-                            .font(.subheadline)
+                            .font(.system(.subheadline, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                     }
 

@@ -49,7 +49,7 @@ struct AsyncImageView: View {
             .fill(Color.sunSurface)
             .overlay(
                 Image(systemName: "photo")
-                    .font(.title2)
+                    .font(.system(.title2, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             )
     }

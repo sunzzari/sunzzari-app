@@ -58,7 +58,7 @@ struct EditMemoryView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         Text("\(cat.emoji) \(cat.rawValue)")
-                                            .font(.caption.weight(.semibold))
+                                            .font(.system(.caption, design: .serif, weight: .semibold))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
                                             .background(
@@ -96,7 +96,7 @@ struct EditMemoryView: View {
                         }
 
                         if let errorMessage {
-                            Text(errorMessage).font(.caption).foregroundStyle(.red)
+                            Text(errorMessage).font(.system(.caption, design: .serif)).foregroundStyle(.red)
                         }
 
                         Button {
@@ -105,7 +105,7 @@ struct EditMemoryView: View {
                             HStack(spacing: 10) {
                                 if isSaving { ProgressView().tint(.sunBackground) }
                                 Text(isSaving ? "Saving..." : "Save Changes")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -131,7 +131,7 @@ struct EditMemoryView: View {
     private func field<C: View>(label: String, icon: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif, weight: .semibold))
                 .foregroundStyle(Color.sunSecondary)
             content()
         }

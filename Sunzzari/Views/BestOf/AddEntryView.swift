@@ -45,9 +45,9 @@ struct AddEntryView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         VStack(spacing: 6) {
-                                            Text(cat.emoji).font(.title2)
+                                            Text(cat.emoji).font(.system(.title2, design: .serif))
                                             Text(cat.rawValue)
-                                                .font(.caption.weight(.semibold))
+                                                .font(.system(.caption, design: .serif, weight: .semibold))
                                                 .multilineTextAlignment(.center)
                                         }
                                         .frame(maxWidth: .infinity)
@@ -84,7 +84,7 @@ struct AddEntryView: View {
                                     Text(hasDate
                                          ? date.formatted(.dateTime.month(.wide).day().year())
                                          : "Year only — \(selectedYear)")
-                                        .font(.subheadline)
+                                        .font(.system(.subheadline, design: .serif))
                                         .foregroundStyle(Color.sunText)
                                 }
                                 .tint(.sunAccent)
@@ -128,7 +128,7 @@ struct AddEntryView: View {
                         }
 
                         if let errorMessage {
-                            Text(errorMessage).font(.caption).foregroundStyle(.red)
+                            Text(errorMessage).font(.system(.caption, design: .serif)).foregroundStyle(.red)
                         }
 
                         Button {
@@ -137,7 +137,7 @@ struct AddEntryView: View {
                             HStack(spacing: 10) {
                                 if isSaving { ProgressView().tint(.sunBackground) }
                                 Text(isSaving ? "Saving..." : "Save Entry")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -163,7 +163,7 @@ struct AddEntryView: View {
     private func formField<C: View>(label: String, icon: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif, weight: .semibold))
                 .foregroundStyle(Color.sunSecondary)
             content()
         }

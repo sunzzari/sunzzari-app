@@ -22,7 +22,7 @@ struct ItemDetailSheet: View {
                     // Name + copy
                     HStack {
                         Text(item.name)
-                            .font(.title3.weight(.bold))
+                            .font(.system(.title3, design: .serif, weight: .bold))
                             .fontDesign(.serif)
                             .foregroundStyle(Color.sunText)
 
@@ -36,7 +36,7 @@ struct ItemDetailSheet: View {
                                 UIPasteboard.general.string = text
                             } label: {
                                 Image(systemName: "doc.on.doc")
-                                    .font(.caption)
+                                    .font(.system(.caption, design: .serif))
                                     .foregroundStyle(Color.sunSecondary)
                                     .padding(8)
                                     .background(Color.sunSurface)
@@ -49,19 +49,19 @@ struct ItemDetailSheet: View {
                     HStack(spacing: 12) {
                         if let type = item.type {
                             Label(type.rawValue, systemImage: type.sfSymbol)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(type.color)
                         }
 
                         if !item.legCity.isEmpty {
                             Label(item.legCity, systemImage: "mappin")
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
 
                         if let dist = distanceToItem {
                             Label(dist, systemImage: "location")
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
                     }
@@ -82,7 +82,7 @@ struct ItemDetailSheet: View {
                     // Date
                     if let date = item.displayDate {
                         Label(date, systemImage: "calendar")
-                            .font(.subheadline)
+                            .font(.system(.subheadline, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                     }
 
@@ -90,10 +90,10 @@ struct ItemDetailSheet: View {
                     if !item.notes.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Notes")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                             Text(item.notes)
-                                .font(.subheadline)
+                                .font(.system(.subheadline, design: .serif))
                                 .foregroundStyle(Color.sunText)
                         }
                     }
@@ -107,7 +107,7 @@ struct ItemDetailSheet: View {
                                 openInMaps()
                             } label: {
                                 Label("Open in Maps", systemImage: "map.fill")
-                                    .font(.subheadline.weight(.medium))
+                                    .font(.system(.subheadline, design: .serif, weight: .medium))
                                     .foregroundStyle(Color.sunBackground)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
@@ -120,7 +120,7 @@ struct ItemDetailSheet: View {
                             openInNotion()
                         } label: {
                             Label("Notion", systemImage: "link")
-                                .font(.subheadline.weight(.medium))
+                                .font(.system(.subheadline, design: .serif, weight: .medium))
                                 .foregroundStyle(Color.sunText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
@@ -147,7 +147,7 @@ struct ItemDetailSheet: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.caption2.weight(.medium))
+            .font(.system(.caption2, design: .serif, weight: .medium))
             .foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)

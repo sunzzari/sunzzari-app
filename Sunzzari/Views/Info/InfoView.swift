@@ -10,40 +10,44 @@ struct InfoView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                if isLoading {
-                    ProgressView()
-                        .tint(.sunAccent)
-                } else if let error = errorMessage {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 36, design: .serif))
-                            .foregroundStyle(Color.sunAccent)
-                        Text(error)
-                            .foregroundStyle(Color.sunSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                        Button("Retry") { Task { await load() } }
-                            .foregroundStyle(Color.sunAccent)
-                    }
-                } else {
-                    ScrollView {
+                VStack(spacing: 0) {
+                    SerifNavHeader("Quick Reference", showsBack: false)
+
+                    if isLoading {
+                        Spacer()
+                        ProgressView().tint(.sunAccent)
+                        Spacer()
+                    } else if let error = errorMessage {
+                        Spacer()
                         VStack(spacing: 12) {
-                            ForEach(entries) { entry in
-                                NavigationLink(destination: InfoDetailView(entry: entry)) {
-                                    infoCard(entry)
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 36, design: .serif))
+                                .foregroundStyle(Color.sunAccent)
+                            Text(error)
+                                .foregroundStyle(Color.sunSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                            Button("Retry") { Task { await load() } }
+                                .foregroundStyle(Color.sunAccent)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 20)
+                        Spacer()
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 12) {
+                                ForEach(entries) { entry in
+                                    NavigationLink(destination: InfoDetailView(entry: entry)) {
+                                        infoCard(entry)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 20)
+                        }
                     }
                 }
             }
-            .navigationTitle("Quick Reference")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color.sunSurface, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .task { await load() }
     }

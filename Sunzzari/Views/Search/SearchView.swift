@@ -21,11 +21,13 @@ struct SearchView: View {
         NavigationStack {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
-                content
+
+                VStack(spacing: 0) {
+                    SerifNavHeader("Search", showsBack: false)
+                    content
+                }
             }
-            .navigationTitle("Search")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .searchable(text: $query, prompt: "Search Best Of...")
         }
         .task { await loadAll() }
@@ -78,7 +80,7 @@ struct SearchView: View {
                 .font(.system(size: 42, design: .serif))
                 .foregroundStyle(Color.sunSecondary.opacity(0.35))
             Text("Search across Best Of")
-                .font(.subheadline)
+                .font(.system(size: 15, weight: .regular, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)

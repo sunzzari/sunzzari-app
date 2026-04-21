@@ -92,10 +92,10 @@ struct StatusMapView: View {
                 Color.sunSurface
                 VStack(spacing: 8) {
                     Image(systemName: "location.slash")
-                        .font(.title2)
+                        .font(.system(.title2, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                     Text("No location data yet")
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
             }

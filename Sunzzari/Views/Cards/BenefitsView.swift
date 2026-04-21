@@ -56,44 +56,45 @@ struct BenefitsView: View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
 
-            List {
-                ForEach(groups, id: \.cardName) { group in
-                    Section {
-                        ForEach(group.benefits, id: \.benefit) { b in
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(b.benefit)
-                                        .font(.system(size: 14, weight: .medium, design: .serif))
-                                        .foregroundStyle(Color.sunText)
-                                    Text(b.notes)
-                                        .font(.system(size: 12, design: .serif))
-                                        .foregroundStyle(Color.sunSecondary)
+            VStack(spacing: 0) {
+                SerifNavHeader("Benefits & Status")
+
+                List {
+                    ForEach(groups, id: \.cardName) { group in
+                        Section {
+                            ForEach(group.benefits, id: \.benefit) { b in
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(b.benefit)
+                                            .font(.system(size: 14, weight: .medium, design: .serif))
+                                            .foregroundStyle(Color.sunText)
+                                        Text(b.notes)
+                                            .font(.system(size: 12, design: .serif))
+                                            .foregroundStyle(Color.sunSecondary)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        CategoryChip(label: b.type.rawValue, colorHex: b.type.colorHex)
+                                        Text(b.person)
+                                            .font(.system(size: 11, design: .serif))
+                                            .foregroundStyle(Color.sunSecondary)
+                                    }
                                 }
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    CategoryChip(label: b.type.rawValue, colorHex: b.type.colorHex)
-                                    Text(b.person)
-                                        .font(.system(size: 11, design: .serif))
-                                        .foregroundStyle(Color.sunSecondary)
-                                }
+                                .padding(.vertical, 4)
+                                .listRowBackground(Color.sunSurface)
                             }
-                            .padding(.vertical, 4)
-                            .listRowBackground(Color.sunSurface)
+                        } header: {
+                            Text(group.cardName)
+                                .font(.system(size: 13, weight: .semibold, design: .serif))
+                                .foregroundStyle(Color(hex: group.cardColorHex))
+                                .textCase(nil)
                         }
-                    } header: {
-                        Text(group.cardName)
-                            .font(.system(size: 13, weight: .semibold, design: .serif))
-                            .foregroundStyle(Color(hex: group.cardColorHex))
-                            .textCase(nil)
                     }
                 }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Benefits & Status")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color.sunSurface, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }

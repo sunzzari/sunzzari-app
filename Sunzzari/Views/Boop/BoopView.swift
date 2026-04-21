@@ -17,7 +17,7 @@ struct BoopView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Write a custom boop")
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
 
                     TextField("Write something sweet...", text: $customText, axis: .vertical)
@@ -38,7 +38,7 @@ struct BoopView: View {
 
                     if let errorText {
                         Text(errorText)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .foregroundStyle(.red)
                     }
 
@@ -52,7 +52,7 @@ struct BoopView: View {
                                     .scaleEffect(0.85)
                             }
                             Text(isSending ? "Sending..." : "Boop! 👉")
-                                .font(.headline)
+                                .font(.system(.headline, design: .serif))
                                 .fontWeight(.bold)
                                 .foregroundStyle(Color.sunBackground)
                         }

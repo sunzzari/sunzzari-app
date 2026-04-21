@@ -58,6 +58,8 @@ struct CreditsListView: View {
             Color.sunBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                SerifNavHeader("Credits Tracker")
+
                 // Person filter
                 HStack(spacing: 8) {
                     ForEach(PersonFilter.allCases, id: \.self) { pf in
@@ -116,10 +118,7 @@ struct CreditsListView: View {
                 }
             }
         }
-        .navigationTitle("Credits Tracker")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color.sunSurface, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .task { await load() }
     }
 

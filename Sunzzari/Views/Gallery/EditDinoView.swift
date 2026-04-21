@@ -29,7 +29,7 @@ struct EditDinoView: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Name", systemImage: "textformat")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                             TextField("e.g. Dino at Sunset", text: $name)
                                 .padding()
@@ -40,7 +40,7 @@ struct EditDinoView: View {
 
                         VStack(alignment: .leading, spacing: 12) {
                             Label("Tags", systemImage: "tag")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                                 ForEach(DinosaurPhoto.Tag.allCases, id: \.self) { tag in
@@ -51,7 +51,7 @@ struct EditDinoView: View {
                                     } label: {
                                         HStack(spacing: 6) {
                                             Text(tag.emoji)
-                                            Text(tag.rawValue).font(.subheadline.weight(.medium))
+                                            Text(tag.rawValue).font(.system(.subheadline, design: .serif, weight: .medium))
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
@@ -81,7 +81,7 @@ struct EditDinoView: View {
                         }
 
                         if let errorMessage {
-                            Text(errorMessage).font(.caption).foregroundStyle(.red)
+                            Text(errorMessage).font(.system(.caption, design: .serif)).foregroundStyle(.red)
                         }
 
                         Button {
@@ -90,7 +90,7 @@ struct EditDinoView: View {
                             HStack(spacing: 10) {
                                 if isSaving { ProgressView().tint(.sunBackground) }
                                 Text(isSaving ? "Saving..." : "Save Changes")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()

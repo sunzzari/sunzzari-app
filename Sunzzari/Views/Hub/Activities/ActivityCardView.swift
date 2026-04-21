@@ -27,13 +27,13 @@ struct ActivityCardView: View {
 
                 if !activity.location.isEmpty {
                     Text(activity.location)
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 
                 if activity.dateSpecific, let date = activity.dateActive {
                     Text(dateFormatter.string(from: date))
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .foregroundStyle(Color.sunAccent)
                 }
 

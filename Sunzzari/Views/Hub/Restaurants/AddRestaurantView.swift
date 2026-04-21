@@ -154,14 +154,14 @@ struct AddRestaurantView: View {
                         }
 
                         if let errorMessage {
-                            Text(errorMessage).font(.caption).foregroundStyle(.red)
+                            Text(errorMessage).font(.system(.caption, design: .serif)).foregroundStyle(.red)
                         }
 
                         Button { Task { await save() } } label: {
                             HStack(spacing: 10) {
                                 if isSaving { ProgressView().tint(.sunBackground) }
                                 Text(isSaving ? "Saving..." : "Save Restaurant")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -190,7 +190,7 @@ struct AddRestaurantView: View {
         VStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Autofill with AI", systemImage: "sparkles")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(.caption, design: .serif, weight: .semibold))
                     .foregroundStyle(Color.sunSecondary)
 
                 HStack(spacing: 10) {
@@ -223,7 +223,7 @@ struct AddRestaurantView: View {
 
             if let msg = aiMessage {
                 Text(msg)
-                    .font(.caption)
+                    .font(.system(.caption, design: .serif))
                     .foregroundStyle(msg.hasPrefix("✓") ? Color.green : Color.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -231,7 +231,7 @@ struct AddRestaurantView: View {
             HStack {
                 Color.white.opacity(0.15).frame(height: 0.5)
                 Text("or fill manually")
-                    .font(.caption)
+                    .font(.system(.caption, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                     .fixedSize()
                     .padding(.horizontal, 8)
@@ -269,7 +269,7 @@ struct AddRestaurantView: View {
     private func formField<C: View>(label: String, icon: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
+                .font(.system(.caption, design: .serif, weight: .semibold))
                 .foregroundStyle(Color.sunSecondary)
             content()
         }

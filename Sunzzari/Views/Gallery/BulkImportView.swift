@@ -25,11 +25,11 @@ struct BulkImportView: View {
                                 .foregroundStyle(Color.sunAccent)
 
                             Text("Select Photos")
-                                .font(.title2.weight(.bold))
+                                .font(.system(.title2, design: .serif, weight: .bold))
                                 .foregroundStyle(Color.sunText)
 
                             Text("Choose as many dino photos as you want.\nThey'll all upload automatically.")
-                                .font(.subheadline)
+                                .font(.system(.subheadline, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                                 .multilineTextAlignment(.center)
 
@@ -39,7 +39,7 @@ struct BulkImportView: View {
                                 matching: .images
                             ) {
                                 Label("Choose Photos", systemImage: "photo.on.rectangle.angled")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                                     .foregroundStyle(Color.sunBackground)
                                     .frame(maxWidth: .infinity)
                                     .padding()
@@ -62,17 +62,17 @@ struct BulkImportView: View {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Uploading \(uploadStates.count) photos")
-                                            .font(.headline)
+                                            .font(.system(.headline, design: .serif))
                                             .foregroundStyle(Color.sunText)
                                         Text("\(doneCount) of \(uploadStates.count) complete")
-                                            .font(.caption)
+                                            .font(.system(.caption, design: .serif))
                                             .foregroundStyle(Color.sunSecondary)
                                     }
                                     Spacer()
                                     if isDone {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundStyle(.green)
-                                            .font(.title2)
+                                            .font(.system(.title2, design: .serif))
                                     }
                                 }
                                 .padding(16)
@@ -115,7 +115,7 @@ struct BulkImportView: View {
                                 dismiss()
                             } label: {
                                 Text("Done — View Gallery")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                                     .foregroundStyle(Color.sunBackground)
                                     .frame(maxWidth: .infinity)
                                     .padding()
@@ -234,13 +234,13 @@ private struct UploadRow: View {
             .frame(width: 24)
 
             Text("Photo \(index)")
-                .font(.subheadline)
+                .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(Color.sunText)
 
             Spacer()
 
             Text(state.status.label)
-                .font(.caption)
+                .font(.system(.caption, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         }
         .padding(12)

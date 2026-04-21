@@ -93,25 +93,25 @@ struct TripBottomSheetView: View {
                     if let type = item.type {
                         Image(systemName: type.sfSymbol)
                             .foregroundStyle(type.color)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                     }
                     Text(item.name)
-                        .font(.subheadline.weight(.medium))
+                        .font(.system(.subheadline, design: .serif, weight: .medium))
                         .foregroundStyle(Color.sunText)
                         .lineLimit(1)
                 } else {
                     Text("\(items.count) items")
-                        .font(.subheadline.weight(.medium))
+                        .font(.system(.subheadline, design: .serif, weight: .medium))
                         .foregroundStyle(Color.sunText)
                     Text("\(mappedCount) mapped")
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 
                 Spacer()
 
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
-                    .font(.caption)
+                    .font(.system(.caption, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             }
             .padding(.horizontal, 16)
@@ -128,19 +128,19 @@ struct TripBottomSheetView: View {
                 if let type = item.type {
                     Image(systemName: type.sfSymbol)
                         .foregroundStyle(type.color)
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .frame(width: 20)
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.name)
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunText)
                         .lineLimit(1)
 
                     if !item.legCity.isEmpty {
                         Text(item.legCity)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                     }
                 }
@@ -150,7 +150,7 @@ struct TripBottomSheetView: View {
                 if let loc = userLocation, let lat = item.latitude, let lon = item.longitude {
                     let dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
                     Text(formatDistance(dist))
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
 

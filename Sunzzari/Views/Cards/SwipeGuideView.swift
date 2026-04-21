@@ -67,6 +67,8 @@ struct SwipeGuideView: View {
             Color.sunBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                SerifNavHeader("Swipe Guide")
+
                 // Person filter pills
                 HStack(spacing: 8) {
                     filterPill("All",   active: personFilter == .all)   { personFilter = .all }
@@ -89,10 +91,7 @@ struct SwipeGuideView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .navigationTitle("Swipe Guide")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color.sunSurface, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     @ViewBuilder

@@ -8,7 +8,7 @@ struct TripTypeLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Filter type")
-                .font(.caption2.weight(.semibold))
+                .font(.system(.caption2, design: .serif, weight: .semibold))
                 .textCase(.uppercase)
                 .foregroundStyle(Color.sunSecondary)
 
@@ -40,7 +40,7 @@ struct TripTypeLegend: View {
                         .frame(width: 30, height: 30)
 
                         Text(type.rawValue)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .fontWeight(isActive ? .semibold : .medium)
                     }
                     .foregroundStyle(Color.sunText)
@@ -54,7 +54,7 @@ struct TripTypeLegend: View {
                     activeTypes.removeAll()
                 } label: {
                     Text("Clear")
-                        .font(.caption2.weight(.medium))
+                        .font(.system(.caption2, design: .serif, weight: .medium))
                         .foregroundStyle(Color.sunAccent)
                         .underline()
                 }

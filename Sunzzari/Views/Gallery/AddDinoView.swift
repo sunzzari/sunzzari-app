@@ -39,7 +39,7 @@ struct AddDinoView: View {
                                             .font(.system(size: 40, design: .serif))
                                             .foregroundStyle(Color.sunAccent)
                                         Text("Tap to choose a photo")
-                                            .font(.subheadline)
+                                            .font(.system(.subheadline, design: .serif))
                                             .foregroundStyle(Color.sunSecondary)
                                     }
                                 }
@@ -57,7 +57,7 @@ struct AddDinoView: View {
                         // Name field
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Name", systemImage: "textformat")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                             TextField("e.g. Dino at Sunset", text: $name)
                                 .padding()
@@ -69,7 +69,7 @@ struct AddDinoView: View {
                         // Tags
                         VStack(alignment: .leading, spacing: 12) {
                             Label("Tags", systemImage: "tag")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(.caption, design: .serif, weight: .semibold))
                                 .foregroundStyle(Color.sunSecondary)
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                                 ForEach(DinosaurPhoto.Tag.allCases, id: \.self) { tag in
@@ -84,7 +84,7 @@ struct AddDinoView: View {
                                         HStack(spacing: 6) {
                                             Text(tag.emoji)
                                             Text(tag.rawValue)
-                                                .font(.subheadline.weight(.medium))
+                                                .font(.system(.subheadline, design: .serif, weight: .medium))
                                         }
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
@@ -115,7 +115,7 @@ struct AddDinoView: View {
 
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(.caption)
+                                .font(.system(.caption, design: .serif))
                                 .foregroundStyle(.red)
                                 .multilineTextAlignment(.center)
                         }
@@ -129,7 +129,7 @@ struct AddDinoView: View {
                                     ProgressView().tint(.sunBackground)
                                 }
                                 Text(isUploading ? "Uploading..." : "Save Dino")
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .serif))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()

@@ -23,51 +23,49 @@ struct TripListView: View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
 
-            if isLoading && trips.isEmpty {
-                VStack(spacing: 16) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.sunSurface)
-                            .frame(height: 200)
+            VStack(spacing: 0) {
+                SerifNavHeader("Travel") {
+                    Menu {
+                        Toggle("Show completed", isOn: $showCompleted)
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundStyle(Color.sunAccent)
                     }
                 }
-                .padding()
-                .redacted(reason: .placeholder)
-            } else {
-                ScrollView {
-                    if isOffline {
-                        offlineBanner
-                    }
 
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(visibleTrips) { trip in
-                            NavigationLink(destination: TripDetailView(trip: trip)) {
-                                TripCard(trip: trip, gradient: gradients[abs(trip.id.hashValue) % gradients.count])
-                            }
-                            .buttonStyle(.plain)
+                if isLoading && trips.isEmpty {
+                    VStack(spacing: 16) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.sunSurface)
+                                .frame(height: 200)
                         }
                     }
                     .padding()
-                }
-                .refreshable {
-                    await loadTrips(force: true)
+                    .redacted(reason: .placeholder)
+                } else {
+                    ScrollView {
+                        if isOffline {
+                            offlineBanner
+                        }
+
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(visibleTrips) { trip in
+                                NavigationLink(destination: TripDetailView(trip: trip)) {
+                                    TripCard(trip: trip, gradient: gradients[abs(trip.id.hashValue) % gradients.count])
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding()
+                    }
+                    .refreshable {
+                        await loadTrips(force: true)
+                    }
                 }
             }
         }
-        .navigationTitle("Travel")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color.sunSurface, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Toggle("Show completed", isOn: $showCompleted)
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .foregroundStyle(Color.sunAccent)
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             await loadTrips()
         }
@@ -78,7 +76,7 @@ struct TripListView: View {
             Image(systemName: "wifi.slash")
             Text("Viewing cached data")
         }
-        .font(.caption)
+        .font(.system(.caption, design: .serif))
         .foregroundStyle(Color.sunBackground)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -143,7 +141,7 @@ private struct TripCard: View {
                 // Status badge
                 if let status = trip.status {
                     Text(status.rawValue)
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(.caption2, design: .serif, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -153,7 +151,7 @@ private struct TripCard: View {
 
                 // Trip name
                 Text(trip.name)
-                    .font(.title3.weight(.bold))
+                    .font(.system(.title3, design: .serif, weight: .bold))
                     .fontDesign(.serif)
                     .foregroundStyle(.white)
                     .lineLimit(2)
@@ -162,12 +160,12 @@ private struct TripCard: View {
                 HStack(spacing: 8) {
                     if !trip.location.isEmpty {
                         Text(trip.location)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .foregroundStyle(.white.opacity(0.7))
                     }
                     if !trip.dateRangeDisplay.isEmpty {
                         Text(trip.dateRangeDisplay)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .foregroundStyle(.white.opacity(0.5))
                     }
                 }

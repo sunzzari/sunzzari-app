@@ -59,7 +59,7 @@ struct StatusView: View {
                         Image(systemName: "exclamationmark.triangle")
                             .foregroundStyle(Color.sunAccent)
                         Text(error)
-                            .font(.caption)
+                            .font(.system(.caption, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
                             .multilineTextAlignment(.center)
                     }
@@ -136,7 +136,7 @@ struct StatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Title
             HStack(spacing: 6) {
-                Text(emoji).font(.title3)
+                Text(emoji).font(.system(.title3, design: .serif))
                 Text(label)
                     .font(.system(size: 10, weight: .medium, design: .serif))
                     .foregroundStyle(Color.sunSecondary)

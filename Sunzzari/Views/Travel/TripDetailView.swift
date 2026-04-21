@@ -176,7 +176,7 @@ struct TripDetailView: View {
                     Image(systemName: "wifi.slash")
                     Text("Viewing cached data")
                 }
-                .font(.caption)
+                .font(.system(.caption, design: .serif))
                 .foregroundStyle(Color.sunBackground)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
@@ -232,7 +232,7 @@ struct TripDetailView: View {
     private func mapButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.caption)
+                .font(.system(.caption, design: .serif))
                 .foregroundStyle(Color.sunText)
                 .frame(width: 36, height: 36)
                 .background(Color.sunSurface.opacity(0.9))

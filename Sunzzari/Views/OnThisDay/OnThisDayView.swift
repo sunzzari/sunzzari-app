@@ -12,23 +12,26 @@ struct OnThisDayView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                if isLoading {
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            ForEach(0..<4, id: \.self) { _ in
-                                SkeletonEntryCard().padding(.horizontal, 16)
+                VStack(spacing: 0) {
+                    SerifNavHeader("On This Day", showsBack: false)
+
+                    if isLoading {
+                        ScrollView {
+                            VStack(spacing: 12) {
+                                ForEach(0..<4, id: \.self) { _ in
+                                    SkeletonEntryCard().padding(.horizontal, 16)
+                                }
                             }
+                            .padding(.vertical, 16)
                         }
-                        .padding(.vertical, 16)
-                    }
-                } else if todaysMemories.isEmpty {
-                    EmptyStateView(
-                        systemImage: "calendar.badge.clock",
-                        title: "Nothing on this day yet",
-                        subtitle: "Add a memory for today and it will appear here each year."
-                    )
-                } else {
-                    List {
+                    } else if todaysMemories.isEmpty {
+                        EmptyStateView(
+                            systemImage: "calendar.badge.clock",
+                            title: "Nothing on this day yet",
+                            subtitle: "Add a memory for today and it will appear here each year."
+                        )
+                    } else {
+                        List {
                         Section {
                             ForEach(todaysMemories.sorted { $0.date > $1.date }) { memory in
                                 MemoryCardView(memory: memory)
@@ -63,13 +66,12 @@ struct OnThisDayView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .refreshable { await load(force: true) }
+                    }
                 }
 
                 addButton
             }
-            .navigationTitle("On This Day")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(isPresented: $showAddMemory, onDismiss: { Task { await load() } }) {
             AddMemoryView()
@@ -91,10 +93,10 @@ struct OnThisDayView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(Date().formatted(.dateTime.weekday(.wide)))
-                    .font(.caption)
+                    .font(.system(.caption, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                 Text(Date().formatted(.dateTime.month(.wide).day()))
-                    .font(.title3.weight(.bold))
+                    .font(.system(.title3, design: .serif, weight: .bold))
                     .foregroundStyle(Color.sunAccent)
             }
             Spacer()
@@ -118,7 +120,7 @@ struct OnThisDayView: View {
                 Spacer()
                 Button { showAddMemory = true } label: {
                     Image(systemName: "plus")
-                        .font(.title2.weight(.semibold))
+                        .font(.system(.title2, design: .serif, weight: .semibold))
                         .foregroundStyle(Color.sunBackground)
                         .frame(width: 56, height: 56)
                         .background(Color.sunAccent)

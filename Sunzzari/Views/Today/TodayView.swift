@@ -112,7 +112,7 @@ struct TodayView: View {
                             if !hasMemory && nudgeEntry == nil {
                                 Section {
                                     Text("Nothing to show today — check back later!")
-                                        .font(.subheadline)
+                                        .font(.system(.subheadline, design: .serif))
                                         .foregroundStyle(Color.sunSecondary)
                                         .padding(.vertical, 20)
                                         .frame(maxWidth: .infinity, alignment: .center)

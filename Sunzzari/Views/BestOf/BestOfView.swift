@@ -29,10 +29,12 @@ struct BestOfView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                if isLoading {
-                    skeletonView
-                } else {
-                    VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    SerifNavHeader("Best Of", showsBack: false)
+
+                    if isLoading {
+                        skeletonView
+                    } else {
                         categoryFilter.padding(.vertical, 10)
                         Color.white.opacity(0.1).frame(height: 0.5)
                         entryList
@@ -41,9 +43,7 @@ struct BestOfView: View {
 
                 if selectedEntry == nil { fab }
             }
-            .navigationTitle("Best Of")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .overlay {
             if let entry = selectedEntry {
@@ -109,7 +109,7 @@ struct BestOfView: View {
                 let current = entriesFor(year: currentYear)
                 if current.isEmpty {
                     Text("Nothing yet for 2026 — add your first entry!")
-                        .font(.subheadline)
+                        .font(.system(size: 15, weight: .regular, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 20)
@@ -127,7 +127,7 @@ struct BestOfView: View {
                         let yearEntries = entriesFor(year: year)
                         if yearEntries.isEmpty {
                             Text("No entries in this category")
-                                .font(.subheadline)
+                                .font(.system(size: 15, weight: .regular, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                                 .listRowBackground(Color.sunBackground)
                                 .listRowSeparator(.hidden)
@@ -269,7 +269,7 @@ struct BestOfView: View {
                 Spacer()
                 Button { showAddEntry = true } label: {
                     Image(systemName: "plus")
-                        .font(.title2.weight(.semibold))
+                        .font(.system(.title2, design: .serif, weight: .semibold))
                         .foregroundStyle(Color.sunBackground)
                         .frame(width: 56, height: 56)
                         .background(Color.sunAccent)

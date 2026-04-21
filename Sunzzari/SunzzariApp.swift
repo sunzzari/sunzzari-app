@@ -38,11 +38,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
         navAppearance.backgroundColor = UIColor(red: 0x1F/255, green: 0x29/255, blue: 0x37/255, alpha: 1) // sunSurface #1F2937
-        navAppearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-        // New York serif via .withDesign(.serif) on the system large title font descriptor
-        let serifDescriptor = UIFont.systemFont(ofSize: 34, weight: .bold).fontDescriptor.withDesign(.serif)
+        let serifInline = UIFont.systemFont(ofSize: 17, weight: .semibold).fontDescriptor.withDesign(.serif)
+        var inlineAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
+        if let si = serifInline { inlineAttrs[.font] = UIFont(descriptor: si, size: 17) }
+        navAppearance.titleTextAttributes = inlineAttrs
+        let serifLarge = UIFont.systemFont(ofSize: 34, weight: .bold).fontDescriptor.withDesign(.serif)
         var largeTitleAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
-        if let sd = serifDescriptor { largeTitleAttrs[.font] = UIFont(descriptor: sd, size: 34) }
+        if let sd = serifLarge { largeTitleAttrs[.font] = UIFont(descriptor: sd, size: 34) }
         navAppearance.largeTitleTextAttributes = largeTitleAttrs
         UINavigationBar.appearance().standardAppearance   = navAppearance
         UINavigationBar.appearance().compactAppearance    = navAppearance

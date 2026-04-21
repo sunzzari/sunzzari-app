@@ -519,7 +519,7 @@ struct RestaurantMapView: View {
                 let loc = [r.location, r.neighborhood].filter { !$0.isEmpty }.joined(separator: " · ")
                 if !loc.isEmpty {
                     Text(loc)
-                        .font(.subheadline)
+                        .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                 }
             }

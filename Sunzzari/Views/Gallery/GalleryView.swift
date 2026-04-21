@@ -22,16 +22,18 @@ struct GalleryView: View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
 
-            if isLoading {
-                LoadingView()
-            } else if photos.isEmpty {
-                EmptyStateView(
-                    systemImage: "photo.badge.plus",
-                    title: "No dinosaurs yet",
-                    subtitle: "Add your first dino photo to start the collection!"
-                )
-            } else {
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                SerifNavHeader("Gallery")
+
+                if isLoading {
+                    LoadingView()
+                } else if photos.isEmpty {
+                    EmptyStateView(
+                        systemImage: "photo.badge.plus",
+                        title: "No dinosaurs yet",
+                        subtitle: "Add your first dino photo to start the collection!"
+                    )
+                } else {
                     // Filter bar
                     HStack(spacing: 8) {
                         Button {
@@ -72,49 +74,47 @@ struct GalleryView: View {
                         .padding(4)
                     }
                     .refreshable { await loadPhotos(force: true) }
-                    } // VStack
-                }
-
-                // FABs
-                VStack {
-                    Spacer()
-                    HStack {
-                        // Bulk import button
-                        Button {
-                            showBulkImport = true
-                        } label: {
-                            Image(systemName: "photo.stack.fill")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(Color.sunAccent)
-                                .frame(width: 48, height: 48)
-                                .background(Color.sunSurface)
-                                .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
-                        }
-                        .padding(.leading, 20)
-
-                        Spacer()
-
-                        // Single add button
-                        Button {
-                            showAddDino = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(Color.sunBackground)
-                                .frame(width: 56, height: 56)
-                                .background(Color.sunAccent)
-                                .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                        }
-                        .padding(.trailing, 20)
-                    }
-                    .padding(.bottom, 8)
                 }
             }
-        .navigationTitle("Gallery")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+
+            // FABs
+            VStack {
+                Spacer()
+                HStack {
+                    // Bulk import button
+                    Button {
+                        showBulkImport = true
+                    } label: {
+                        Image(systemName: "photo.stack.fill")
+                            .font(.system(.title3, design: .serif, weight: .semibold))
+                            .foregroundStyle(Color.sunAccent)
+                            .frame(width: 48, height: 48)
+                            .background(Color.sunSurface)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
+                    }
+                    .padding(.leading, 20)
+
+                    Spacer()
+
+                    // Single add button
+                    Button {
+                        showAddDino = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(.title2, design: .serif, weight: .semibold))
+                            .foregroundStyle(Color.sunBackground)
+                            .frame(width: 56, height: 56)
+                            .background(Color.sunAccent)
+                            .clipShape(Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    }
+                    .padding(.trailing, 20)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(item: $selectedPhoto) { photo in
             DinoDetailView(photo: photo, onFavoriteToggle: { toggleFavorite($0) }, onEdit: { updated in
                 if let idx = photos.firstIndex(where: { $0.id == updated.id }) {
@@ -198,7 +198,7 @@ private struct GalleryCell: View {
                 onFavoriteTap()
             } label: {
                 Image(systemName: photo.isFavorite ? "star.fill" : "star")
-                    .font(.caption.weight(.bold))
+                    .font(.system(.caption, design: .serif, weight: .bold))
                     .foregroundStyle(photo.isFavorite ? Color.sunAccent : Color.white.opacity(0.8))
                     .padding(6)
                     .background(.ultraThinMaterial, in: Circle())

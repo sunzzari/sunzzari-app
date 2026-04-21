@@ -26,7 +26,7 @@ struct DinoDetailView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             HStack {
                                 Text(photo.name)
-                                    .font(.title2.weight(.bold))
+                                    .font(.system(.title2, design: .serif, weight: .bold))
                                     .foregroundStyle(Color.sunText)
                                 Spacer()
                                 Button {
@@ -34,7 +34,7 @@ struct DinoDetailView: View {
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 } label: {
                                     Image(systemName: photo.isFavorite ? "star.fill" : "star")
-                                        .font(.title2)
+                                        .font(.system(.title2, design: .serif))
                                         .foregroundStyle(Color.sunAccent)
                                         .animation(.spring(duration: 0.3), value: photo.isFavorite)
                                 }
@@ -42,7 +42,7 @@ struct DinoDetailView: View {
 
                             if let date = photo.dateAdded {
                                 Label(date.formatted(date: .long, time: .omitted), systemImage: "calendar")
-                                    .font(.subheadline)
+                                    .font(.system(.subheadline, design: .serif))
                                     .foregroundStyle(Color.sunSecondary)
                             }
 
@@ -54,7 +54,7 @@ struct DinoDetailView: View {
                                                 Text(tag.emoji)
                                                 Text(tag.rawValue)
                                             }
-                                            .font(.caption.weight(.semibold))
+                                            .font(.system(.caption, design: .serif, weight: .semibold))
                                             .foregroundStyle(Color(hex: tag.color))
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 5)

@@ -7,34 +7,36 @@ struct RestaurantHubView: View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
 
-            List {
-                NavigationLink(destination: MyRestaurantsView()) {
-                    hubCell(icon: "fork.knife", title: "My Restaurants", subtitle: "Browse & filter your guide")
-                }
-                .listRowBackground(Color.sunSurface)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+            VStack(spacing: 0) {
+                SerifNavHeader("Restaurants")
 
-                Button { showAdd = true } label: {
-                    hubCell(icon: "plus.circle", title: "Add Restaurant", subtitle: "Log a new spot")
+                List {
+                    NavigationLink(destination: MyRestaurantsView()) {
+                        hubCell(icon: "fork.knife", title: "My Restaurants", subtitle: "Browse & filter your guide")
+                    }
+                    .listRowBackground(Color.sunSurface)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+
+                    Button { showAdd = true } label: {
+                        hubCell(icon: "plus.circle", title: "Add Restaurant", subtitle: "Log a new spot")
+                    }
+                    .listRowBackground(Color.sunSurface)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 }
-                .listRowBackground(Color.sunSurface)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Restaurants")
-        .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showAdd) { AddRestaurantView() }
     }
 
     private func hubCell(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.title2)
+                .font(.system(.title2, design: .serif))
                 .foregroundStyle(Color.sunAccent)
                 .frame(width: 36)
 
@@ -43,7 +45,7 @@ struct RestaurantHubView: View {
                     .font(.system(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunText)
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(.system(size: 15, weight: .regular, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             }
 

@@ -6,40 +6,41 @@ struct CardsView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        NavigationLink(destination: SwipeGuideView()) {
-                            hubCell(title: "Swipe Guide",
-                                    subtitle: "Which card earns most",
-                                    icon: "creditcard.fill",
-                                    color: "#FBBF24")
-                        }
-                        .buttonStyle(.plain)
+                VStack(spacing: 0) {
+                    SerifNavHeader("Cards", showsBack: false)
 
-                        NavigationLink(destination: CreditsListView()) {
-                            hubCell(title: "Credits Tracker",
-                                    subtitle: "Track your credits",
-                                    icon: "checkmark.seal.fill",
-                                    color: "#34D399")
-                        }
-                        .buttonStyle(.plain)
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            NavigationLink(destination: SwipeGuideView()) {
+                                hubCell(title: "Swipe Guide",
+                                        subtitle: "Which card earns most",
+                                        icon: "creditcard.fill",
+                                        color: "#FBBF24")
+                            }
+                            .buttonStyle(.plain)
 
-                        NavigationLink(destination: BenefitsView()) {
-                            hubCell(title: "Benefits & Status",
-                                    subtitle: "Lounges, hotel & rental status",
-                                    icon: "star.circle.fill",
-                                    color: "#A78BFA")
+                            NavigationLink(destination: CreditsListView()) {
+                                hubCell(title: "Credits Tracker",
+                                        subtitle: "Track your credits",
+                                        icon: "checkmark.seal.fill",
+                                        color: "#34D399")
+                            }
+                            .buttonStyle(.plain)
+
+                            NavigationLink(destination: BenefitsView()) {
+                                hubCell(title: "Benefits & Status",
+                                        subtitle: "Lounges, hotel & rental status",
+                                        icon: "star.circle.fill",
+                                        color: "#A78BFA")
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 20)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 20)
                 }
             }
-            .navigationTitle("Cards")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(Color.sunSurface, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

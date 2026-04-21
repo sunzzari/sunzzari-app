@@ -18,7 +18,7 @@ struct BatterySlider: View {
             // Emoji + percentage row
             HStack {
                 Text(moodEmoji)
-                    .font(.title3)
+                    .font(.system(.title3, design: .serif))
                 Spacer()
             }
 

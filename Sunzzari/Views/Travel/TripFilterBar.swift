@@ -22,16 +22,16 @@ struct TripFilterBar: View {
                 // Search
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                     TextField("Search", text: $searchQuery)
-                        .font(.caption)
+                        .font(.system(.caption, design: .serif))
                         .foregroundStyle(Color.sunText)
                         .frame(width: searchQuery.isEmpty ? 60 : 120)
                     if !searchQuery.isEmpty {
                         Button { searchQuery = "" } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.caption2)
+                                .font(.system(.caption2, design: .serif))
                                 .foregroundStyle(Color.sunSecondary)
                         }
                     }
@@ -88,7 +88,7 @@ struct TripFilterBar: View {
                         nearMeActive = false
                     } label: {
                         Text("Clear")
-                            .font(.caption2.weight(.medium))
+                            .font(.system(.caption2, design: .serif, weight: .medium))
                             .foregroundStyle(Color.sunAccent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -106,10 +106,10 @@ struct TripFilterBar: View {
             HStack(spacing: 4) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .serif))
                 }
                 Text(label)
-                    .font(.caption2.weight(.medium))
+                    .font(.system(.caption2, design: .serif, weight: .medium))
             }
             .foregroundStyle(isActive ? Color.sunBackground : Color.sunText)
             .padding(.horizontal, 10)
