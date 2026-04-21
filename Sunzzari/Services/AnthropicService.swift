@@ -144,6 +144,9 @@ final class AnthropicService: @unchecked Sendable {
     /// restaurants from the passed-in list. Empty array means no match. Throws on
     /// network/parse failure so callers can surface an inline error.
     func searchRestaurants(query: String, restaurants: [Restaurant]) async throws -> [String] {
+        // Note: `comments` field intentionally omitted — it's the most personal column
+        // (private notes about friends, occasions) and adds minimal ranking signal vs
+        // the structured fields below. Keep personal notes on-device.
         let compact: [[String: Any]] = restaurants.map { r in
             var obj: [String: Any] = [
                 "id": r.id,
@@ -152,8 +155,7 @@ final class AnthropicService: @unchecked Sendable {
                 "location": r.location,
                 "neighborhood": r.neighborhood,
                 "goodFor": r.goodFor,
-                "topDishes": r.topDishes,
-                "comments": r.comments
+                "topDishes": r.topDishes
             ]
             if let pref = r.preference?.rawValue { obj["preference"] = pref }
             return obj
@@ -195,12 +197,26 @@ final class AnthropicService: @unchecked Sendable {
     }
 
     private func parseIDArray(_ text: String) throws -> [String] {
-        let start = text.firstIndex(of: "[")
-        let end = text.lastIndex(of: "]")
-        guard let s = start, let e = end, s < e else {
+        // Strip common wrappers first (markdown code fences, leading/trailing whitespace).
+        let stripped = text
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Prefer strict parse on the cleaned text — catches well-formed responses
+        // even when they contain stray brackets in surrounding prose.
+        if let data = stripped.data(using: .utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            return arr
+        }
+
+        // Fallback: extract first [...] span and try again.
+        guard let s = stripped.firstIndex(of: "["),
+              let e = stripped.lastIndex(of: "]"),
+              s < e else {
             throw AnthropicError.apiError("Claude did not return a JSON array")
         }
-        let jsonStr = String(text[s...e])
+        let jsonStr = String(stripped[s...e])
         guard let data = jsonStr.data(using: .utf8),
               let arr = try? JSONSerialization.jsonObject(with: data) as? [String]
         else {

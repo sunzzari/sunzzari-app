@@ -46,11 +46,17 @@ struct MyRestaurantsView: View {
             let gfOK = selectedGoodFor.isEmpty || !selectedGoodFor.isDisjoint(with: r.goodFor)
             return beenOK && prefOK && locOK && gfOK
         }
-        // When Claude search is active, preserve its ranking and intersect with chip filters
+        // When Claude search is active, preserve its ranking and intersect with chip filters.
+        // Dedupe as we go — Claude occasionally emits duplicate IDs which would render
+        // as duplicate cards.
         guard let ids = claudeResults else { return chipFiltered }
         let chipSet = Set(chipFiltered.map(\.id))
         let byId = Dictionary(uniqueKeysWithValues: restaurants.map { ($0.id, $0) })
-        return ids.compactMap { chipSet.contains($0) ? byId[$0] : nil }
+        var seen = Set<String>()
+        return ids.compactMap { id in
+            guard chipSet.contains(id), seen.insert(id).inserted else { return nil }
+            return byId[id]
+        }
     }
 
     var body: some View {

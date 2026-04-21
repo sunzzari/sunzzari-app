@@ -18,6 +18,10 @@ struct SunzzariApp: App {
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    // Buffer for cold-launch notification taps — ContentView drains this on first task
+    // if the post fired before its .onReceive was attached.
+    static var pendingWeeklyBestOfDeepLink = false
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -117,6 +121,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         if response.notification.request.content.userInfo["destination"] as? String == "weekly-bestof" {
+            AppDelegate.pendingWeeklyBestOfDeepLink = true
             NotificationCenter.default.post(name: .openWeeklyBestOf, object: nil)
         }
         completionHandler()

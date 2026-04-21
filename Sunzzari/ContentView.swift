@@ -77,6 +77,12 @@ struct ContentView: View {
             if AppIdentity.current == nil {
                 showIdentitySetup = true
             }
+            // Drain cold-launch deep-link buffer — handles the race where didReceive
+            // posted before onReceive was attached (notification tapped from killed state).
+            if AppDelegate.pendingWeeklyBestOfDeepLink {
+                AppDelegate.pendingWeeklyBestOfDeepLink = false
+                showWeeklyBestOf = true
+            }
             await BoopService.shared.checkForBoops()
             await StatusService.shared.checkForStatus()
             await LocationService.shared.requestAlwaysAuthorization()
