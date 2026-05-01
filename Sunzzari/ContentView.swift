@@ -89,8 +89,12 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                UNUserNotificationCenter.current().setBadgeCount(0)
                 Task {
+                    // Sync badge to notifications still in iOS Notification Center.
+                    // Replaces the previous setBadgeCount(0) which wiped the count
+                    // every time the app opened, so users never saw it accumulate.
+                    let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+                    UNUserNotificationCenter.current().setBadgeCount(delivered.count)
                     await BoopService.shared.checkForBoops()
                     await StatusService.shared.checkForStatus()
                     await DailySetupService.shared.runDailySetup()
