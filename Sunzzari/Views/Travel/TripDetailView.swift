@@ -2,6 +2,17 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
+enum TripViewMode: String, CaseIterable, Identifiable {
+    case mapList, day
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .mapList: return "Map"
+        case .day:     return "Day"
+        }
+    }
+}
+
 struct TripDetailView: View {
     let trip: Trip
 
@@ -11,6 +22,9 @@ struct TripDetailView: View {
     @State private var items: [TripItem] = []
     @State private var isLoading = true
     @State private var isOffline = false
+
+    // View mode
+    @State private var viewMode: TripViewMode = .mapList
 
     // Map
     @State private var selectedID: String?
@@ -31,6 +45,10 @@ struct TripDetailView: View {
 
     // Detail sheet
     @State private var detailItem: TripItem?
+
+    private var dayBundles: [DayBundle] {
+        DayGrouper.group(items: items, trip: trip)
+    }
 
     // MARK: - Computed
 
@@ -108,8 +126,19 @@ struct TripDetailView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color.sunSurface, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("View", selection: $viewMode) {
+                    ForEach(TripViewMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 240)
+            }
             ToolbarItem(placement: .topBarTrailing) {
-                TripSortPicker(sortMode: $sortMode, nearMeActive: nearMeActive)
+                if viewMode == .mapList {
+                    TripSortPicker(sortMode: $sortMode, nearMeActive: nearMeActive)
+                }
             }
         }
         .sheet(item: $detailItem) { item in
@@ -121,10 +150,29 @@ struct TripDetailView: View {
         .onChange(of: nearMeActive) { _, active in
             if active { requestUserLocation() }
         }
+        .animation(.easeInOut(duration: 0.2), value: viewMode)
     }
 
     @ViewBuilder
     private var mainContent: some View {
+        switch viewMode {
+        case .mapList:
+            mapListContent
+                .transition(.opacity)
+        case .day:
+            DayDetailView(
+                trip: trip,
+                days: dayBundles,
+                selectedID: $selectedID,
+                userLocation: userLocation,
+                onSelect: selectItem
+            )
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var mapListContent: some View {
         if sizeClass == .regular {
             // iPad: sidebar + map
             HStack(spacing: 0) {

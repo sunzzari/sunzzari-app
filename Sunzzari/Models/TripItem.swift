@@ -12,7 +12,9 @@ struct TripItem: Identifiable, Codable {
     var venue: String
     var notes: String
     var date: String?
+    var dateEnd: String?
     var assignedToDate: String?
+    var assignedToDateEnd: String?
     var reservationRequired: Bool
     var tripRelationID: String?
     var latitude: Double?
@@ -21,6 +23,7 @@ struct TripItem: Identifiable, Codable {
     var hasCoordinates: Bool { latitude != nil && longitude != nil }
 
     var displayDate: String? { assignedToDate ?? date }
+    var displayDateEnd: String? { assignedToDateEnd ?? dateEnd }
 
     var displayDateParsed: Date? {
         guard let str = displayDate else { return nil }

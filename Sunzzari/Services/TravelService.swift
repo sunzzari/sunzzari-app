@@ -371,7 +371,9 @@ final class TravelService: @unchecked Sendable {
                 venue:               extractRichText(from: props["Provider / Venue"]) ?? "",
                 notes:               extractRichText(from: props["Notes"]) ?? "",
                 date:                extractDateString(from: props["Date"]),
+                dateEnd:             extractDateEndString(from: props["Date"]),
                 assignedToDate:      extractDateString(from: props["Assigned to Date"]),
+                assignedToDateEnd:   extractDateEndString(from: props["Assigned to Date"]),
                 reservationRequired: checkbox,
                 tripRelationID:      linkedId
             )
@@ -400,5 +402,9 @@ final class TravelService: @unchecked Sendable {
 
     private func extractDateString(from prop: Any?) -> String? {
         (prop as? [String: Any]).flatMap { ($0["date"] as? [String: Any])?["start"] as? String }
+    }
+
+    private func extractDateEndString(from prop: Any?) -> String? {
+        (prop as? [String: Any]).flatMap { ($0["date"] as? [String: Any])?["end"] as? String }
     }
 }

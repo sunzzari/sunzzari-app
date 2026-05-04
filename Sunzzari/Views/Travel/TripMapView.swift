@@ -35,14 +35,26 @@ struct TripMKMap: UIViewRepresentable {
     @Binding var selectedID: String?
     let bridge: TripMapBridge
 
+    /// When non-empty, renders a dashed polyline through these annotations in array order.
+    /// Used to show the day's confirmed-stop route in Today/Read modes.
+    var routeAnnotations: [TripItemAnnotation] = []
+
+    /// Controls map gesture availability. Set false for non-interactive thumbnails (Read mode).
+    var interactive: Bool = true
+
     func makeCoordinator() -> Coordinator { Coordinator(selectedID: $selectedID) }
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
-        map.showsUserLocation = true
+        map.showsUserLocation = interactive
         map.mapType = .standard
         map.overrideUserInterfaceStyle = .dark
+        map.isZoomEnabled = interactive
+        map.isScrollEnabled = interactive
+        map.isPitchEnabled = interactive
+        map.isRotateEnabled = interactive
+        map.isUserInteractionEnabled = interactive
         // Default to world view, will fit to pins when they load
         map.setRegion(
             MKCoordinateRegion(
@@ -78,26 +90,43 @@ struct TripMKMap: UIViewRepresentable {
         let toAdd = annotations.filter { !existing.contains($0.item.id) }
         if !toAdd.isEmpty {
             map.addAnnotations(toAdd)
+        }
 
-            // Fit to all pins on first load
-            if !coordinator.hasFittedInitially {
-                coordinator.hasFittedInitially = true
-                coordinator.lastFilterKey = filterKey
-                let anns = map.annotations.filter { !($0 is MKUserLocation) }
-                if !anns.isEmpty {
-                    DispatchQueue.main.async { map.showAnnotations(anns, animated: true) }
-                }
+        // Sync polyline overlay only when the route actually changes. Without
+        // this gate, every selection-change-driven updateUIView would tear down
+        // and recreate the polyline, flickering the dashed route on every tap.
+        let routeKey = routeAnnotations.map(\.item.id).joined(separator: ",")
+        if routeKey != coordinator.lastRouteKey {
+            coordinator.lastRouteKey = routeKey
+            let routeCoords = routeAnnotations.compactMap { $0.coordinate }
+                .filter { CLLocationCoordinate2DIsValid($0) }
+            let existingPolylines = map.overlays.compactMap { $0 as? MKPolyline }
+            map.removeOverlays(existingPolylines)
+            if routeCoords.count >= 2 {
+                let line = MKPolyline(coordinates: routeCoords, count: routeCoords.count)
+                map.addOverlay(line)
             }
         }
 
-        // Re-fit when filter changes
-        if filterKey != coordinator.lastFilterKey {
+        // Re-fit when filter changes, on first load, OR when annotations grow
+        // AND the user hasn't manually panned/zoomed yet. The user-interaction
+        // flag is set in regionWillChangeAnimated when animated=false (gesture-
+        // driven). Programmatic showAnnotations(animated: true) doesn't trip it.
+        // This handles the cached-hotel-only -> background-geocoded-rest case
+        // for ANY initial cached count, without yanking the user's manual zoom.
+        let filterChanged = filterKey != coordinator.lastFilterKey
+        let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
+        let annotationsGrew = annotations.count > coordinator.lastAnnotationCount
+        let allowAutoRefit = !coordinator.userHasInteracted
+        if firstLoad || filterChanged || (annotationsGrew && allowAutoRefit) {
+            coordinator.hasFittedInitially = true
             coordinator.lastFilterKey = filterKey
             DispatchQueue.main.async {
                 let anns = map.annotations.filter { !($0 is MKUserLocation) }
                 if !anns.isEmpty { map.showAnnotations(anns, animated: true) }
             }
         }
+        coordinator.lastAnnotationCount = annotations.count
 
         // Sync selection
         if let id = selectedID {
@@ -120,9 +149,23 @@ struct TripMKMap: UIViewRepresentable {
         var isUpdating = false
         var hasFittedInitially = false
         var lastFilterKey: String = ""
+        var lastAnnotationCount = 0
+        var lastRouteKey: String = ""
+        var userHasInteracted = false
 
         init(selectedID: Binding<String?>) {
             _selectedID = selectedID
+        }
+
+        // animated=false typically means a user gesture; programmatic
+        // setRegion / showAnnotations call with animated=true. The initial
+        // setRegion(animated: false) in makeUIView also fires this delegate
+        // before any user input, so we gate on hasFittedInitially: we only
+        // treat a region change as user interaction AFTER we've completed at
+        // least one programmatic auto-fit. Otherwise the first setRegion
+        // would lock out subsequent fits as background-geocoded pins arrive.
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            if !animated && hasFittedInitially { userHasInteracted = true }
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
@@ -150,8 +193,12 @@ struct TripMKMap: UIViewRepresentable {
             v.titleVisibility = .hidden
             v.subtitleVisibility = .hidden
 
+            // Color = STATUS (so confirmed/assigned/researching/shortlisted are visually distinct).
+            // Glyph = TYPE (so the icon still tells you flight vs. hotel vs. restaurant).
+            let status = ta.item.status ?? .researching
+            v.markerTintColor = UIColor(Color(hex: status.colorHex))
+
             let type = ta.item.type ?? .other
-            v.markerTintColor = UIColor(Color(hex: type.colorHex))
             v.glyphImage = UIImage(systemName: type.sfSymbol)
 
             // Selected state: larger display priority
@@ -159,6 +206,15 @@ struct TripMKMap: UIViewRepresentable {
             v.displayPriority = isSelected ? .required : .defaultHigh
 
             return v
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+            let r = MKPolylineRenderer(polyline: line)
+            r.strokeColor = UIColor(Color.sunAccent).withAlphaComponent(0.7)
+            r.lineWidth = 2
+            r.lineDashPattern = [4, 4]
+            return r
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {

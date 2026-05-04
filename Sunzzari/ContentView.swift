@@ -94,7 +94,7 @@ struct ContentView: View {
                     // Replaces the previous setBadgeCount(0) which wiped the count
                     // every time the app opened, so users never saw it accumulate.
                     let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
-                    UNUserNotificationCenter.current().setBadgeCount(delivered.count)
+                    try? await UNUserNotificationCenter.current().setBadgeCount(delivered.count)
                     await BoopService.shared.checkForBoops()
                     await StatusService.shared.checkForStatus()
                     await DailySetupService.shared.runDailySetup()
