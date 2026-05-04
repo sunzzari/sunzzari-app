@@ -52,20 +52,22 @@ struct HubCardView: View {
                 startPoint: .bottom, endPoint: .top
             )
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .semibold, design: .serif))
-                    .tracking(1.2)
+                    .font(.system(size: 10, weight: .semibold, design: .serif))
+                    .tracking(1.0)
                     .foregroundStyle(.white.opacity(0.7))
                 Text(title)
-                    .font(.system(size: 28, weight: .bold, design: .serif))
+                    .font(.system(size: 20, weight: .bold, design: .serif))
                     .fontDesign(.serif)
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-            .padding(20)
+            .padding(14)
         }
         .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var symbolTile: some View {

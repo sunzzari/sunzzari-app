@@ -1,6 +1,11 @@
 import SwiftUI
 
 struct HubView: View {
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -10,9 +15,14 @@ struct HubView: View {
                     PageHeader("Hub")
 
                     ScrollView {
-                        VStack(spacing: 16) {
-                            NavigationLink(destination: RestaurantHubView()) {
-                                HubCardView(title: "Restaurants", subtitle: "My Guide", assetName: "hubRestaurants")
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            NavigationLink(destination: TravelView()) {
+                                HubCardView(title: "Travel", subtitle: "Our Trips", symbolName: "map.fill")
+                            }
+                            .buttonStyle(.plain)
+
+                            NavigationLink(destination: GalleryView()) {
+                                HubCardView(title: "Gallery", subtitle: "Our Memories", symbolName: "photo.stack.fill")
                             }
                             .buttonStyle(.plain)
 
@@ -21,18 +31,13 @@ struct HubView: View {
                             }
                             .buttonStyle(.plain)
 
+                            NavigationLink(destination: RestaurantHubView()) {
+                                HubCardView(title: "Restaurants", subtitle: "My Guide", assetName: "hubRestaurants")
+                            }
+                            .buttonStyle(.plain)
+
                             NavigationLink(destination: ActivitiesHubView()) {
                                 HubCardView(title: "Activities", subtitle: "Things To Do", assetName: "hubActivities")
-                            }
-                            .buttonStyle(.plain)
-
-                            NavigationLink(destination: TravelView()) {
-                                HubCardView(title: "Travel", subtitle: "Our Trips", symbolName: "map.fill")
-                            }
-                            .buttonStyle(.plain)
-
-                            NavigationLink(destination: GalleryView()) {
-                                HubCardView(title: "Gallery", subtitle: "Our Memories", symbolName: "photo.stack.fill")
                             }
                             .buttonStyle(.plain)
                         }
