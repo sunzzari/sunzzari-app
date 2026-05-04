@@ -319,12 +319,20 @@ final class StatusService: @unchecked Sendable {
             content.body = message
             content.sound = .default
             content.badge = NSNumber(value: currentBadge + 1)
+            let inboxID = "sunzzari-status-\(evID)"
             let req = UNNotificationRequest(
-                identifier: "sunzzari-status-\(evID)",
+                identifier: inboxID,
                 content: content,
                 trigger: nil
             )
             try? await UNUserNotificationCenter.current().add(req)
+
+            NotificationInboxService.shared.append(
+                id: inboxID,
+                type: .statusPrompt,
+                title: message,
+                subtitle: "Tap to update yours"
+            )
         }
     }
 

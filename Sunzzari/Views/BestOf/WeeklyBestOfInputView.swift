@@ -264,6 +264,11 @@ struct WeeklyBestOfInputView: View {
 
         if successCount == pending.count {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Mark this week's inbox entry as addressed (if one exists).
+            let cal = Calendar.current
+            let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+            let weekID = "sunzzari-weekly-bestof-\(comps.yearForWeekOfYear ?? 0)-\(comps.weekOfYear ?? 0)"
+            NotificationInboxService.shared.markRead(weekID)
             dismiss()
         } else {
             savedMessage = "Saved \(successCount) of \(pending.count)"

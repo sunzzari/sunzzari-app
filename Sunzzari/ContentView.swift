@@ -1,9 +1,11 @@
 import SwiftUI
+import UserNotifications
 
 struct ContentView: View {
     @State private var selectedTab = 0
     @State private var showIdentitySetup = false
     @State private var showWeeklyBestOf = false
+    @State private var showInbox = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -70,8 +72,25 @@ struct ContentView: View {
         .sheet(isPresented: $showWeeklyBestOf) {
             WeeklyBestOfInputView()
         }
+        .sheet(isPresented: $showInbox) {
+            NotificationInboxView { entry in
+                switch entry.type {
+                case .boop:
+                    break
+                case .statusPrompt:
+                    selectedTab = 2
+                case .thoughtAction:
+                    selectedTab = 1
+                case .weeklyBestOf:
+                    showWeeklyBestOf = true
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openWeeklyBestOf)) { _ in
             showWeeklyBestOf = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openInbox)) { _ in
+            showInbox = true
         }
         .task {
             if AppIdentity.current == nil {
@@ -85,21 +104,48 @@ struct ContentView: View {
             }
             await BoopService.shared.checkForBoops()
             await StatusService.shared.checkForStatus()
+            await ThoughtActionService.shared.checkForNewEntries()
+            await syncWeeklyBestOfFromDelivered()
             await LocationService.shared.requestAlwaysAuthorization()
+            await syncBadgeFromInbox()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
-                    // Sync badge to notifications still in iOS Notification Center.
-                    // Replaces the previous setBadgeCount(0) which wiped the count
-                    // every time the app opened, so users never saw it accumulate.
-                    let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
-                    try? await UNUserNotificationCenter.current().setBadgeCount(delivered.count)
                     await BoopService.shared.checkForBoops()
                     await StatusService.shared.checkForStatus()
+                    await ThoughtActionService.shared.checkForNewEntries()
+                    await syncWeeklyBestOfFromDelivered()
                     await DailySetupService.shared.runDailySetup()
+                    await syncBadgeFromInbox()
                 }
             }
         }
+    }
+
+    /// Drives the iOS app icon badge from the in-app inbox unread count.
+    /// Replaces Session 52's deliveredNotifications.count sync — closes the gap
+    /// where APNs pushes without aps.badge would not bump the count.
+    private func syncBadgeFromInbox() async {
+        let count = NotificationInboxService.shared.unreadCount
+        try? await UNUserNotificationCenter.current().setBadgeCount(count)
+    }
+
+    /// Recovery path: if the Sunday 8pm weekly notification fired while the app was
+    /// killed, willPresent never ran. On next foreground, scan delivered notifications
+    /// for the weekly identifier and append an inbox entry if not already present.
+    private func syncWeeklyBestOfFromDelivered() async {
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        let weekly = delivered.first { $0.request.identifier == "sunzzari-weekly-bestof" }
+        guard weekly != nil else { return }
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        let weekID = "sunzzari-weekly-bestof-\(comps.yearForWeekOfYear ?? 0)-\(comps.weekOfYear ?? 0)"
+        NotificationInboxService.shared.append(
+            id: weekID,
+            type: .weeklyBestOf,
+            title: "Weekly Best Of",
+            subtitle: "Any highlights from the week?"
+        )
     }
 }

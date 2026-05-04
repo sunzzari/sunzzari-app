@@ -82,12 +82,20 @@ final class BoopService: @unchecked Sendable {
             content.body = event.message
             content.sound = .default
             content.badge = NSNumber(value: currentBadge + 1)
+            let inboxID = "sunzzari-boop-\(event.id)"
             let req = UNNotificationRequest(
-                identifier: "sunzzari-boop-\(event.id)",
+                identifier: inboxID,
                 content: content,
                 trigger: nil // deliver immediately
             )
             try? await UNUserNotificationCenter.current().add(req)
+
+            NotificationInboxService.shared.append(
+                id: inboxID,
+                type: .boop,
+                title: "Boop! 💛",
+                subtitle: event.message
+            )
         }
     }
 }

@@ -108,13 +108,44 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        // Increment badge for remote pushes (local notifications set their own badge)
         let id = notification.request.identifier
+        let content = notification.request.content
+
+        // Increment badge for remote pushes (local notifications set their own badge)
         if !id.hasPrefix("sunzzari-boop-") && !id.hasPrefix("sunzzari-status-") {
             let current = UIApplication.shared.applicationIconBadgeNumber
             UNUserNotificationCenter.current().setBadgeCount(current + 1)
         }
+
+        // Mirror notification into the in-app inbox for foreground arrivals.
+        // BoopService and StatusService already append from their polling paths;
+        // this catches APNs deliveries that bypass polling.
+        if id.hasPrefix("sunzzari-boop-") {
+            NotificationInboxService.shared.append(
+                id: id, type: .boop, title: "Boop! 💛", subtitle: content.body
+            )
+        } else if id.hasPrefix("sunzzari-status-") {
+            NotificationInboxService.shared.append(
+                id: id, type: .statusPrompt, title: content.body, subtitle: "Tap to update yours"
+            )
+        } else if id == "sunzzari-weekly-bestof" {
+            NotificationInboxService.shared.append(
+                id: weeklyInboxID(), type: .weeklyBestOf,
+                title: "Weekly Best Of",
+                subtitle: "Any highlights from the week?"
+            )
+        }
+
         completionHandler([.banner, .sound])
+    }
+
+    /// Stable per-week ID so the same week's prompt only enters the inbox once.
+    private func weeklyInboxID() -> String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        let year = comps.yearForWeekOfYear ?? 0
+        let week = comps.weekOfYear ?? 0
+        return "sunzzari-weekly-bestof-\(year)-\(week)"
     }
 
     func userNotificationCenter(
