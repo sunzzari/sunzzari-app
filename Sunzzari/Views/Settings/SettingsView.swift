@@ -43,7 +43,7 @@ struct SettingsView: View {
                 Spacer()
 
                 // Footer note
-                Text("You can change this anytime in the Settings tab.")
+                Text("You can change this anytime under Settings.")
                     .font(.system(size: 12, design: .serif))
                     .foregroundStyle(Color.sunSecondary.opacity(0.6))
                     .multilineTextAlignment(.center)

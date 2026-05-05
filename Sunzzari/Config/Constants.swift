@@ -14,6 +14,7 @@ enum Constants {
         static let creditsTrackerDBID = "1cb0f680-349c-4666-8e4e-bac5676f7676"
         static let thoughtActionDBID  = "f876fb04-dfe2-4945-81fe-f85f36b30bcb"
         static let sunzzariInfoDBID   = "34650319-3d6e-4b7f-96c2-b81efaf8a279"
+        static let storiesDBID        = "16a712e2-2d18-4245-84f5-cb21c362d2de"
         static let version          = "2022-06-28"
     }
 

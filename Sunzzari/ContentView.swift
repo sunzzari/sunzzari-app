@@ -23,9 +23,9 @@ struct ContentView: View {
                     }
                     .tag(1)
 
-                StatusView()
+                StoriesView()
                     .tabItem {
-                        Label("Status", systemImage: "bolt.horizontal.circle.fill")
+                        Label("Stories", systemImage: "circle.dashed.inset.filled")
                     }
                     .tag(2)
 
@@ -103,17 +103,14 @@ struct ContentView: View {
                 showWeeklyBestOf = true
             }
             await BoopService.shared.checkForBoops()
-            await StatusService.shared.checkForStatus()
             await ThoughtActionService.shared.checkForNewEntries()
             await syncWeeklyBestOfFromDelivered()
-            await LocationService.shared.requestAlwaysAuthorization()
             await syncBadgeFromInbox()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
                     await BoopService.shared.checkForBoops()
-                    await StatusService.shared.checkForStatus()
                     await ThoughtActionService.shared.checkForNewEntries()
                     await syncWeeklyBestOfFromDelivered()
                     await DailySetupService.shared.runDailySetup()

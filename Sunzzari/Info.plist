@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Sunzzari uses your camera to capture photos of wines, restaurants, and moments to share.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Sunzzari needs access to your photo library so you can post stories and add memories.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Sunzzari can save photos from the shared album to your camera roll.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sunzzari shows your location on the shared map so you can see where each other is.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

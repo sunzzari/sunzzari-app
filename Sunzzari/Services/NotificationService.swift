@@ -4,8 +4,20 @@ import UserNotifications
 final class NotificationService: @unchecked Sendable {
     static let shared = NotificationService()
 
+    /// Returns the current notification authorization state so views can decide
+    /// whether to show a "re-enable in Settings" CTA without each one hitting
+    /// UN center directly.
+    @MainActor
+    func currentAuthorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
     func requestPermission() async {
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        let center = UNUserNotificationCenter.current()
+        let current = await center.notificationSettings().authorizationStatus
+        if current == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+        }
     }
 
     /// Schedules a repeating Sunday 8pm local-time notification prompting both

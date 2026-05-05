@@ -1,15 +1,16 @@
 import Foundation
 import CoreLocation
-import UIKit
-import UserNotifications
 
+/// Infra service kept after the Status tab was replaced by Stories.
+/// Handles APNs token storage, push relay via Vercel backend, location ping,
+/// and the shared Tier-3 Today pick — all still load-bearing for other features
+/// (boops, AddEntryView pushes, daily setup, location updates).
 final class StatusService: @unchecked Sendable {
     static let shared = StatusService()
     private init() {}
 
     private let notionBase = "https://api.notion.com/v1"
-    private let ntfyBase   = "https://ntfy.sh"
-    private let lastCheckKey = "sunzzari_status_last_check"
+    private let pendingTokenKey = "sunzzari_pending_apns_token"
 
     private var notionHeaders: [String: String] {
         [
@@ -17,113 +18,6 @@ final class StatusService: @unchecked Sendable {
             "Notion-Version": Constants.Notion.version,
             "Content-Type":   "application/json"
         ]
-    }
-
-    /// Stable 6-char tag to identify this device's sends
-    private var deviceTag: String {
-        let raw = UIDevice.current.identifierForVendor?.uuidString
-            .replacingOccurrences(of: "-", with: "").lowercased() ?? "unknown"
-        return String(raw.prefix(6))
-    }
-
-    // MARK: - Fetch
-
-    func fetchBoth() async throws -> (hummingbird: StatusEntry, branch: StatusEntry) {
-        async let h = fetchPage(id: Constants.Status.hummingbirdPageID)
-        async let b = fetchPage(id: Constants.Status.branchPageID)
-        return try await (h, b)
-    }
-
-    private func fetchPage(id: String) async throws -> StatusEntry {
-        guard !id.isEmpty, let url = URL(string: "\(notionBase)/pages/\(id)") else {
-            throw URLError(.badURL)
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        notionHeaders.forEach { req.setValue($1, forHTTPHeaderField: $0) }
-        let (data, _) = try await URLSession.shared.data(for: req)
-        return try parseEntry(from: data)
-    }
-
-    private func parseEntry(from data: Data) throws -> StatusEntry {
-        guard
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let id = json["id"] as? String,
-            let props = json["properties"] as? [String: Any]
-        else { throw URLError(.cannotParseResponse) }
-
-        let name = (props["Name"] as? [String: Any])?["title"] as? [[String: Any]]
-        let nameStr = name?.first?["plain_text"] as? String ?? ""
-
-        let mood = (props["Mood"] as? [String: Any])?["number"] as? Int ?? 50
-
-        let adjArr = (props["Adjective"] as? [String: Any])?["rich_text"] as? [[String: Any]]
-        let adjective = adjArr?.compactMap { $0["plain_text"] as? String }.joined() ?? ""
-
-        let moodUpdatedAt = parseDate(from: props["MoodUpdatedAt"])
-        let lat  = (props["Latitude"]  as? [String: Any])?["number"] as? Double
-        let lon  = (props["Longitude"] as? [String: Any])?["number"] as? Double
-        let locUpdatedAt = parseDate(from: props["LocationUpdatedAt"])
-
-        return StatusEntry(
-            id: id,
-            name: nameStr,
-            mood: mood,
-            adjective: adjective,
-            moodUpdatedAt: moodUpdatedAt,
-            latitude: lat,
-            longitude: lon,
-            locationUpdatedAt: locUpdatedAt
-        )
-    }
-
-    private func parseDate(from prop: Any?) -> Date? {
-        guard
-            let d = prop as? [String: Any],
-            let dateObj = d["date"] as? [String: Any],
-            let str = dateObj["start"] as? String
-        else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: str) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: str)
-    }
-
-    // MARK: - Update mood
-
-    func updateMood(_ mood: Int, for pageID: String) async throws {
-        let isoNow = isoString(for: Date())
-        try await patchPage(id: pageID, body: [
-            "properties": [
-                "Mood":           ["number": mood],
-                "MoodUpdatedAt":  ["date": ["start": isoNow]]
-            ]
-        ])
-    }
-
-    func updateAdjective(_ adjective: String, for pageID: String) async throws {
-        try await patchPage(id: pageID, body: [
-            "properties": [
-                "Adjective": ["rich_text": [["text": ["content": adjective]]]],
-                "MoodUpdatedAt": ["date": ["start": isoString(for: Date())]]
-            ]
-        ])
-    }
-
-    func sendAdjectiveNotification(adjective: String, fromName: String) async {
-        let body = "\(fromName) is feeling: \(adjective)"
-        // APNs (instant) — falls back to ntfy polling if token not yet stored
-        await sendPush(title: "Status update 💛", body: body)
-        // ntfy fallback
-        guard let url = URL(string: "\(ntfyBase)/\(Constants.Status.ntfyTopic)") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Status update 💛", forHTTPHeaderField: "X-Title")
-        req.setValue("default", forHTTPHeaderField: "X-Priority")
-        req.setValue("status,\(deviceTag)", forHTTPHeaderField: "X-Tags")
-        req.httpBody = body.data(using: .utf8)
-        _ = try? await URLSession.shared.data(for: req)
     }
 
     // MARK: - Update location
@@ -140,8 +34,6 @@ final class StatusService: @unchecked Sendable {
     }
 
     // MARK: - APNs push (via Vercel backend)
-
-    private let pendingTokenKey = "sunzzari_pending_apns_token"
 
     /// Store this device's APNs token in its own Notion Status page.
     /// Always caches the token in UserDefaults first. If identity is not yet set
@@ -239,103 +131,6 @@ final class StatusService: @unchecked Sendable {
         ])
     }
 
-    // MARK: - Combined status update (mood + adjective in one Notion patch + one notification)
-
-    func sendStatusUpdate(mood: Int, adjective: String, fromName: String, pageID: String) async {
-        let isoNow = isoString(for: Date())
-        var props: [String: Any] = [
-            "Mood":          ["number": mood],
-            "MoodUpdatedAt": ["date": ["start": isoNow]]
-        ]
-        props["Adjective"] = ["rich_text": [["text": ["content": adjective]]]]
-        try? await patchPage(id: pageID, body: ["properties": props])
-
-        let emoji = moodEmoji(for: mood)
-        var body = "\(fromName) is feeling \(emoji) (\(mood)%)"
-        if !adjective.isEmpty { body += " — \(adjective)" }
-
-        await sendPush(title: "Status update", body: body)
-
-        guard let url = URL(string: "\(ntfyBase)/\(Constants.Status.ntfyTopic)") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Status update", forHTTPHeaderField: "X-Title")
-        req.setValue("default", forHTTPHeaderField: "X-Priority")
-        req.setValue("status,\(deviceTag)", forHTTPHeaderField: "X-Tags")
-        req.httpBody = body.data(using: .utf8)
-        _ = try? await URLSession.shared.data(for: req)
-    }
-
-    // MARK: - ntfy mood notification
-
-    func sendMoodNotification(mood: Int, fromName: String) async {
-        let emoji = moodEmoji(for: mood)
-        let body = "\(fromName) is feeling \(emoji) (\(mood)%)"
-        // APNs (instant) — falls back to ntfy polling if token not yet stored
-        await sendPush(title: "Status update 💛", body: body)
-        // ntfy fallback
-        guard let url = URL(string: "\(ntfyBase)/\(Constants.Status.ntfyTopic)") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Status update 💛", forHTTPHeaderField: "X-Title")
-        req.setValue("default", forHTTPHeaderField: "X-Priority")
-        req.setValue("status,\(deviceTag)", forHTTPHeaderField: "X-Tags")
-        req.httpBody = body.data(using: .utf8)
-        _ = try? await URLSession.shared.data(for: req)
-    }
-
-    // MARK: - Receive status notifications (foreground polling)
-
-    func checkForStatus() async {
-        let lastCheck = UserDefaults.standard.integer(forKey: lastCheckKey)
-        let now = Int(Date().timeIntervalSince1970)
-        UserDefaults.standard.set(now, forKey: lastCheckKey)
-
-        guard lastCheck > 0 else { return }
-        let since = max(lastCheck, now - 3600)
-        guard let url = URL(string: "\(ntfyBase)/\(Constants.Status.ntfyTopic)/json?since=\(since)") else { return }
-        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return }
-
-        let lines = String(data: data, encoding: .utf8)?
-            .components(separatedBy: "\n")
-            .filter { !$0.isEmpty } ?? []
-
-        for line in lines {
-            guard
-                let lineData = line.data(using: .utf8),
-                let event = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                let evType = event["event"] as? String, evType == "message",
-                let message = event["message"] as? String,
-                let tags = event["tags"] as? [String]
-            else { continue }
-
-            // Skip messages sent from this device
-            if tags.contains(deviceTag) { continue }
-
-            let evID = event["id"] as? String ?? UUID().uuidString
-            let currentBadge = await UIApplication.shared.applicationIconBadgeNumber
-            let content = UNMutableNotificationContent()
-            content.title = "Status update 💛"
-            content.body = message
-            content.sound = .default
-            content.badge = NSNumber(value: currentBadge + 1)
-            let inboxID = "sunzzari-status-\(evID)"
-            let req = UNNotificationRequest(
-                identifier: inboxID,
-                content: content,
-                trigger: nil
-            )
-            try? await UNUserNotificationCenter.current().add(req)
-
-            NotificationInboxService.shared.append(
-                id: inboxID,
-                type: .statusPrompt,
-                title: message,
-                subtitle: "Tap to update yours"
-            )
-        }
-    }
-
     // MARK: - Helpers
 
     private func patchPage(id: String, body: [String: Any]) async throws {
@@ -351,16 +146,6 @@ final class StatusService: @unchecked Sendable {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f.string(from: date)
-    }
-
-    private func moodEmoji(for mood: Int) -> String {
-        switch mood {
-        case 0...20:  return "😴"
-        case 21...40: return "😔"
-        case 41...60: return "😊"
-        case 61...80: return "🌟"
-        default:      return "🔥"
-        }
     }
 }
 
