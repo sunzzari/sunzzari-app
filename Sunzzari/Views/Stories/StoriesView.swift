@@ -59,27 +59,35 @@ struct StoriesView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                // Inner ZStack carries .ignoresSafeArea so the player is
+                // full-bleed. chromeLayer is a sibling that DOES respect
+                // safe area -- archive sits below dynamic island, FAB lifts
+                // above the tab bar, on every device, without magic numbers.
+                ZStack {
+                    Color.black
 
-                if isLoading && stories.isEmpty {
-                    ProgressView().tint(.white)
-                } else if activePersons.isEmpty {
-                    emptyState
-                } else if let starting = activePersons.first {
-                    StoryTrayView(
-                        persons: activePersons,
-                        startingPerson: starting,
-                        reelFor: { reel(for: $0) },
-                        // X button / drag-down: exit the Stories tab back to
-                        // the Today tab. Snapchat / Instagram parity -- there
-                        // is no "list" to return to since the tab IS the player.
-                        onDismiss: { selectedTab = 0 }
-                    )
-                    .overlay(alignment: .topLeading) { archiveButton }
-                    .overlay(alignment: .bottomTrailing) { composeFAB }
+                    if isLoading && stories.isEmpty {
+                        ProgressView().tint(.white)
+                    } else if activePersons.isEmpty {
+                        emptyState
+                    } else if let starting = activePersons.first {
+                        StoryTrayView(
+                            persons: activePersons,
+                            startingPerson: starting,
+                            reelFor: { reel(for: $0) },
+                            // X button / drag-down: exit the Stories tab back to
+                            // the Today tab. Snapchat / Instagram parity -- there
+                            // is no "list" to return to since the tab IS the player.
+                            onDismiss: { selectedTab = 0 }
+                        )
+                    }
+                }
+                .ignoresSafeArea()
+
+                if !(isLoading && stories.isEmpty) {
+                    chromeLayer
                 }
             }
-            .ignoresSafeArea()
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showArchive) {
                 StoryArchiveView()
@@ -157,14 +165,33 @@ struct StoriesView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .topLeading) { archiveButton }
     }
 
     // MARK: - Floating chrome
 
-    /// Archive entry, top-leading. Glass-blur capsule so it reads against
-    /// any photo in the player below. Padded down past the safe-area top so
-    /// it doesn't overlap the player's progress bars.
+    /// Safe-area-respecting overlay containing both chrome controls. Lives as
+    /// a sibling of the full-bleed player ZStack so SwiftUI's default safe
+    /// area handling positions archive below the dynamic island / notch /
+    /// status bar and lifts the FAB above the tab bar -- no device-specific
+    /// magic numbers.
+    private var chromeLayer: some View {
+        VStack(spacing: 0) {
+            HStack {
+                archiveButton
+                Spacer()
+            }
+            Spacer()
+            HStack {
+                Spacer()
+                composeFAB
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    /// Archive entry, top-leading. Glass-blur capsule reads against any photo
+    /// in the player below. Positioning handled by chromeLayer.
     private var archiveButton: some View {
         Button {
             showArchive = true
@@ -176,12 +203,9 @@ struct StoriesView: View {
                 .background(.ultraThinMaterial, in: Circle())
                 .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.5))
         }
-        .padding(.leading, 14)
-        .padding(.top, 60)
     }
 
-    /// Compose FAB, bottom-trailing. Lifted above the tab bar (tab bar height
-    /// is ~83pt with the home indicator); padding 110 keeps the FAB clear.
+    /// Compose FAB, bottom-trailing. Positioning handled by chromeLayer.
     private var composeFAB: some View {
         Button {
             showCompose = true
@@ -194,8 +218,6 @@ struct StoriesView: View {
                 .clipShape(Circle())
                 .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
         }
-        .padding(.trailing, 20)
-        .padding(.bottom, 110)
     }
 
     // MARK: - Year recap
