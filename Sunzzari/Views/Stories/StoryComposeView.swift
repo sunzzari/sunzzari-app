@@ -12,6 +12,11 @@ struct StoryComposeView: View {
     @State private var location: String = ""
     @State private var isPosting = false
     @State private var errorMessage: String?
+    // Source-choice state. The simulator has no camera, so isSourceTypeAvailable
+    // returns false there and the dialog only shows "Choose from Library".
+    @State private var showSourceChoice = false
+    @State private var showCamera = false
+    @State private var showLibrary = false
 
     private var currentPerson: StoryPost.Person {
         AppIdentity.isHummingbird ? .cathy : .elisa
@@ -101,12 +106,14 @@ struct StoryComposeView: View {
                         }
                     }
             } else {
-                PhotosPicker(selection: $pickerItem, matching: .images) {
+                Button {
+                    showSourceChoice = true
+                } label: {
                     VStack(spacing: 14) {
                         Image(systemName: "photo.badge.plus")
                             .font(.system(size: 56, design: .serif))
                             .foregroundStyle(Color.sunAccent)
-                        Text("Pick a photo")
+                        Text("Add a photo")
                             .font(.system(.headline, design: .serif))
                             .foregroundStyle(Color.sunText)
                         Text("Posting as \(currentPerson.rawValue)")
@@ -118,8 +125,25 @@ struct StoryComposeView: View {
                     .background(Color.sunSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
+                .confirmationDialog("Add a photo", isPresented: $showSourceChoice, titleVisibility: .hidden) {
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button("Take Photo") { showCamera = true }
+                    }
+                    Button("Choose from Library") { showLibrary = true }
+                    Button("Cancel", role: .cancel) {}
+                }
+                .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
                 .onChange(of: pickerItem) { _, newItem in
                     Task { await loadPicked(newItem) }
+                }
+                .fullScreenCover(isPresented: $showCamera) {
+                    CameraPicker { captured in
+                        if let captured {
+                            self.image = captured
+                            self.errorMessage = nil
+                        }
+                    }
+                    .ignoresSafeArea()
                 }
             }
         }
@@ -212,6 +236,42 @@ struct StoryComposeView: View {
             }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
+        }
+    }
+}
+
+/// SwiftUI wrapper for UIImagePickerController in camera mode. PhotosUI has no
+/// camera-capture equivalent, so we drop down to UIKit. Closure-based instead
+/// of @Binding so the caller can clear errorMessage atomically with setting
+/// the image. nil = user cancelled.
+private struct CameraPicker: UIViewControllerRepresentable {
+    let onCaptured: (UIImage?) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.allowsEditing = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ parent: CameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            parent.onCaptured(info[.originalImage] as? UIImage)
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.onCaptured(nil)
+            parent.dismiss()
         }
     }
 }
