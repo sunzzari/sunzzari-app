@@ -1,11 +1,24 @@
 import SwiftUI
 
+/// Full-bleed Stories tab. Opens directly into the auto-playing player when
+/// active stories exist, mirroring Snapchat / Instagram-tab UX. The carousel
+/// of person rings was deliberately removed -- on a 2-person couple app, a
+/// rings UI is friction; the player IS the home view here.
+///
+/// Chrome (archive button + compose FAB) floats over the player as glass-blur
+/// overlays. The X button inside the player switches back to the Today tab
+/// rather than dismissing-to-nothing, since the tab itself is the player.
+///
+/// Empty state (no active stories) is a black background with a centered
+/// compose CTA so the visual feel of opening the tab is consistent --
+/// always full-bleed, never a "list" surface.
 struct StoriesView: View {
+    @Binding var selectedTab: Int
+
     @State private var stories: [StoryPost] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showCompose = false
-    @State private var playingPerson: StoryPost.Person? = nil
     @State private var showArchive = false
     @State private var yearRecapStories: [StoryPost] = []
     @State private var yearRecapYear: Int = 0
@@ -14,19 +27,12 @@ struct StoriesView: View {
 
     private static let yearRecapShownKey = "sunzzari_year_recap_shown"
 
-    private static let dayHeader: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE, MMMM d"
-        return f
-    }()
-
     private var currentPerson: StoryPost.Person {
         AppIdentity.isHummingbird ? .cathy : .elisa
     }
 
-    /// Carousel order matches Instagram/Snapchat: current user first (the
-    /// "post your own" affordance), then others sorted by their most recent
-    /// post desc, then anyone with no active stories.
+    /// Carousel ordering kept (used to pick which reel auto-plays first):
+    /// current user first, then others sorted by most-recent post desc.
     private var rankedPersons: [StoryPost.Person] {
         let latestByPerson: [StoryPost.Person: Date] = stories.reduce(into: [:]) { acc, post in
             if let prev = acc[post.person], prev > post.postedAt { return }
@@ -37,12 +43,14 @@ struct StoriesView: View {
         let activeOthers = others
             .filter { latestByPerson[$0] != nil }
             .sorted { (latestByPerson[$0] ?? .distantPast) > (latestByPerson[$1] ?? .distantPast) }
-        let inactiveOthers = others.filter { latestByPerson[$0] == nil }
-        return [me] + activeOthers + inactiveOthers
+        return [me] + activeOthers
     }
 
-    /// Reels for one person, newest first per user spec: a fresh post plays
-    /// first, then older ones from the past 24h.
+    private var activePersons: [StoryPost.Person] {
+        rankedPersons.filter { !reel(for: $0).isEmpty }
+    }
+
+    /// Reels for one person, newest first per user spec.
     private func reel(for person: StoryPost.Person) -> [StoryPost] {
         stories.filter { $0.person == person }
             .sorted { $0.postedAt > $1.postedAt }
@@ -50,54 +58,28 @@ struct StoriesView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottomTrailing) {
-                Color.sunBackground.ignoresSafeArea()
+            ZStack {
+                Color.black.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    SerifNavHeader("Stories", showsBack: false)
-
-                    if isLoading && stories.isEmpty {
-                        Spacer()
-                        ProgressView().tint(.sunAccent)
-                        Spacer()
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 24) {
-                                Text(Self.dayHeader.string(from: Date()))
-                                    .font(.system(.subheadline, design: .serif))
-                                    .foregroundStyle(Color.sunSecondary)
-                                    .padding(.horizontal, 20)
-
-                                personCarousel
-                                    .padding(.horizontal, 4)
-
-                                if stories.isEmpty {
-                                    emptyState
-                                } else {
-                                    Button {
-                                        showArchive = true
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: "rectangle.stack")
-                                            Text("Archive")
-                                        }
-                                        .font(.system(.subheadline, design: .serif, weight: .semibold))
-                                        .foregroundStyle(Color.sunAccent)
-                                    }
-                                    .padding(.horizontal, 20)
-                                }
-                            }
-                            .padding(.top, 16)
-                            .padding(.bottom, 100)
-                        }
-                        .refreshable { await load(force: true) }
-                    }
+                if isLoading && stories.isEmpty {
+                    ProgressView().tint(.white)
+                } else if activePersons.isEmpty {
+                    emptyState
+                } else if let starting = activePersons.first {
+                    StoryTrayView(
+                        persons: activePersons,
+                        startingPerson: starting,
+                        reelFor: { reel(for: $0) },
+                        // X button / drag-down: exit the Stories tab back to
+                        // the Today tab. Snapchat / Instagram parity -- there
+                        // is no "list" to return to since the tab IS the player.
+                        onDismiss: { selectedTab = 0 }
+                    )
+                    .overlay(alignment: .topLeading) { archiveButton }
+                    .overlay(alignment: .bottomTrailing) { composeFAB }
                 }
-
-                composeFAB
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 24)
             }
+            .ignoresSafeArea()
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showArchive) {
                 StoryArchiveView()
@@ -112,28 +94,10 @@ struct StoriesView: View {
             // Don't refetch on dismiss when the optimistic insert already added
             // the new post. Notion's index has 2-15s of lag; an immediate force
             // reload would overwrite `stories` with a server result that hasn't
-            // indexed the just-posted record yet, making the new story flicker
-            // out for several seconds before reappearing on the next refresh.
-            // The next natural refresh (scenePhase active or pull-to-refresh)
-            // will reconcile.
+            // indexed the just-posted record yet.
             StoryComposeView { newPost in
                 stories.insert(newPost, at: 0)
             }
-        }
-        .fullScreenCover(item: Binding(
-            get: { playingPerson.map { PersonPlayback(person: $0) } },
-            set: { playingPerson = $0?.person }
-        )) { playback in
-            // Build the active person ordering once, when the cover opens. The
-            // tray then owns its own `currentPerson` state so swipe and auto-
-            // advance happen inside the cover, with no dismiss/re-present.
-            let activePersons = rankedPersons.filter { !reel(for: $0).isEmpty }
-            StoryTrayView(
-                persons: activePersons,
-                startingPerson: playback.person,
-                reelFor: { reel(for: $0) },
-                onDismiss: { playingPerson = nil }
-            )
         }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -148,31 +112,95 @@ struct StoriesView: View {
             await maybePresentYearRecap()
         }
         .onChange(of: scenePhase) { _, phase in
-            // Refresh on every foreground so a story posted while the app was
-            // backgrounded shows up without requiring a manual pull-to-refresh.
             if phase == .active {
                 Task { await load(force: true) }
             }
         }
     }
 
-    /// At the end of one person's reel, hop to the next person who has active
-    /// stories (Instagram tray behavior). Defensive against background refresh
-    /// races: if `person` evaporated from the active list mid-playback, fall
-    /// through to the first active person rather than dismissing immediately.
-    private func advanceToNextPerson(after person: StoryPost.Person) {
-        let withActive = rankedPersons.filter { !reel(for: $0).isEmpty }
-        if let idx = withActive.firstIndex(of: person), idx + 1 < withActive.count {
-            playingPerson = withActive[idx + 1]
-        } else if withActive.firstIndex(of: person) == nil, let first = withActive.first {
-            playingPerson = first
-        } else {
-            playingPerson = nil
+    // MARK: - Empty state
+
+    /// Shown when no one has an active story today. Sleek black bleed +
+    /// centered call-to-action so the tab still feels like a "place" rather
+    /// than a void. Archive + compose are reachable from here too.
+    private var emptyState: some View {
+        ZStack {
+            VStack(spacing: 18) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 56, design: .serif))
+                    .foregroundStyle(Color.sunAccent)
+
+                Text("No stories today")
+                    .font(.system(.title2, design: .serif, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Text("Be the first to share a moment.")
+                    .font(.system(.subheadline, design: .serif))
+                    .foregroundStyle(.white.opacity(0.7))
+
+                Button {
+                    showCompose = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                        Text("Add your story")
+                    }
+                    .font(.system(.headline, design: .serif, weight: .semibold))
+                    .foregroundStyle(Color.sunBackground)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 14)
+                    .background(Color.sunAccent)
+                    .clipShape(Capsule())
+                    .shadow(color: Color.sunAccent.opacity(0.45), radius: 14)
+                }
+                .padding(.top, 12)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topLeading) { archiveButton }
     }
 
-    /// Auto-present the year recap once on Dec 31 each year. Tracks last-shown
-    /// year in UserDefaults so the recap doesn't re-appear on every foreground.
+    // MARK: - Floating chrome
+
+    /// Archive entry, top-leading. Glass-blur capsule so it reads against
+    /// any photo in the player below. Padded down past the safe-area top so
+    /// it doesn't overlap the player's progress bars.
+    private var archiveButton: some View {
+        Button {
+            showArchive = true
+        } label: {
+            Image(systemName: "rectangle.stack")
+                .font(.system(size: 16, weight: .semibold, design: .serif))
+                .foregroundStyle(.white)
+                .padding(10)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.5))
+        }
+        .padding(.leading, 14)
+        .padding(.top, 60)
+    }
+
+    /// Compose FAB, bottom-trailing. Lifted above the tab bar (tab bar height
+    /// is ~83pt with the home indicator); padding 110 keeps the FAB clear.
+    private var composeFAB: some View {
+        Button {
+            showCompose = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(.title2, design: .serif, weight: .bold))
+                .foregroundStyle(Color.sunBackground)
+                .padding(18)
+                .background(Color.sunAccent)
+                .clipShape(Circle())
+                .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
+        }
+        .padding(.trailing, 20)
+        .padding(.bottom, 110)
+    }
+
+    // MARK: - Year recap
+
+    /// Auto-present the year recap once on Dec 31 each year.
     private func maybePresentYearRecap() async {
         let cal = Calendar.current
         let now = Date()
@@ -188,113 +216,6 @@ struct StoriesView: View {
             showYearRecap = true
             UserDefaults.standard.set(year, forKey: Self.yearRecapShownKey)
         } catch {
-        }
-    }
-
-    // MARK: - Sections
-
-    private var personCarousel: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
-                ForEach(rankedPersons, id: \.self) { person in
-                    personCircle(for: person)
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func personCircle(for person: StoryPost.Person) -> some View {
-        let theirs = reel(for: person)
-        let hasActive = !theirs.isEmpty
-        let preview = theirs.first?.thumbnailURL
-        let isMe = person == currentPerson
-
-        return Button {
-            if hasActive {
-                playingPerson = person
-            } else if isMe {
-                // Own ring with no active stories: tap opens compose, matching
-                // Instagram where your own avatar is always actionable as
-                // "post a story."
-                showCompose = true
-            }
-        } label: {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .stroke(
-                            hasActive ? Color(hex: person.colorHex) : Color.sunSecondary.opacity(0.4),
-                            lineWidth: hasActive ? 3 : 1.5
-                        )
-                        .frame(width: 78, height: 78)
-
-                    Group {
-                        if hasActive, let preview {
-                            AsyncImage(url: preview) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image.resizable().scaledToFill()
-                                default:
-                                    Color(hex: person.colorHex).opacity(0.3)
-                                }
-                            }
-                        } else {
-                            Color(hex: person.colorHex).opacity(0.2)
-                                .overlay(
-                                    Text(String(person.rawValue.prefix(1)))
-                                        .font(.system(size: 24, weight: .semibold, design: .serif))
-                                        .foregroundStyle(Color(hex: person.colorHex))
-                                )
-                        }
-                    }
-                    .frame(width: 68, height: 68)
-                    .clipShape(Circle())
-
-                    // IG-style "post your own" plus badge: only on the user's
-                    // own ring, indicating tap-to-compose is always available.
-                    if isMe {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(Color.sunAccent, Color.sunBackground)
-                            .offset(x: 26, y: 26)
-                    }
-                }
-                Text(person.rawValue)
-                    .font(.system(.caption, design: .serif, weight: hasActive ? .semibold : .regular))
-                    .foregroundStyle(hasActive ? Color.sunText : Color.sunSecondary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 44, design: .serif))
-                .foregroundStyle(Color.sunAccent)
-            Text("No stories today")
-                .font(.system(.headline, design: .serif))
-                .foregroundStyle(Color.sunText)
-            Text("Tap the + to share a moment")
-                .font(.system(.subheadline, design: .serif))
-                .foregroundStyle(Color.sunSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 40)
-    }
-
-    private var composeFAB: some View {
-        Button {
-            showCompose = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(.title2, design: .serif, weight: .bold))
-                .foregroundStyle(Color.sunBackground)
-                .padding(18)
-                .background(Color.sunAccent)
-                .clipShape(Circle())
-                .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
         }
     }
 
@@ -317,10 +238,8 @@ struct StoriesView: View {
         isLoading = false
     }
 
-    /// Warm URLCache for every active story so tapping any ring opens to a
-    /// fully-loaded image and tap-next never waits on the network. Skipped on
-    /// cellular, Low Data Mode, and constrained paths so we don't drain a
-    /// tester's data plan; AsyncImage fetches on-demand in that case.
+    /// Warm URLCache so the player opens to a fully-loaded image. Skipped on
+    /// cellular / Low Data Mode -- AsyncImage falls back to fetch-on-demand.
     private func prefetchAllActiveStories() {
         guard NetworkMonitor.shared.isUnconstrained else { return }
         let urls: [URL] = stories.compactMap { $0.fullURL }
@@ -328,9 +247,4 @@ struct StoriesView: View {
             Task.detached { _ = try? await URLSession.shared.data(from: url) }
         }
     }
-}
-
-private struct PersonPlayback: Identifiable {
-    let person: StoryPost.Person
-    var id: String { person.rawValue }
 }

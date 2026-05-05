@@ -23,7 +23,7 @@ struct ContentView: View {
                     }
                     .tag(1)
 
-                StoriesView()
+                StoriesView(selectedTab: $selectedTab)
                     .tabItem {
                         Label("Stories", systemImage: "circle.dashed.inset.filled")
                     }
