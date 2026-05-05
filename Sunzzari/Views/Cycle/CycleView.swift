@@ -4,8 +4,8 @@ struct CycleView: View {
     @State private var entries: [CycleEntry] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var showAddSheet = false
-    @State private var preselectedDate: Date = Date()
+    @State private var pendingDate: Date? = nil
+    @State private var isSaving = false
     @State private var currentMonth: Date = {
         let cal = Calendar(identifier: .gregorian)
         return cal.date(from: cal.dateComponents([.year, .month], from: Date()))!
@@ -14,11 +14,27 @@ struct CycleView: View {
     private let cal = Calendar(identifier: .gregorian)
     /// Assumed period duration in days (no end date stored in DB)
     private let periodLengthDays = 5
+    /// How many recent cycles to average over once history exists
+    private let avgWindow = 6
+
+    private func defaultAvgCycle(for person: CycleEntry.Person) -> Int {
+        switch person {
+        case .elisa: return 28
+        case .cathy: return 30
+        }
+    }
 
     // MARK: - Derived state
 
     private var latestElisa: CycleEntry? { entries.first(where: { $0.person == .elisa }) }
-    private var latestCathy: CycleEntry?  { entries.first(where: { $0.person == .cathy  }) }
+    private var latestCathy: CycleEntry? { entries.first(where: { $0.person == .cathy }) }
+
+    private var dialogBinding: Binding<Bool> {
+        Binding(
+            get: { pendingDate != nil },
+            set: { if !$0 { pendingDate = nil } }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -53,8 +69,7 @@ struct CycleView: View {
                     HStack {
                         Spacer()
                         Button {
-                            preselectedDate = Date()
-                            showAddSheet = true
+                            pendingDate = Date()
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(.title2, design: .serif, weight: .bold))
@@ -68,11 +83,33 @@ struct CycleView: View {
                         .padding(.bottom, 24)
                     }
                 }
+
+                if isSaving {
+                    Color.black.opacity(0.25).ignoresSafeArea()
+                    ProgressView().tint(.sunAccent)
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .sheet(isPresented: $showAddSheet, onDismiss: { Task { await load(force: true) } }) {
-            AddCycleEntryView(defaultDate: preselectedDate, entries: entries)
+        .confirmationDialog(
+            "Add period start",
+            isPresented: dialogBinding,
+            titleVisibility: .visible,
+            presenting: pendingDate
+        ) { date in
+            Button("Add for Elisa") { Task { await quickAdd(person: .elisa, date: date) } }
+            Button("Add for Cathy") { Task { await quickAdd(person: .cathy, date: date) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { date in
+            Text(longDateString(date))
+        }
+        .alert("Error", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
         }
         .task { await load() }
     }
@@ -128,8 +165,7 @@ struct CycleView: View {
                         let data   = calData[dayKey(for: date)] ?? DayData()
 
                         Button {
-                            preselectedDate = date
-                            showAddSheet = true
+                            pendingDate = date
                         } label: {
                             VStack(spacing: 2) {
                                 dayCell(day: day, isToday: isToday, data: data)
@@ -170,12 +206,10 @@ struct CycleView: View {
         let persons   = data.periodPersons
 
         ZStack {
-            // Period background
             if hasPeriod {
                 if persons.count == 1 {
                     Color(hex: persons[0].colorHex).opacity(0.45)
                 } else {
-                    // Both Elisa + Cathy — diagonal split
                     LinearGradient(
                         colors: [
                             Color(hex: CycleEntry.Person.elisa.colorHex).opacity(0.45),
@@ -186,7 +220,7 @@ struct CycleView: View {
                     )
                 }
             } else if isToday {
-                Color.sunSurface.opacity(0.0) // handled by border below
+                Color.sunSurface.opacity(0.0)
             }
 
             Text("\(day)")
@@ -220,26 +254,20 @@ struct CycleView: View {
     }
 
     private func summaryCard(for person: CycleEntry.Person) -> some View {
-        let latest = person == .elisa ? latestElisa : latestCathy
+        let latest = latestEntry(for: person)
         return VStack(alignment: .leading, spacing: 8) {
             CategoryChip(label: person.rawValue, colorHex: person.colorHex)
 
-            if let entry = latest {
-                if let predicted = entry.predictedNext {
-                    let days = max(0, cal.dateComponents([.day], from: Date(), to: predicted).day ?? 0)
-                    Text(shortDateString(predicted))
-                        .font(.system(size: 15, weight: .semibold, design: .serif))
-                        .fontDesign(.serif)
-                        .foregroundStyle(Color.sunText)
-                    Text("in \(days) day\(days == 1 ? "" : "s")")
-                        .font(.system(size: 12, design: .serif))
-                        .foregroundStyle(Color.sunSecondary)
-                } else {
-                    Text("No prediction")
-                        .font(.system(size: 13, design: .serif))
-                        .foregroundStyle(Color.sunSecondary)
-                }
-                Text("avg \(entry.avgCycle)d")
+            if latest != nil, let predicted = predictedNext(for: person) {
+                let days = max(0, cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: predicted)).day ?? 0)
+                Text(shortDateString(predicted))
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .fontDesign(.serif)
+                    .foregroundStyle(Color.sunText)
+                Text("in \(days) day\(days == 1 ? "" : "s")")
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(Color.sunSecondary)
+                Text("avg \(averageCycle(for: person))d")
                     .font(.system(size: 11, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             } else {
@@ -266,7 +294,7 @@ struct CycleView: View {
                 .foregroundStyle(Color.sunSecondary)
 
             if entries.isEmpty {
-                Text("No entries yet. Tap + to add your first period start.")
+                Text("Tap any day on the calendar to log a period start.")
                     .font(.system(size: 14, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
                     .padding(.top, 4)
@@ -279,15 +307,14 @@ struct CycleView: View {
                             Text(shortDateString(entry.periodStart))
                                 .font(.system(size: 14, weight: .medium, design: .serif))
                                 .foregroundStyle(Color.sunText)
-                            if let length = entry.cycleLength {
+                            if let length = gapBefore(entry) {
                                 Text("\(length)d cycle")
                                     .font(.system(size: 12, design: .serif))
                                     .foregroundStyle(Color.sunSecondary)
                             }
                         }
                         Spacer()
-                        // Only show "Next" for the most recent entry per person
-                        if isLatest, let predicted = entry.predictedNext {
+                        if isLatest, let predicted = predictedNext(for: entry.person) {
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("Next")
                                     .font(.system(size: 10, design: .serif))
@@ -307,10 +334,54 @@ struct CycleView: View {
         }
     }
 
+    // MARK: - Cycle math (local source of truth)
+
+    private func latestEntry(for person: CycleEntry.Person) -> CycleEntry? {
+        person == .elisa ? latestElisa : latestCathy
+    }
+
+    // Computed from the gaps between recent period starts, not the per-entry stored
+    // value — the stored field goes stale the moment a new period is logged.
+    private func averageCycle(for person: CycleEntry.Person) -> Int {
+        let history = entries
+            .filter { $0.person == person }
+            .sorted { $0.periodStart > $1.periodStart }
+
+        guard history.count >= 2 else { return defaultAvgCycle(for: person) }
+
+        let recent = Array(history.prefix(avgWindow + 1))
+        var gaps: [Int] = []
+        for i in 0..<(recent.count - 1) {
+            let newer = recent[i].periodStart
+            let older = recent[i + 1].periodStart
+            if let days = cal.dateComponents([.day], from: older, to: newer).day, days > 0 {
+                gaps.append(days)
+            }
+        }
+        guard !gaps.isEmpty else { return defaultAvgCycle(for: person) }
+        return Int((Double(gaps.reduce(0, +)) / Double(gaps.count)).rounded())
+    }
+
+    private func predictedNext(for person: CycleEntry.Person) -> Date? {
+        guard let latest = latestEntry(for: person) else { return nil }
+        return cal.date(byAdding: .day, value: averageCycle(for: person), to: latest.periodStart)
+    }
+
+    private func gapBefore(_ entry: CycleEntry) -> Int? {
+        let history = entries
+            .filter { $0.person == entry.person }
+            .sorted { $0.periodStart > $1.periodStart }
+        guard let idx = history.firstIndex(where: { $0.id == entry.id }), idx + 1 < history.count else {
+            return nil
+        }
+        let prev = history[idx + 1].periodStart
+        return cal.dateComponents([.day], from: prev, to: entry.periodStart).day
+    }
+
     // MARK: - Calendar data
 
     private struct DayData {
-        var periodPersons:   [CycleEntry.Person] = []
+        var periodPersons:    [CycleEntry.Person] = []
         var predictedPersons: [CycleEntry.Person] = []
     }
 
@@ -328,19 +399,43 @@ struct CycleView: View {
             }
         }
 
-        // Predicted next — only from the most recent entry per person
-        for latest in [latestElisa, latestCathy].compactMap({ $0 }) {
-            guard let predicted = latest.predictedNext else { continue }
+        // Predicted next — locally computed from latest entry + per-person avg
+        for person in CycleEntry.Person.allCases {
+            guard let predicted = predictedNext(for: person) else { continue }
             let key = dayKey(for: predicted)
-            // Only show predicted dot if that day isn't already a confirmed period day
             if map[key] == nil || map[key]!.periodPersons.isEmpty {
-                if !map[key, default: DayData()].predictedPersons.contains(latest.person) {
-                    map[key, default: DayData()].predictedPersons.append(latest.person)
+                if !map[key, default: DayData()].predictedPersons.contains(person) {
+                    map[key, default: DayData()].predictedPersons.append(person)
                 }
             }
         }
 
         return map
+    }
+
+    // MARK: - Save
+
+    private func quickAdd(person: CycleEntry.Person, date: Date) async {
+        isSaving = true
+        defer { isSaving = false }
+        let avg = averageCycle(for: person)
+        do {
+            let saved = try await NotionService.shared.addCycleEntry(
+                person: person,
+                periodStart: date,
+                avgCycle: avg,
+                notes: ""
+            )
+            // Optimistic insert so the next-period date updates immediately,
+            // before Notion's formula columns roundtrip back.
+            entries.insert(saved, at: 0)
+            entries.sort { $0.periodStart > $1.periodStart }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Refresh in background to pick up server-side formula values.
+            Task { await load(force: true) }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Helpers
@@ -393,6 +488,11 @@ struct CycleView: View {
 
     private func shortDateString(_ date: Date) -> String {
         let fmt = DateFormatter(); fmt.dateFormat = "MMM d"
+        return fmt.string(from: date)
+    }
+
+    private func longDateString(_ date: Date) -> String {
+        let fmt = DateFormatter(); fmt.dateFormat = "EEEE, MMMM d"
         return fmt.string(from: date)
     }
 }

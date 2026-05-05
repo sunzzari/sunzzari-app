@@ -22,7 +22,6 @@ struct WeeklyBestOfInputView: View {
     struct DraftEntry: Identifiable {
         let id = UUID()
         var text: String = ""
-        var hasDate: Bool = false
         var date: Date = Date()
     }
 
@@ -171,23 +170,28 @@ struct WeeklyBestOfInputView: View {
                 }
             }
 
-            HStack {
-                Toggle(isOn: binding.hasDate) {
-                    Text(binding.wrappedValue.hasDate
-                         ? binding.wrappedValue.date.formatted(.dateTime.month(.abbreviated).day().year())
-                         : "Use today")
-                        .font(.system(.caption, design: .serif))
-                        .foregroundStyle(Color.sunSecondary)
-                }
-                .tint(accent)
-            }
+            HStack(spacing: 8) {
+                Text("Date")
+                    .font(.system(.caption, design: .serif))
+                    .foregroundStyle(Color.sunSecondary)
 
-            if binding.wrappedValue.hasDate {
                 DatePicker("", selection: binding.date, in: ...Date(), displayedComponents: .date)
                     .datePickerStyle(.compact)
                     .tint(accent)
                     .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer()
+
+                if !Calendar.current.isDateInToday(binding.wrappedValue.date) {
+                    Button {
+                        binding.wrappedValue.date = Date()
+                    } label: {
+                        Text("Today")
+                            .font(.system(.caption, design: .serif, weight: .semibold))
+                            .foregroundStyle(accent)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(10)
@@ -250,7 +254,7 @@ struct WeeklyBestOfInputView: View {
             let entry = BestOfEntry(
                 id:       UUID().uuidString,
                 entry:    draft.text.trimmingCharacters(in: .whitespaces),
-                date:     draft.hasDate ? draft.date : Date(),
+                date:     draft.date,
                 category: cat,
                 notes:    ""
             )

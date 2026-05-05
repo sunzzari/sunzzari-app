@@ -48,7 +48,8 @@ struct ReadDaySection: View {
                 selectedID: mapSelectionBinding,
                 bridge: bridge,
                 routeAnnotations: routeAnnotations,
-                interactive: true
+                interactive: true,
+                alwaysAutoFit: true
             )
             .frame(height: 240)
             .clipShape(RoundedRectangle(cornerRadius: 12))

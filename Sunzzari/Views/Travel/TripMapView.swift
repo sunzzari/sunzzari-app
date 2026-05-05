@@ -39,8 +39,12 @@ struct TripMKMap: UIViewRepresentable {
     /// Used to show the day's confirmed-stop route in Today/Read modes.
     var routeAnnotations: [TripItemAnnotation] = []
 
-    /// Controls map gesture availability. Set false for non-interactive thumbnails (Read mode).
     var interactive: Bool = true
+
+    // Per-day Read view sets this true so the map keeps framing "this day's" pins
+    // as background geocoding fills them in (mirrors elisa-travel-map's fitKey).
+    // The main trip map leaves it false so a manual zoom isn't yanked away.
+    var alwaysAutoFit: Bool = false
 
     func makeCoordinator() -> Coordinator { Coordinator(selectedID: $selectedID) }
 
@@ -117,8 +121,10 @@ struct TripMKMap: UIViewRepresentable {
         let filterChanged = filterKey != coordinator.lastFilterKey
         let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
         let annotationsGrew = annotations.count > coordinator.lastAnnotationCount
-        let allowAutoRefit = !coordinator.userHasInteracted
-        if firstLoad || filterChanged || (annotationsGrew && allowAutoRefit) {
+        let annotationsChanged = annotations.count != coordinator.lastAnnotationCount
+        let allowAutoRefit = alwaysAutoFit || !coordinator.userHasInteracted
+        let countTrigger = alwaysAutoFit ? annotationsChanged : annotationsGrew
+        if firstLoad || filterChanged || (countTrigger && allowAutoRefit) {
             coordinator.hasFittedInitially = true
             coordinator.lastFilterKey = filterKey
             DispatchQueue.main.async {
