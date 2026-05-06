@@ -45,14 +45,16 @@ struct StoryComposeView: View {
     // Cleared on full-chain success or on photo replacement.
     @State private var lastUploadedPublicID: String?
 
-    /// Compose preview height matches the player's full-screen aspect ratio so
-    /// what the user sees in compose is exactly what plays back. Without this,
-    /// a 480pt-tall preview baked overlays at the photo edges get cropped when
-    /// the player scaledToFill the full screen aspect (~9:19.5 on iPhone).
+    /// Compose preview at the 9:16 story canvas aspect (Instagram standard).
+    /// On a 9:19.5 phone this leaves a small ~9% letterbox at top and bottom
+    /// in the player, filled by a blurred backdrop -- matching Instagram's
+    /// look for non-9:19.5 source photos. Going taller (full phone aspect)
+    /// caused 4:3 camera photos to letterbox by ~38% in playback; going
+    /// shorter (e.g. 4:5) would crop too aggressively.
     private static var composedPhotoHeight: CGFloat {
         let bounds = UIScreen.main.bounds
         let composeContentWidth = bounds.width - 40
-        return composeContentWidth * (bounds.height / bounds.width)
+        return composeContentWidth * (16.0 / 9.0)
     }
 
     private var currentPerson: StoryPost.Person {
@@ -137,45 +139,36 @@ struct StoryComposeView: View {
     private var photoArea: some View {
         ZStack {
             if let image {
-                ZStack {
-                    // Instagram-style: blurred photo as backdrop, real photo
-                    // on top at native aspect (scaledToFit). User overlays
-                    // sit on top of both. The backdrop fills the 9:19.5
-                    // compose frame so non-screen-aspect photos still feel
-                    // composed instead of letterboxed-on-black.
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .blur(radius: 32)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Self.composedPhotoHeight)
-                        .clipped()
-
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Self.composedPhotoHeight)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: Self.composedPhotoHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay {
-                    overlayLayer
-                }
-                .overlay(alignment: .topTrailing) {
-                    Button {
-                        self.image = nil
-                        self.pickerItem = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24, design: .serif))
-                            .foregroundStyle(Color.sunBackground)
-                            .background(Color.black.opacity(0.4))
-                            .clipShape(Circle())
+                // Instagram-style story canvas: photo scaledToFill the 9:16
+                // frame (cropping camera 4:3 to story aspect, standard story
+                // behavior). On playback, the player displays the bake at
+                // scaledToFit on the 9:19.5 phone screen, leaving a small
+                // backdrop strip at top and bottom -- not the huge dead
+                // letterbox that fitting native photo aspect into the full
+                // phone aspect produced.
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Self.composedPhotoHeight)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay {
+                        overlayLayer
                     }
-                    .padding(10)
-                }
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            self.image = nil
+                            self.pickerItem = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 24, design: .serif))
+                                .foregroundStyle(Color.sunBackground)
+                                .background(Color.black.opacity(0.4))
+                                .clipShape(Circle())
+                        }
+                        .padding(10)
+                    }
             } else {
                 Button {
                     showSourceChoice = true
@@ -439,20 +432,14 @@ struct StoryComposeView: View {
         let displayHeight = Self.composedPhotoHeight
 
         let composed = ZStack {
-            // Match the compose preview's Instagram-style render: blurred
-            // backdrop + scaledToFit photo, so the bake captures exactly what
-            // the user saw.
+            // Match the compose preview: scaledToFill the photo into the 9:16
+            // story canvas. The player adds the blurred backdrop at playback
+            // time (when 9:16 bake is letterboxed onto 9:19.5 phone screen).
             Image(uiImage: originalImage)
                 .resizable()
                 .scaledToFill()
-                .blur(radius: 32)
                 .frame(width: displayWidth, height: displayHeight)
                 .clipped()
-
-            Image(uiImage: originalImage)
-                .resizable()
-                .scaledToFit()
-                .frame(width: displayWidth, height: displayHeight)
 
             if !caption.isEmpty {
                 Text(caption)
