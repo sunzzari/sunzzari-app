@@ -142,24 +142,18 @@ struct StoryArchiveView: View {
         }
     }
 
-    /// Visual deck: cover image on top with two thin offset backing cards behind
-    /// to imply depth. Person color tints the border + count chip so the same
-    /// day's two persons are visually distinct.
+    /// Visual deck: cover image on top with a single backing card behind to
+    /// imply depth. Backing renders at a fixed offset whenever count > 1, so
+    /// the stack's visual footprint is identical across cells regardless of
+    /// how many photos sit in the bucket -- the count number lives in the
+    /// chip, not in the stack height. Person color tints the border + chip.
     private func stackCard(person: StoryPost.Person, items: [StoryPost]) -> some View {
         let cover = items.first
         let count = items.count
         let personColor = Color(hex: person.colorHex)
 
         return ZStack(alignment: .bottomLeading) {
-            // Backing cards (only render if there are 2+ items in the stack)
-            if count >= 3 {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.sunSurface)
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(personColor.opacity(0.25), lineWidth: 1))
-                    .offset(x: 8, y: 8)
-                    .frame(height: 160)
-            }
-            if count >= 2 {
+            if count > 1 {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.sunSurface)
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(personColor.opacity(0.4), lineWidth: 1))
