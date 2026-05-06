@@ -2,7 +2,9 @@ import SwiftUI
 
 /// Full-bleed Snapchat/Instagram-style player for one author's recent stories.
 /// Tap the right half to advance, tap the left half to go back, hold anywhere
-/// to pause, drag down to dismiss. Author and caption overlay over the photo.
+/// to pause. Author and caption overlay over the photo. Dismiss is via the X
+/// button only -- swipe-down was removed because it left a black bar at the
+/// top when partial drags didn't cross the dismiss threshold.
 struct StoryPlayerView: View {
     let stories: [StoryPost]
     let person: StoryPost.Person
@@ -21,7 +23,6 @@ struct StoryPlayerView: View {
     @State private var currentIndex: Int = 0
     @State private var progress: Double = 0
     @State private var isPaused: Bool = false
-    @State private var dragOffset: CGFloat = 0
     @State private var prefetchedURLs: Set<URL> = []
 
     private let storyDuration: TimeInterval = 5.0
@@ -144,24 +145,6 @@ struct StoryPlayerView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
             }
-            .offset(y: dragOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            dragOffset = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 120 {
-                            onDismiss()
-                        } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                dragOffset = 0
-                            }
-                        }
-                    }
-            )
             // Tracks finger-down across press AND release. LongPressGesture's
             // onEnded fires when minimumDuration is met (not on lift), which is
             // why a plain .gesture(LongPressGesture()...) does not work for pause.

@@ -6,12 +6,21 @@ import SwiftUI
 ///
 /// Only the visible player runs its timer (gated by `isActive`), so a paged-but-
 /// preloaded sibling tab does not race the visible reel forward.
+///
+/// When the LAST person's reel finishes, instead of dismissing back to Today
+/// we freeze on the final frame and show a Replay overlay. Replay resets to
+/// the first person's first story; Close exits to Today.
 struct StoryTrayView: View {
     let persons: [StoryPost.Person]
     let reelFor: (StoryPost.Person) -> [StoryPost]
     let onDismiss: () -> Void
 
     @State private var currentPerson: StoryPost.Person
+    @State private var showReplay: Bool = false
+    /// Bumped on Replay tap. Used as `.id()` on the TabView so SwiftUI rebuilds
+    /// every child StoryPlayerView, which is the only way to reset their
+    /// `@State currentIndex` and `progress` from outside.
+    @State private var replayNonce: UUID = UUID()
 
     init(
         persons: [StoryPost.Person],
@@ -30,28 +39,72 @@ struct StoryTrayView: View {
     }
 
     var body: some View {
-        TabView(selection: $currentPerson) {
-            ForEach(persons, id: \.self) { person in
-                StoryPlayerView(
-                    stories: reelFor(person),
-                    person: person,
-                    onDismiss: onDismiss,
-                    onReelComplete: { advance(after: person) },
-                    onRequestPrevious: { back(from: person) },
-                    isActive: currentPerson == person
-                )
-                .tag(person)
+        ZStack {
+            TabView(selection: $currentPerson) {
+                ForEach(persons, id: \.self) { person in
+                    StoryPlayerView(
+                        stories: reelFor(person),
+                        person: person,
+                        onDismiss: onDismiss,
+                        onReelComplete: { advance(after: person) },
+                        onRequestPrevious: { back(from: person) },
+                        // Pause the visible player while the replay overlay is up
+                        // so its progress task doesn't keep ticking past the end.
+                        isActive: currentPerson == person && !showReplay
+                    )
+                    .tag(person)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .id(replayNonce)
+
+            if showReplay {
+                replayOverlay
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
         .ignoresSafeArea()
         .background(Color.black)
         .statusBarHidden(true)
     }
 
+    private var replayOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                Button(action: replay) {
+                    VStack(spacing: 10) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 34, weight: .semibold, design: .serif))
+                        Text("Replay")
+                            .font(.system(.headline, design: .serif, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 150, height: 150)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 1))
+                }
+                .accessibilityLabel("Replay stories")
+
+                Button(action: onDismiss) {
+                    Text("Close")
+                        .font(.system(.subheadline, design: .serif, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                }
+                .accessibilityLabel("Close stories")
+            }
+        }
+        .transition(.opacity)
+    }
+
     private func advance(after person: StoryPost.Person) {
         guard let idx = persons.firstIndex(of: person) else {
-            onDismiss()
+            showReplay = true
             return
         }
         if idx + 1 < persons.count {
@@ -59,7 +112,9 @@ struct StoryTrayView: View {
                 currentPerson = persons[idx + 1]
             }
         } else {
-            onDismiss()
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showReplay = true
+            }
         }
     }
 
@@ -67,6 +122,16 @@ struct StoryTrayView: View {
         guard let idx = persons.firstIndex(of: person), idx > 0 else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
             currentPerson = persons[idx - 1]
+        }
+    }
+
+    private func replay() {
+        currentPerson = persons.first ?? currentPerson
+        // New UUID forces every StoryPlayerView to rebuild from scratch, which
+        // resets currentIndex/progress to 0 and restarts the progress task.
+        replayNonce = UUID()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showReplay = false
         }
     }
 }
