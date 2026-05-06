@@ -20,6 +20,7 @@ struct StoriesView: View {
     @State private var errorMessage: String?
     @State private var showCompose = false
     @State private var showArchive = false
+    @State private var showSelfStory = false
     @State private var yearRecapStories: [StoryPost] = []
     @State private var yearRecapYear: Int = 0
     @State private var showYearRecap = false
@@ -59,6 +60,13 @@ struct StoriesView: View {
     private func reel(for person: StoryPost.Person) -> [StoryPost] {
         stories.filter { $0.person == person }
             .sorted { $0.postedAt > $1.postedAt }
+    }
+
+    /// Current user's own active reel. Used for the self-view avatar badge on
+    /// the compose FAB -- self is excluded from the swipe player, so this is
+    /// the only path to view your own story from the Stories tab.
+    private var myReel: [StoryPost] {
+        reel(for: currentPerson)
     }
 
     var body: some View {
@@ -101,6 +109,19 @@ struct StoriesView: View {
                 NavigationStack {
                     YearRecapView(year: yearRecapYear, stories: yearRecapStories)
                 }
+            }
+            .fullScreenCover(isPresented: $showSelfStory) {
+                StoryPlayerView(
+                    stories: myReel,
+                    person: currentPerson,
+                    onDismiss: { showSelfStory = false },
+                    onReelComplete: { showSelfStory = false },
+                    onRequestPrevious: {},
+                    isActive: showSelfStory
+                )
+                .ignoresSafeArea()
+                .background(Color.black)
+                .statusBarHidden(true)
             }
         }
         .sheet(isPresented: $showCompose) {
@@ -210,6 +231,10 @@ struct StoriesView: View {
 
     /// Compose FAB, bottom-trailing (shares the bottom row with the archive
     /// button). Positioning handled by chromeLayer.
+    ///
+    /// When the current user has at least one active story today, a small
+    /// avatar badge sits on the FAB's bottom-trailing corner. Tap the badge
+    /// to view your own reel (self is excluded from the main swipe player).
     private var composeFAB: some View {
         Button {
             showCompose = true
@@ -222,6 +247,32 @@ struct StoriesView: View {
                 .clipShape(Circle())
                 .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
         }
+        .overlay(alignment: .bottomTrailing) {
+            if !myReel.isEmpty {
+                selfStoryBadge
+                    .offset(x: 4, y: 4)
+            }
+        }
+    }
+
+    /// Small circular avatar badge anchored to the FAB's bottom-trailing
+    /// corner. Tap opens a full-screen self reel. Initial-on-color match the
+    /// existing `Person.colorHex` palette -- no asset required.
+    private var selfStoryBadge: some View {
+        let initial = String(currentPerson.rawValue.prefix(1))
+        return Button {
+            showSelfStory = true
+        } label: {
+            Text(initial)
+                .font(.system(size: 12, weight: .bold, design: .serif))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(Color(hex: currentPerson.colorHex))
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+        }
+        .accessibilityLabel("View your story")
     }
 
     // MARK: - Year recap
