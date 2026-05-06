@@ -309,7 +309,7 @@ struct StoryComposeView: View {
     }
 
     private func post() async {
-        guard image != nil else { return }
+        guard let originalImage = image else { return }
         await MainActor.run {
             isPosting = true
             errorMessage = nil
@@ -324,7 +324,7 @@ struct StoryComposeView: View {
             // in Notion -- the player shows it in the metadata bar next to the
             // author, which sits at a different on-screen position than the
             // baked overlay, so the two don't visually conflict.
-            let imageToUpload: UIImage = await MainActor.run { bakeOverlaysIntoImage() } ?? (image ?? UIImage())
+            let imageToUpload: UIImage = await bakeOverlaysIntoImage() ?? originalImage
             let publicID = try await CloudinaryService.shared.uploadStory(image: imageToUpload)
             let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
