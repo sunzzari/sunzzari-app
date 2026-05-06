@@ -6,6 +6,7 @@ enum InboxEntryType: String, Codable {
     case statusPrompt
     case thoughtAction
     case weeklyBestOf
+    case storyUpdate
 }
 
 struct InboxEntry: Identifiable, Codable, Equatable {

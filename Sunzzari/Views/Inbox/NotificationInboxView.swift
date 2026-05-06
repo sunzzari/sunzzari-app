@@ -105,7 +105,7 @@ struct NotificationInboxView: View {
     }
 
     private func grouped() -> [(InboxEntryType, [InboxEntry])] {
-        let order: [InboxEntryType] = [.boop, .statusPrompt, .thoughtAction, .weeklyBestOf]
+        let order: [InboxEntryType] = [.boop, .storyUpdate, .statusPrompt, .thoughtAction, .weeklyBestOf]
         let buckets = Dictionary(grouping: entries, by: \.type)
         return order.compactMap { type in
             guard let items = buckets[type], !items.isEmpty else { return nil }
@@ -126,6 +126,7 @@ struct NotificationInboxView: View {
         case .statusPrompt:  return "Status"
         case .thoughtAction: return "Thought-Action"
         case .weeklyBestOf:  return "Weekly Best Of"
+        case .storyUpdate:   return "Stories"
         }
     }
 
