@@ -23,6 +23,21 @@ struct StoryComposeView: View {
     // launched on every body re-render.
     @State private var didAutoLaunchCamera = false
 
+    // Caption + location overlay placement. Default y-offsets put caption near
+    // photo bottom and location near photo top inside the 480-tall preview;
+    // user drags to override and pinches to resize. Committed values persist
+    // between gestures; in-progress values render the live transform.
+    @State private var captionOffset: CGSize = CGSize(width: 0, height: 180)
+    @State private var captionDragInProgress: CGSize = .zero
+    @State private var captionScale: CGFloat = 1
+    @State private var captionMagnifyInProgress: CGFloat = 1
+    @State private var locationOffset: CGSize = CGSize(width: 0, height: -180)
+    @State private var locationDragInProgress: CGSize = .zero
+    @State private var locationScale: CGFloat = 1
+    @State private var locationMagnifyInProgress: CGFloat = 1
+
+    private static let composedPhotoHeight: CGFloat = 480
+
     private var currentPerson: StoryPost.Person {
         AppIdentity.isHummingbird ? .cathy : .elisa
     }
@@ -94,9 +109,12 @@ struct StoryComposeView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 480)
+                    .frame(height: Self.composedPhotoHeight)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay {
+                        overlayLayer
+                    }
                     .overlay(alignment: .topTrailing) {
                         Button {
                             self.image = nil
@@ -109,18 +127,6 @@ struct StoryComposeView: View {
                                 .clipShape(Circle())
                         }
                         .padding(10)
-                    }
-                    .overlay(alignment: .bottomLeading) {
-                        if !caption.isEmpty {
-                            Text(caption)
-                                .font(.system(.body, design: .serif, weight: .medium))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.45))
-                                .clipShape(Capsule())
-                                .padding(16)
-                        }
                     }
             } else {
                 Button {
@@ -164,6 +170,88 @@ struct StoryComposeView: View {
                 }
             }
         }
+    }
+
+    /// Overlays for caption + location. Each is independently draggable and
+    /// pinch-resizable. SimultaneousGesture lets the user drag and pinch at
+    /// once. Hidden when the underlying string is empty so an empty TextField
+    /// doesn't paint a stray capsule on the photo.
+    private var overlayLayer: some View {
+        ZStack {
+            if !caption.isEmpty {
+                Text(caption)
+                    .font(.system(.body, design: .serif, weight: .medium))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.45))
+                    .clipShape(Capsule())
+                    .scaleEffect(captionScale * captionMagnifyInProgress)
+                    .offset(
+                        x: captionOffset.width + captionDragInProgress.width,
+                        y: captionOffset.height + captionDragInProgress.height
+                    )
+                    .gesture(overlayGesture(
+                        offset: $captionOffset,
+                        drag: $captionDragInProgress,
+                        scale: $captionScale,
+                        magnify: $captionMagnifyInProgress
+                    ))
+            }
+
+            if !location.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.and.ellipse")
+                    Text(location)
+                }
+                .font(.system(.subheadline, design: .serif, weight: .medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.45))
+                .clipShape(Capsule())
+                .scaleEffect(locationScale * locationMagnifyInProgress)
+                .offset(
+                    x: locationOffset.width + locationDragInProgress.width,
+                    y: locationOffset.height + locationDragInProgress.height
+                )
+                .gesture(overlayGesture(
+                    offset: $locationOffset,
+                    drag: $locationDragInProgress,
+                    scale: $locationScale,
+                    magnify: $locationMagnifyInProgress
+                ))
+            }
+        }
+    }
+
+    private func overlayGesture(
+        offset: Binding<CGSize>,
+        drag: Binding<CGSize>,
+        scale: Binding<CGFloat>,
+        magnify: Binding<CGFloat>
+    ) -> some Gesture {
+        SimultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    drag.wrappedValue = value.translation
+                }
+                .onEnded { value in
+                    offset.wrappedValue.width += value.translation.width
+                    offset.wrappedValue.height += value.translation.height
+                    drag.wrappedValue = .zero
+                },
+            MagnifyGesture()
+                .onChanged { value in
+                    magnify.wrappedValue = value.magnification
+                }
+                .onEnded { value in
+                    let next = scale.wrappedValue * value.magnification
+                    scale.wrappedValue = max(0.5, min(3.0, next))
+                    magnify.wrappedValue = 1
+                }
+        )
     }
 
     private var captionField: some View {
@@ -221,7 +309,7 @@ struct StoryComposeView: View {
     }
 
     private func post() async {
-        guard let image else { return }
+        guard image != nil else { return }
         await MainActor.run {
             isPosting = true
             errorMessage = nil
@@ -229,22 +317,37 @@ struct StoryComposeView: View {
         defer { Task { @MainActor in isPosting = false } }
 
         do {
-            let publicID = try await CloudinaryService.shared.uploadStory(image: image)
+            // Bake the user's caption + location overlays at their committed
+            // position and scale into the uploaded image. Pass an empty caption
+            // string to Notion so StoryPlayerView's own caption overlay does
+            // not double-render on top of the baked text. Location string stays
+            // in Notion -- the player shows it in the metadata bar next to the
+            // author, which sits at a different on-screen position than the
+            // baked overlay, so the two don't visually conflict.
+            let imageToUpload: UIImage = await MainActor.run { bakeOverlaysIntoImage() } ?? (image ?? UIImage())
+            let publicID = try await CloudinaryService.shared.uploadStory(image: imageToUpload)
             let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
             let post = try await NotionService.shared.createStoryPost(
                 publicID: publicID,
-                caption: trimmedCaption,
+                caption: "",
                 person: currentPerson,
                 postedAt: Date(),
                 location: trimmedLocation.isEmpty ? nil : trimmedLocation
             )
-            // Notify the partner so they don't have to open the app to find out
-            // a new story exists. Reuses StatusService's APNs fan-out via the
-            // sunzzari-backend push endpoint.
+            // Push body still uses the typed caption (or location, or fallback)
+            // since the recipient sees the push BEFORE the photo loads.
+            let pushBody: String
+            if !trimmedCaption.isEmpty {
+                pushBody = trimmedCaption
+            } else if !trimmedLocation.isEmpty {
+                pushBody = trimmedLocation
+            } else {
+                pushBody = "Tap to watch"
+            }
             await StatusService.shared.sendPush(
                 title: "\(currentPerson.rawValue) posted a story",
-                body: trimmedCaption.isEmpty ? "Tap to watch" : trimmedCaption
+                body: pushBody
             )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             await MainActor.run {
@@ -254,6 +357,59 @@ struct StoryComposeView: View {
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
         }
+    }
+
+    /// Render the photo + draggable overlays into a single UIImage at upload
+    /// time. Uses ImageRenderer (iOS 16+) so the SwiftUI preview maps 1:1 onto
+    /// the baked output -- gesture state is the source of truth, no manual
+    /// CoreGraphics math required. Renders at 3x scale for retina fidelity;
+    /// Cloudinary handles per-display downsizing on serve.
+    @MainActor
+    private func bakeOverlaysIntoImage() -> UIImage? {
+        guard let originalImage = image else { return nil }
+        let displayWidth = UIScreen.main.bounds.width - 40
+        let displayHeight = Self.composedPhotoHeight
+
+        let composed = ZStack {
+            Image(uiImage: originalImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: displayWidth, height: displayHeight)
+                .clipped()
+
+            if !caption.isEmpty {
+                Text(caption)
+                    .font(.system(.body, design: .serif, weight: .medium))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.45))
+                    .clipShape(Capsule())
+                    .scaleEffect(captionScale)
+                    .offset(x: captionOffset.width, y: captionOffset.height)
+            }
+
+            if !location.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "mappin.and.ellipse")
+                    Text(location)
+                }
+                .font(.system(.subheadline, design: .serif, weight: .medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.45))
+                .clipShape(Capsule())
+                .scaleEffect(locationScale)
+                .offset(x: locationOffset.width, y: locationOffset.height)
+            }
+        }
+        .frame(width: displayWidth, height: displayHeight)
+
+        let renderer = ImageRenderer(content: composed)
+        renderer.scale = 3
+        return renderer.uiImage
     }
 }
 
