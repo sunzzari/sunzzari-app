@@ -75,7 +75,7 @@ struct StoryTrayView: View {
                 Button(action: replay) {
                     VStack(spacing: 10) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 34, weight: .semibold, design: .serif))
+                            .font(.system(size: 34, weight: .semibold))
                         Text("Replay")
                             .font(.system(.headline, design: .serif, weight: .semibold))
                     }

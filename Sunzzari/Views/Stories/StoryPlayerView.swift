@@ -249,6 +249,12 @@ struct StoryPlayerView: View {
     /// it paused instead of snapping back to zero. New stories enter with
     /// progress=0 (set by advance() before the index changes) so this is also
     /// correct for fresh segments.
+    ///
+    /// `@MainActor` is explicit (not just inherited from the View) because the
+    /// loop awaits `Task.sleep` and then mutates `@State progress`. Without it,
+    /// strict-concurrency builds would warn about resuming on a non-Main
+    /// executor when writing back to state.
+    @MainActor
     private func runProgressLoop() async {
         if progress >= 1.0 { progress = 0 }
         let anchor = progress
