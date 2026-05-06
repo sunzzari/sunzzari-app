@@ -232,12 +232,15 @@ struct StoriesView: View {
     /// Compose FAB, bottom-trailing (shares the bottom row with the archive
     /// button). Positioning handled by chromeLayer.
     ///
-    /// When the current user has at least one active story today, a small
-    /// avatar badge sits on the FAB's bottom-trailing corner. The plus and
-    /// the badge are siblings in a ZStack -- never nested -- so each Button
-    /// owns its own hit region (SwiftUI swallows nested Button taps).
+    /// When the current user has at least one active story today, the self-
+    /// avatar badge stacks directly above the plus rather than overlapping
+    /// its corner. Two separate Buttons in a VStack -- never nested -- so
+    /// each owns its own hit region (SwiftUI swallows nested Button taps).
     private var composeFAB: some View {
-        ZStack(alignment: .bottomTrailing) {
+        VStack(spacing: 8) {
+            if !myReel.isEmpty {
+                selfStoryBadge
+            }
             Button {
                 showCompose = true
             } label: {
@@ -248,11 +251,6 @@ struct StoriesView: View {
                     .background(Color.sunAccent)
                     .clipShape(Circle())
                     .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
-            }
-
-            if !myReel.isEmpty {
-                selfStoryBadge
-                    .offset(x: 4, y: 4)
             }
         }
     }
