@@ -51,6 +51,28 @@ final class NotificationInboxService: @unchecked Sendable {
         }
     }
 
+    /// Insert if missing, otherwise refresh title/subtitle/timestamp on an
+    /// existing entry. Preserves `isRead`. Used by aggregating syncs (e.g.
+    /// stories-by-day) so the entry reflects the latest snapshot of that
+    /// bucket without growing inbox cardinality.
+    func upsert(id: String, type: InboxEntryType, title: String, subtitle: String, timestamp: Date = Date()) {
+        queue.async(flags: .barrier) {
+            if let idx = self._entries.firstIndex(where: { $0.id == id }) {
+                let prevRead = self._entries[idx].isRead
+                self._entries[idx] = InboxEntry(
+                    id: id, type: type, timestamp: timestamp,
+                    title: title, subtitle: subtitle, isRead: prevRead
+                )
+            } else {
+                let entry = InboxEntry(id: id, type: type, timestamp: timestamp,
+                                       title: title, subtitle: subtitle, isRead: false)
+                self._entries.insert(entry, at: 0)
+            }
+            self.persist()
+            self.postChange()
+        }
+    }
+
     func markRead(_ id: String) {
         queue.async(flags: .barrier) {
             guard let idx = self._entries.firstIndex(where: { $0.id == id }) else { return }

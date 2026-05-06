@@ -233,21 +233,23 @@ struct StoriesView: View {
     /// button). Positioning handled by chromeLayer.
     ///
     /// When the current user has at least one active story today, a small
-    /// avatar badge sits on the FAB's bottom-trailing corner. Tap the badge
-    /// to view your own reel (self is excluded from the main swipe player).
+    /// avatar badge sits on the FAB's bottom-trailing corner. The plus and
+    /// the badge are siblings in a ZStack -- never nested -- so each Button
+    /// owns its own hit region (SwiftUI swallows nested Button taps).
     private var composeFAB: some View {
-        Button {
-            showCompose = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(.title2, design: .serif, weight: .bold))
-                .foregroundStyle(Color.sunBackground)
-                .padding(18)
-                .background(Color.sunAccent)
-                .clipShape(Circle())
-                .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
-        }
-        .overlay(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottomTrailing) {
+            Button {
+                showCompose = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(.title2, design: .serif, weight: .bold))
+                    .foregroundStyle(Color.sunBackground)
+                    .padding(18)
+                    .background(Color.sunAccent)
+                    .clipShape(Circle())
+                    .shadow(color: Color.sunAccent.opacity(0.5), radius: 12)
+            }
+
             if !myReel.isEmpty {
                 selfStoryBadge
                     .offset(x: 4, y: 4)

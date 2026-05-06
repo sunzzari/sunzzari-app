@@ -132,35 +132,57 @@ struct ContentView: View {
         try? await UNUserNotificationCenter.current().setBadgeCount(count)
     }
 
-    /// Pull active stories from Notion and append every partner-authored entry
-    /// into the inbox. Foreground-only path -- background APNs alone cannot
-    /// guarantee inbox aggregation since willPresent only runs in foreground
-    /// and remote pushes don't carry a sunzzari- prefixed identifier the
-    /// inbox can route on. Dedup is by story.id (NotificationInboxService.append
-    /// is a no-op for an existing id).
+    /// Pull active stories from Notion and aggregate partner-authored entries
+    /// into the inbox at one entry per (person, day) bucket. Foreground-only
+    /// path -- background APNs alone cannot guarantee inbox aggregation since
+    /// willPresent only runs in foreground and remote pushes don't carry a
+    /// sunzzari- prefixed identifier the inbox can route on. Force-fresh fetch
+    /// so a story posted seconds ago lands in the inbox instead of being
+    /// masked by a stale cache. Identity gate skips first-launch state where
+    /// AppIdentity.current is nil and isHummingbird falsely returns false.
     private func syncStoriesIntoInbox() async {
+        guard AppIdentity.current != nil else { return }
         let stories: [StoryPost]
         do {
-            stories = try await NotionService.shared.fetchActiveStories(force: false)
+            stories = try await NotionService.shared.fetchActiveStories(force: true)
         } catch {
             return
         }
         let me: StoryPost.Person = AppIdentity.isHummingbird ? .cathy : .elisa
-        for story in stories where story.person != me {
+
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "yyyy-MM-dd"
+
+        let grouped = Dictionary(grouping: stories.filter { $0.person != me }) { story -> String in
+            "\(story.person.rawValue)-\(dayFormatter.string(from: story.postedAt))"
+        }
+
+        for (_, bucket) in grouped {
+            let sorted = bucket.sorted { $0.postedAt > $1.postedAt }
+            guard let latest = sorted.first else { continue }
+            let count = bucket.count
+            let person = latest.person
+            let dayStr = dayFormatter.string(from: latest.postedAt)
+
+            let title = count == 1
+                ? "\(person.rawValue) posted a story"
+                : "\(person.rawValue) posted \(count) stories"
+
             let subtitle: String
-            if !story.caption.isEmpty {
-                subtitle = story.caption
-            } else if let loc = story.location, !loc.isEmpty {
+            if !latest.caption.isEmpty {
+                subtitle = latest.caption
+            } else if let loc = latest.location, !loc.isEmpty {
                 subtitle = loc
             } else {
                 subtitle = "Tap to watch"
             }
-            NotificationInboxService.shared.append(
-                id: "sunzzari-story-\(story.id)",
+
+            NotificationInboxService.shared.upsert(
+                id: "sunzzari-story-day-\(person.rawValue)-\(dayStr)",
                 type: .storyUpdate,
-                title: "\(story.person.rawValue) posted a story",
+                title: title,
                 subtitle: subtitle,
-                timestamp: story.postedAt
+                timestamp: latest.postedAt
             )
         }
     }
