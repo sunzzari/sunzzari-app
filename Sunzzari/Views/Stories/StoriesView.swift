@@ -171,17 +171,15 @@ struct StoriesView: View {
 
     /// Safe-area-respecting overlay containing both chrome controls. Lives as
     /// a sibling of the full-bleed player ZStack so SwiftUI's default safe
-    /// area handling positions archive below the dynamic island / notch /
-    /// status bar and lifts the FAB above the tab bar -- no device-specific
-    /// magic numbers.
+    /// area handling lifts both controls above the tab bar -- no device-
+    /// specific magic numbers. Both controls share the bottom row so the
+    /// archive button doesn't collide with the player's identity chip in
+    /// the top-left corner.
     private var chromeLayer: some View {
         VStack(spacing: 0) {
-            HStack {
-                archiveButton
-                Spacer()
-            }
             Spacer()
             HStack {
+                archiveButton
                 Spacer()
                 composeFAB
             }
@@ -190,8 +188,8 @@ struct StoriesView: View {
         .padding(.vertical, 8)
     }
 
-    /// Archive entry, top-leading. Glass-blur capsule reads against any photo
-    /// in the player below. Positioning handled by chromeLayer.
+    /// Archive entry, bottom-leading. Glass-blur capsule reads against any
+    /// photo in the player below. Positioning handled by chromeLayer.
     private var archiveButton: some View {
         Button {
             showArchive = true
@@ -205,7 +203,8 @@ struct StoriesView: View {
         }
     }
 
-    /// Compose FAB, bottom-trailing. Positioning handled by chromeLayer.
+    /// Compose FAB, bottom-trailing (shares the bottom row with the archive
+    /// button). Positioning handled by chromeLayer.
     private var composeFAB: some View {
         Button {
             showCompose = true
