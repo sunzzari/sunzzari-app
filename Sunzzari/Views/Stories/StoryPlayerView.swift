@@ -74,6 +74,27 @@ struct StoryPlayerView: View {
                 Color.black.ignoresSafeArea()
 
                 if let currentStory {
+                    // Instagram-style render: blurred photo as backdrop fills
+                    // the screen, real photo on top at native aspect (scaledToFit
+                    // never crops). Photos with non-screen aspect get visible
+                    // letterbox-blur instead of a hard crop, so user-positioned
+                    // overlays near edges always remain visible at playback.
+                    AsyncImage(url: currentStory.fullURL) { phase in
+                        if case .success(let image) = phase {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .blur(radius: 32)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                        } else {
+                            Color.black
+                        }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .ignoresSafeArea()
+
                     AsyncImage(url: currentStory.fullURL) { phase in
                         switch phase {
                         case .empty:
@@ -81,7 +102,7 @@ struct StoryPlayerView: View {
                         case .success(let image):
                             image
                                 .resizable()
-                                .scaledToFill()
+                                .scaledToFit()
                         case .failure:
                             VStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle")
@@ -95,7 +116,6 @@ struct StoryPlayerView: View {
                         }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
                     .ignoresSafeArea()
                 }
 

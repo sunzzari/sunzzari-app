@@ -140,8 +140,17 @@ struct ContentView: View {
     /// so a story posted seconds ago lands in the inbox instead of being
     /// masked by a stale cache. Identity gate skips first-launch state where
     /// AppIdentity.current is nil and isHummingbird falsely returns false.
+    /// Debounced to 30s so rapid foreground/background cycles (returning
+    /// from Photos picker, Settings, Control Center) don't burn through the
+    /// Notion 3 req/s rate limit.
     private func syncStoriesIntoInbox() async {
         guard AppIdentity.current != nil else { return }
+        let key = "sunzzari_last_story_sync"
+        let last = UserDefaults.standard.double(forKey: key)
+        let now = Date().timeIntervalSince1970
+        if last > 0, now - last < 30 { return }
+        UserDefaults.standard.set(now, forKey: key)
+
         let stories: [StoryPost]
         do {
             stories = try await NotionService.shared.fetchActiveStories(force: true)

@@ -21,6 +21,13 @@ struct StoriesView: View {
     @State private var showCompose = false
     @State private var showArchive = false
     @State private var showSelfStory = false
+    // Self-avatar badge position: user can drag to override the default and
+    // the position persists in UserDefaults across launches. Default places
+    // it up-and-right of the plus FAB (offset +22 horizontal, 0 vertical
+    // before VStack lifting via spacing 14).
+    @State private var badgeDragOffset: CGSize = StoriesView.loadBadgeOffset()
+    @State private var badgeDragInProgress: CGSize = .zero
+    private static let badgeOffsetKey = "sunzzari_self_badge_offset"
     @State private var yearRecapStories: [StoryPost] = []
     @State private var yearRecapYear: Int = 0
     @State private var showYearRecap = false
@@ -241,7 +248,6 @@ struct StoriesView: View {
         VStack(spacing: 14) {
             if !myReel.isEmpty {
                 selfStoryBadge
-                    .offset(x: 22, y: 0)
             }
             Button {
                 showCompose = true
@@ -257,24 +263,60 @@ struct StoriesView: View {
         }
     }
 
-    /// Small circular avatar badge anchored to the FAB's bottom-trailing
-    /// corner. Tap opens a full-screen self reel. Initial-on-color match the
-    /// existing `Person.colorHex` palette -- no asset required.
+    /// Small circular avatar badge anchored above-and-right of the plus FAB
+    /// by default. User can drag to reposition and the chosen offset persists
+    /// across launches via UserDefaults. Tap opens a full-screen self reel.
+    /// Drag and tap coexist: SwiftUI dispatches a tap when the gesture
+    /// completes without movement, otherwise a drag.
     private var selfStoryBadge: some View {
         let initial = String(currentPerson.rawValue.prefix(1))
-        return Button {
-            showSelfStory = true
-        } label: {
-            Text(initial)
-                .font(.system(size: 12, weight: .bold, design: .serif))
-                .foregroundStyle(.white)
-                .frame(width: 26, height: 26)
-                .background(Color(hex: currentPerson.colorHex))
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+        return Text(initial)
+            .font(.system(size: 12, weight: .bold, design: .serif))
+            .foregroundStyle(.white)
+            .frame(width: 26, height: 26)
+            .background(Color(hex: currentPerson.colorHex))
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+            .contentShape(Circle())
+            .offset(
+                x: badgeDragOffset.width + badgeDragInProgress.width,
+                y: badgeDragOffset.height + badgeDragInProgress.height
+            )
+            .gesture(
+                DragGesture(minimumDistance: 4)
+                    .onChanged { value in
+                        badgeDragInProgress = value.translation
+                    }
+                    .onEnded { value in
+                        badgeDragOffset.width += value.translation.width
+                        badgeDragOffset.height += value.translation.height
+                        badgeDragInProgress = .zero
+                        Self.persistBadgeOffset(badgeDragOffset)
+                    }
+            )
+            .onTapGesture {
+                showSelfStory = true
+            }
+            .accessibilityLabel("View your story")
+            .accessibilityAddTraits(.isButton)
+    }
+
+    private static func loadBadgeOffset() -> CGSize {
+        let x = UserDefaults.standard.double(forKey: badgeOffsetKey + "_x")
+        let y = UserDefaults.standard.double(forKey: badgeOffsetKey + "_y")
+        // Default if user hasn't dragged: matches the prior fixed offset
+        // (right of the plus column, slight) so first-launch users see the
+        // same affordance they had before.
+        if x == 0 && y == 0 && UserDefaults.standard.object(forKey: badgeOffsetKey + "_x") == nil {
+            return CGSize(width: 22, height: 0)
         }
-        .accessibilityLabel("View your story")
+        return CGSize(width: x, height: y)
+    }
+
+    private static func persistBadgeOffset(_ offset: CGSize) {
+        UserDefaults.standard.set(Double(offset.width), forKey: badgeOffsetKey + "_x")
+        UserDefaults.standard.set(Double(offset.height), forKey: badgeOffsetKey + "_y")
     }
 
     // MARK: - Year recap
@@ -295,6 +337,9 @@ struct StoriesView: View {
             showYearRecap = true
             UserDefaults.standard.set(year, forKey: Self.yearRecapShownKey)
         } catch {
+            #if DEBUG
+            print("[YearRecap] fetch failed:", error.localizedDescription)
+            #endif
         }
     }
 

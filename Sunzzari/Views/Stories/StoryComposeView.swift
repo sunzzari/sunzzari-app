@@ -137,29 +137,45 @@ struct StoryComposeView: View {
     private var photoArea: some View {
         ZStack {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Self.composedPhotoHeight)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay {
-                        overlayLayer
+                ZStack {
+                    // Instagram-style: blurred photo as backdrop, real photo
+                    // on top at native aspect (scaledToFit). User overlays
+                    // sit on top of both. The backdrop fills the 9:19.5
+                    // compose frame so non-screen-aspect photos still feel
+                    // composed instead of letterboxed-on-black.
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .blur(radius: 32)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: Self.composedPhotoHeight)
+                        .clipped()
+
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: Self.composedPhotoHeight)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.composedPhotoHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    overlayLayer
+                }
+                .overlay(alignment: .topTrailing) {
+                    Button {
+                        self.image = nil
+                        self.pickerItem = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24, design: .serif))
+                            .foregroundStyle(Color.sunBackground)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
                     }
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            self.image = nil
-                            self.pickerItem = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24, design: .serif))
-                                .foregroundStyle(Color.sunBackground)
-                                .background(Color.black.opacity(0.4))
-                                .clipShape(Circle())
-                        }
-                        .padding(10)
-                    }
+                    .padding(10)
+                }
             } else {
                 Button {
                     showSourceChoice = true
@@ -423,11 +439,20 @@ struct StoryComposeView: View {
         let displayHeight = Self.composedPhotoHeight
 
         let composed = ZStack {
+            // Match the compose preview's Instagram-style render: blurred
+            // backdrop + scaledToFit photo, so the bake captures exactly what
+            // the user saw.
             Image(uiImage: originalImage)
                 .resizable()
                 .scaledToFill()
+                .blur(radius: 32)
                 .frame(width: displayWidth, height: displayHeight)
                 .clipped()
+
+            Image(uiImage: originalImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: displayWidth, height: displayHeight)
 
             if !caption.isEmpty {
                 Text(caption)
