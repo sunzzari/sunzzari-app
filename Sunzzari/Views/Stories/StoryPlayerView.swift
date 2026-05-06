@@ -99,22 +99,11 @@ struct StoryPlayerView: View {
                     .ignoresSafeArea()
                 }
 
-                // Caption overlay (bottom-leading)
-                if let caption = currentStory?.caption, !caption.isEmpty {
-                    VStack {
-                        Spacer()
-                        Text(caption)
-                            .font(.system(.body, design: .serif, weight: .medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Color.black.opacity(0.45))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 60)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
+                // Caption overlay rendering removed: captions are baked into
+                // the photo at compose time (StoryComposeView.bakeOverlaysIntoImage)
+                // and `caption` is written empty to Notion. Legacy stories with
+                // a non-empty caption no longer render a duplicate text block
+                // here -- the player just shows the photo as authored.
 
                 // Tap zones — pushed below the top header so taps on the
                 // progress bars, author name, or close button don't fall
@@ -136,14 +125,17 @@ struct StoryPlayerView: View {
                     }
                 }
 
-                // Top: progress bars + author chip + close
+                // Top: progress bars + author chip + close. Padding includes
+                // safe-area-top so the header clears the Dynamic Island /
+                // notch on every device (the parent ZStack ignores safe area
+                // for the photo, so we have to add it back here explicitly).
                 VStack(spacing: 10) {
                     progressBars
                     headerRow
                     Spacer()
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, 8)
+                .padding(.top, geo.safeAreaInsets.top + 8)
             }
             // Tracks finger-down across press AND release. LongPressGesture's
             // onEnded fires when minimumDuration is met (not on lift), which is

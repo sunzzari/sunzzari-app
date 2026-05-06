@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import AVFoundation
 
 struct StoryComposeView: View {
     @Environment(\.dismiss) private var dismiss
@@ -23,20 +24,36 @@ struct StoryComposeView: View {
     // launched on every body re-render.
     @State private var didAutoLaunchCamera = false
 
-    // Caption + location overlay placement. Default y-offsets put caption near
-    // photo bottom and location near photo top inside the 480-tall preview;
-    // user drags to override and pinches to resize. Committed values persist
-    // between gestures; in-progress values render the live transform.
-    @State private var captionOffset: CGSize = CGSize(width: 0, height: 180)
+    // Caption + location overlay placement. Default y-offsets put caption
+    // toward the photo bottom and location toward the photo top, scaled to
+    // 35% of the photo height so they remain in the same proportional spot
+    // whether the preview is short or full-screen-tall. User drags to
+    // override and pinches to resize. Committed values persist between
+    // gestures; in-progress values render the live transform.
+    @State private var captionOffset: CGSize = CGSize(width: 0, height: StoryComposeView.composedPhotoHeight * 0.35)
     @State private var captionDragInProgress: CGSize = .zero
     @State private var captionScale: CGFloat = 1
     @State private var captionMagnifyInProgress: CGFloat = 1
-    @State private var locationOffset: CGSize = CGSize(width: 0, height: -180)
+    @State private var locationOffset: CGSize = CGSize(width: 0, height: -StoryComposeView.composedPhotoHeight * 0.35)
     @State private var locationDragInProgress: CGSize = .zero
     @State private var locationScale: CGFloat = 1
     @State private var locationMagnifyInProgress: CGFloat = 1
 
-    private static let composedPhotoHeight: CGFloat = 480
+    // Cached publicID for retry: if Cloudinary upload succeeded but the
+    // subsequent Notion createStoryPost failed, we hold the publicID so a
+    // user-tapped retry does not re-upload (orphaning the first asset).
+    // Cleared on full-chain success or on photo replacement.
+    @State private var lastUploadedPublicID: String?
+
+    /// Compose preview height matches the player's full-screen aspect ratio so
+    /// what the user sees in compose is exactly what plays back. Without this,
+    /// a 480pt-tall preview baked overlays at the photo edges get cropped when
+    /// the player scaledToFill the full screen aspect (~9:19.5 on iPhone).
+    private static var composedPhotoHeight: CGFloat {
+        let bounds = UIScreen.main.bounds
+        let composeContentWidth = bounds.width - 40
+        return composeContentWidth * (bounds.height / bounds.width)
+    }
 
     private var currentPerson: StoryPost.Person {
         AppIdentity.isHummingbird ? .cathy : .elisa
@@ -92,11 +109,25 @@ struct StoryComposeView: View {
                 // (Cancel from the camera returns to the empty placeholder, a
                 // tap on which still gives Take Photo / Choose from Library).
                 // Skip on simulator (no camera) so the test path stays clean.
+                // Permission gate: avoid the black-screen UX on denied camera
+                // by requesting access first; on deny, fall through to the
+                // placeholder so the user can still pick from library.
                 guard !didAutoLaunchCamera,
                       image == nil,
                       UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
                 didAutoLaunchCamera = true
-                showCamera = true
+
+                switch AVCaptureDevice.authorizationStatus(for: .video) {
+                case .authorized:
+                    showCamera = true
+                case .notDetermined:
+                    let granted = await AVCaptureDevice.requestAccess(for: .video)
+                    if granted { showCamera = true }
+                case .denied, .restricted:
+                    break
+                @unknown default:
+                    break
+                }
             }
         }
     }
@@ -289,9 +320,18 @@ struct StoryComposeView: View {
         do {
             if let data = try await item.loadTransferable(type: Data.self),
                let img = UIImage(data: data) {
+                // Downsample large Photos library assets (up to 48 MP on
+                // newer iPhones) before holding them in memory. Without this
+                // the compose sheet can OOM-crash on older devices the
+                // moment a Pro photo is selected. 1080x1920 is the maximum
+                // resolution Cloudinary will serve from an active story
+                // anyway, so additional pixels would be wasted on upload.
+                let target = CGSize(width: 1080, height: 1920)
+                let downsized = img.preparingThumbnail(of: target) ?? img
                 await MainActor.run {
-                    self.image = img
+                    self.image = downsized
                     self.errorMessage = nil
+                    self.lastUploadedPublicID = nil
                 }
             } else {
                 // Library returned no data (iCloud download failed, low-fi
@@ -309,13 +349,12 @@ struct StoryComposeView: View {
         }
     }
 
+    @MainActor
     private func post() async {
         guard let originalImage = image else { return }
-        await MainActor.run {
-            isPosting = true
-            errorMessage = nil
-        }
-        defer { Task { @MainActor in isPosting = false } }
+        isPosting = true
+        errorMessage = nil
+        defer { isPosting = false }
 
         do {
             // Bake the user's caption + location overlays at their committed
@@ -325,8 +364,18 @@ struct StoryComposeView: View {
             // in Notion -- the player shows it in the metadata bar next to the
             // author, which sits at a different on-screen position than the
             // baked overlay, so the two don't visually conflict.
-            let imageToUpload: UIImage = await bakeOverlaysIntoImage() ?? originalImage
-            let publicID = try await CloudinaryService.shared.uploadStory(image: imageToUpload)
+            let imageToUpload: UIImage = bakeOverlaysIntoImage() ?? originalImage
+
+            // If a previous attempt uploaded successfully but Notion failed,
+            // reuse the existing publicID instead of orphaning a fresh upload.
+            let publicID: String
+            if let cached = lastUploadedPublicID {
+                publicID = cached
+            } else {
+                publicID = try await CloudinaryService.shared.uploadStory(image: imageToUpload)
+                lastUploadedPublicID = publicID
+            }
+
             let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
             let post = try await NotionService.shared.createStoryPost(
@@ -336,6 +385,10 @@ struct StoryComposeView: View {
                 postedAt: Date(),
                 location: trimmedLocation.isEmpty ? nil : trimmedLocation
             )
+            // Full chain landed -- clear the publicID cache so a brand-new
+            // compose session starts fresh.
+            lastUploadedPublicID = nil
+
             // Push body still uses the typed caption (or location, or fallback)
             // since the recipient sees the push BEFORE the photo loads.
             let pushBody: String
@@ -351,12 +404,10 @@ struct StoryComposeView: View {
                 body: pushBody
             )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            await MainActor.run {
-                onPosted(post)
-                dismiss()
-            }
+            onPosted(post)
+            dismiss()
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            errorMessage = error.localizedDescription
         }
     }
 

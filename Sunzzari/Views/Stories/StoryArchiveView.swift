@@ -249,7 +249,18 @@ private struct StackPlayerPayload: Identifiable {
     let person: StoryPost.Person
 
     init(stories: [StoryPost], person: StoryPost.Person) {
-        self.id = "\(person.rawValue)-\(stories.first?.id ?? UUID().uuidString)"
+        // ID includes the day key so re-tapping a different day's stack for
+        // the same person triggers a fresh fullScreenCover present (SwiftUI
+        // diffs by Identifiable.id; same id = no re-present).
+        let dayKey: String
+        if let postedAt = stories.first?.postedAt {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            dayKey = f.string(from: postedAt)
+        } else {
+            dayKey = "unknown"
+        }
+        self.id = "\(person.rawValue)-\(dayKey)-\(stories.first?.id ?? UUID().uuidString)"
         self.stories = stories
         self.person = person
     }
