@@ -17,6 +17,11 @@ struct StoryComposeView: View {
     @State private var showSourceChoice = false
     @State private var showCamera = false
     @State private var showLibrary = false
+    // One-shot guard: open the camera automatically the first time the sheet
+    // appears (Snap-style camera-first compose). After the user cancels the
+    // camera or selects an image, this stays true so the picker is not re-
+    // launched on every body re-render.
+    @State private var didAutoLaunchCamera = false
 
     private var currentPerson: StoryPost.Person {
         AppIdentity.isHummingbird ? .cathy : .elisa
@@ -64,6 +69,18 @@ struct StoryComposeView: View {
                             .disabled(image == nil)
                     }
                 }
+            }
+            .task {
+                // Camera-first compose: open the camera as soon as the sheet
+                // appears, with the source-choice dialog as the fallback path
+                // (Cancel from the camera returns to the empty placeholder, a
+                // tap on which still gives Take Photo / Choose from Library).
+                // Skip on simulator (no camera) so the test path stays clean.
+                guard !didAutoLaunchCamera,
+                      image == nil,
+                      UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
+                didAutoLaunchCamera = true
+                showCamera = true
             }
         }
     }

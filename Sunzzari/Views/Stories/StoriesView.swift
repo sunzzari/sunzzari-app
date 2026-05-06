@@ -46,8 +46,13 @@ struct StoriesView: View {
         return [me] + activeOthers
     }
 
+    /// The set of reels that show up in the swiping player. Self is excluded
+    /// per user spec: the Stories tab should swipe only between other people's
+    /// photos, never your own. The user knows what they posted; the player is
+    /// for catching up on the partner's day.
     private var activePersons: [StoryPost.Person] {
-        rankedPersons.filter { !reel(for: $0).isEmpty }
+        let me = currentPerson
+        return rankedPersons.filter { $0 != me && !reel(for: $0).isEmpty }
     }
 
     /// Reels for one person, newest first per user spec.

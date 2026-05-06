@@ -34,7 +34,10 @@ struct InboxBellButton: View {
 
 struct NotificationInboxView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var entries: [InboxEntry] = []
+    // Initialize from the service's current entries so the sheet doesn't flash
+    // the empty state for one frame before .onAppear { reload() } catches up.
+    // The previous `= []` default was the "inbox not populating properly" bug.
+    @State private var entries: [InboxEntry] = NotificationInboxService.shared.entries
 
     let onRoute: (InboxEntry) -> Void
 
