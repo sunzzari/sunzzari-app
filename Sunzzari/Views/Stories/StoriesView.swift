@@ -233,13 +233,15 @@ struct StoriesView: View {
     /// button). Positioning handled by chromeLayer.
     ///
     /// When the current user has at least one active story today, the self-
-    /// avatar badge stacks directly above the plus rather than overlapping
-    /// its corner. Two separate Buttons in a VStack -- never nested -- so
-    /// each owns its own hit region (SwiftUI swallows nested Button taps).
+    /// avatar badge sits above and slightly outboard of the plus -- nudged
+    /// toward the right edge of the screen and lifted a bit higher than the
+    /// VStack spacing alone would give. Two separate Buttons -- never nested
+    /// -- so each owns its own hit region (SwiftUI swallows nested taps).
     private var composeFAB: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 14) {
             if !myReel.isEmpty {
                 selfStoryBadge
+                    .offset(x: 22, y: 0)
             }
             Button {
                 showCompose = true
