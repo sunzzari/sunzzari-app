@@ -29,17 +29,20 @@ struct DayNarrative {
 /// Notion; the iOS card never has to know which source the prose came from.
 enum DayNarrativeService {
 
+    /// Local-fallback narrative: intentionally minimal. The deterministic
+    /// generator can't synthesize a curated plan -- it would just dump every
+    /// possibility into prose and produce a wall of text.
+    ///
+    /// So this returns ONLY the 1-2 sentence theme intro. The real per-day
+    /// "newsletter" is Claude-synthesized at /notion-trip-final-sweep time
+    /// and stored in the Trip Newsletters Notion DB; iOS reads from there
+    /// via NewsletterResolver (Phase B). When no Notion-side newsletter
+    /// exists yet, this minimal intro is what shows.
     static func narrative(for day: DayBundle) -> DayNarrative {
         if day.confirmed.isEmpty && day.possibilities.isEmpty {
             return DayNarrative()
         }
-
-        return DayNarrative(
-            intro: introLine(for: day),
-            confirmedParagraph: confirmedParagraph(for: day),
-            possibilitiesParagraph: possibilitiesParagraph(for: day),
-            closing: closingLine(for: day)
-        )
+        return DayNarrative(intro: introLine(for: day))
     }
 
     // MARK: - Intro (1-2 sentences -- the day's theme)
