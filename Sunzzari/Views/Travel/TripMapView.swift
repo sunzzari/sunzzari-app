@@ -156,7 +156,21 @@ struct TripMKMap: UIViewRepresentable {
         }
         coordinator.lastAnnotationCount = annotations.count
 
-        // Sync selection
+        // Sync selection. To make sure the selected pin actually pops out of
+        // any cluster (so the user sees their item, not a "16" badge), we
+        // also clear its clusteringIdentifier and force .required display
+        // priority. Restore those on previously-selected pins so they go
+        // back to clustering when zoomed out.
+        for ann in map.annotations {
+            guard let ta = ann as? TripItemAnnotation,
+                  let view = map.view(for: ann) as? MKMarkerAnnotationView else {
+                continue
+            }
+            let isSelected = ta.item.id == selectedID
+            view.clusteringIdentifier = isSelected ? nil : "tripItem"
+            view.displayPriority = isSelected ? .required : .defaultHigh
+        }
+
         if let id = selectedID {
             let alreadySelected = map.selectedAnnotations.contains {
                 ($0 as? TripItemAnnotation)?.item.id == id
@@ -263,6 +277,33 @@ struct TripMKMap: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            // Cluster tap → zoom into the cluster's member bounds. MapKit's
+            // default behavior on a cluster annotation tap is to do nothing,
+            // which leaves the user stuck. Match elisa-travel-map's Google
+            // MarkerClusterer behavior: tap = zoom in until cluster splits.
+            if let cluster = view.annotation as? MKClusterAnnotation {
+                let coords = cluster.memberAnnotations.map(\.coordinate)
+                guard !coords.isEmpty else { return }
+                var rect = MKMapRect.null
+                for c in coords {
+                    let p = MKMapPoint(c)
+                    rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+                }
+                let padded: MKMapRect
+                if rect.size.width == 0 && rect.size.height == 0 {
+                    // Single coordinate: zoom in directly.
+                    let point = MKMapPoint(coords[0])
+                    padded = MKMapRect(x: point.x - 500, y: point.y - 500, width: 1000, height: 1000)
+                } else {
+                    let dx = max(rect.size.width * 0.5, 200)
+                    let dy = max(rect.size.height * 0.5, 200)
+                    padded = rect.insetBy(dx: -dx, dy: -dy)
+                }
+                mapView.setVisibleMapRect(padded, animated: true)
+                mapView.deselectAnnotation(cluster, animated: false)
+                return
+            }
+
             // Visual halo: amber glow ring around selected marker. Mirrors web's
             // 3px blue halo on selected markers, recolored to fit the iOS palette.
             UIView.animate(withDuration: 0.18) {

@@ -6,8 +6,19 @@ final class TravelService: @unchecked Sendable {
     private let baseURL = "https://api.notion.com/v1"
 
     // Bump this when geocoding logic changes to clear stale caches
-    private static let geocodeVersion = 4
+    private static let geocodeVersion = 6
     private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
+
+    // Vercel-side Google Maps geocoder. The web app gets ~100% coverage from
+    // this; MKLocalSearch capped iOS at ~30/401 due to undocumented throttling.
+    // See elisa-travel-map/lib/geocode.ts and /api/geocode/route.ts.
+    private static let geocoderEndpoint = "https://elisa-travel-map.vercel.app/api/geocode"
+    private static let maxConcurrentGeocodes = 8
+
+    // Persistent failure marker so we don't re-hammer the API every launch
+    // for items that won't resolve. Retried after the interval elapses.
+    private static let failureCachePrefix = "FAIL:"
+    private static let failureRetryInterval: TimeInterval = 7 * 24 * 60 * 60
 
     private init() {
         let stored = UserDefaults.standard.integer(forKey: Self.geocodeVersionKey)
@@ -24,12 +35,14 @@ final class TravelService: @unchecked Sendable {
 
     private var tripsCache: (trips: [Trip], at: Date)?
     private var itemsCache: [String: (items: [TripItem], at: Date)] = [:]
+    private var newslettersCache: [String: (newsletters: [TripNewsletter], at: Date)] = [:]
     private let cacheTTL: TimeInterval = 300 // 5 minutes
 
     var isOffline = false
 
     func invalidateTrips() { tripsCache = nil }
     func invalidateItems(tripId: String) { itemsCache[tripId] = nil }
+    func invalidateNewsletters(tripId: String) { newslettersCache[tripId] = nil }
 
     // MARK: - Disk cache
 
@@ -56,6 +69,12 @@ final class TravelService: @unchecked Sendable {
     func itemsDiskCache(tripId: String) -> [TripItem]? {
         let normalized = tripId.replacingOccurrences(of: "-", with: "")
         return loadFromDisk(name: "items_\(normalized)").map { parseItems(from: $0, tripId: tripId) }
+    }
+
+    func newslettersDiskCache(tripId: String) -> [TripNewsletter]? {
+        let normalized = tripId.replacingOccurrences(of: "-", with: "")
+        guard let data = loadFromDisk(name: "newsletters_\(normalized)") else { return nil }
+        return try? JSONDecoder().decode([TripNewsletter].self, from: data)
     }
 
     // MARK: - Headers
@@ -136,12 +155,12 @@ final class TravelService: @unchecked Sendable {
         var result = items
         for i in result.indices where !result[i].hasCoordinates && Self.hasGeocodableText(result[i]) {
             let key = TripItem.geoKey(for: result[i].id)
-            if let cached = UserDefaults.standard.string(forKey: key) {
-                let parts = cached.split(separator: ",")
-                if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
-                    result[i].latitude = lat
-                    result[i].longitude = lon
-                }
+            guard let cached = UserDefaults.standard.string(forKey: key),
+                  !cached.hasPrefix(Self.failureCachePrefix) else { continue }
+            let parts = cached.split(separator: ",")
+            if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
+                result[i].latitude = lat
+                result[i].longitude = lon
             }
         }
         return result
@@ -162,136 +181,216 @@ final class TravelService: @unchecked Sendable {
         var result = items
         let toGeocode = items.enumerated().filter { !$0.element.hasCoordinates && Self.hasGeocodableText($0.element) }
 
-        // First pass: apply UserDefaults cache hits (no concurrency needed)
         var needsNetwork: [(index: Int, item: TripItem)] = []
+        let now = Date().timeIntervalSince1970
         for (index, item) in toGeocode {
             let key = TripItem.geoKey(for: item.id)
             if let cached = UserDefaults.standard.string(forKey: key) {
-                let parts = cached.split(separator: ",")
-                if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
-                    result[index].latitude = lat
-                    result[index].longitude = lon
-                    continue
+                if cached.hasPrefix(Self.failureCachePrefix) {
+                    let ts = TimeInterval(cached.dropFirst(Self.failureCachePrefix.count)) ?? 0
+                    if now - ts < Self.failureRetryInterval { continue }
+                } else {
+                    let parts = cached.split(separator: ",")
+                    if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
+                        result[index].latitude = lat
+                        result[index].longitude = lon
+                        continue
+                    }
                 }
             }
             needsNetwork.append((index, item))
         }
 
-        // Trip location anchors the search to the right country/continent. Without it,
-        // ambiguous city names like "Paris" or "Rome" resolve to Paris, TX / Rome, GA.
-        let locationContexts = Self.splitTripLocation(tripLocation)
+        // Hit the Vercel /api/geocode endpoint (Google Maps Geocoding API,
+        // Redis-cached server-side). 8-wide concurrency is fine since cached
+        // hits return instantly and the upstream limit is 50/sec; we never
+        // exceed that with 401 items.
+        let batchSize = Self.maxConcurrentGeocodes
+        var batchStart = 0
+        while batchStart < needsNetwork.count {
+            let batchEnd = min(batchStart + batchSize, needsNetwork.count)
+            let batch = Array(needsNetwork[batchStart..<batchEnd])
 
-        // Pre-resolve unique cities to regions for search bias — biased by trip location
-        var cityRegions: [String: MKCoordinateRegion] = [:]
-        let uniqueCities = Set(needsNetwork.map(\.item.legCity).filter { !$0.isEmpty })
-        for city in uniqueCities {
-            if let coord = await Self.resolveCity(city, locationContexts: locationContexts) {
-                cityRegions[city] = MKCoordinateRegion(
-                    center: coord,
-                    latitudinalMeters: 50_000, longitudinalMeters: 50_000
-                )
-            }
-        }
-
-        // Second pass: geocode uncached items via network
-        await withTaskGroup(of: (Int, Double, Double)?.self) { group in
-            for (index, item) in needsNetwork {
-                let region = cityRegions[item.legCity]
-                let contexts = locationContexts
-                group.addTask {
-                    await Self.geocodeItem(item, index: index, region: region, locationContexts: contexts)
+            await withTaskGroup(of: (Int, (Double, Double)?).self) { group in
+                for (index, item) in batch {
+                    group.addTask {
+                        let coords = await Self.geocodeItem(item)
+                        return (index, coords)
+                    }
                 }
-            }
-
-            for await result_ in group {
-                if let (index, lat, lon) = result_ {
-                    result[index].latitude = lat
-                    result[index].longitude = lon
+                for await (index, coords) in group {
                     let key = TripItem.geoKey(for: result[index].id)
-                    UserDefaults.standard.set("\(lat),\(lon)", forKey: key)
+                    if let (lat, lon) = coords {
+                        result[index].latitude = lat
+                        result[index].longitude = lon
+                        UserDefaults.standard.set("\(lat),\(lon)", forKey: key)
+                    } else {
+                        UserDefaults.standard.set("\(Self.failureCachePrefix)\(now)", forKey: key)
+                    }
                 }
             }
+            batchStart = batchEnd
         }
 
         return result
     }
 
-    // Split a trip location ("France/Italy", "Japan", "France, Italy") into ordered
-    // country/region hints. Empty array means no hint available.
-    private static func splitTripLocation(_ raw: String) -> [String] {
-        raw.split(whereSeparator: { "/,&".contains($0) })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
-
-    // Try resolving a city against each trip location context in order. Returns the
-    // first match; falls back to an unbiased search if nothing matches.
-    private static func resolveCity(_ city: String, locationContexts: [String]) async -> CLLocationCoordinate2D? {
-        for context in locationContexts {
-            let req = MKLocalSearch.Request()
-            req.naturalLanguageQuery = "\(city), \(context)"
-            if let resp = try? await MKLocalSearch(request: req).start(),
-               let first = resp.mapItems.first {
-                return first.placemark.coordinate
-            }
+    // Geocode a single item via the Vercel endpoint. Tries venue first, then
+    // name as fallback for items without a Provider/Venue. Returns nil only
+    // when every query exhausted; caller caches success or failure.
+    private static func geocodeItem(_ item: TripItem) async -> (Double, Double)? {
+        if !item.venue.isEmpty,
+           let coords = await geocodeViaVercel(query: item.venue, city: item.legCity) {
+            return coords
         }
-        // Fallback: no location context or no contextual hit
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = city
-        if let resp = try? await MKLocalSearch(request: req).start(),
-           let first = resp.mapItems.first {
-            return first.placemark.coordinate
+        if !item.name.isEmpty && item.name != item.venue,
+           let coords = await geocodeViaVercel(query: item.name, city: item.legCity) {
+            return coords
         }
         return nil
     }
 
-    // Geocode a single item, appending the trip location to the query so ambiguous
-    // venue names resolve to the correct country. Tries venue-based query first,
-    // then name-based query as a fallback for items without a Provider/Venue.
-    private static func geocodeItem(
-        _ item: TripItem,
-        index: Int,
-        region: MKCoordinateRegion?,
-        locationContexts: [String]
-    ) async -> (Int, Double, Double)? {
-        // Build candidate base queries in priority order. Venue is more
-        // location-y; name often is, too, when venue is empty.
-        var bases: [String] = []
-        if !item.venue.isEmpty {
-            bases.append([item.venue, item.legCity].filter { !$0.isEmpty }.joined(separator: ", "))
-        }
-        if !item.name.isEmpty && item.name != item.venue {
-            bases.append([item.name, item.legCity].filter { !$0.isEmpty }.joined(separator: ", "))
-        }
-        guard !bases.isEmpty else { return nil }
-
-        // Expand each base with country contexts, then add the bare base as
-        // a final fallback. Order matters: venue+context first, name+context,
-        // then bares.
-        var queries: [String] = []
-        for base in bases {
-            if locationContexts.isEmpty {
-                queries.append(base)
-            } else {
-                queries.append(contentsOf: locationContexts.map { "\(base), \($0)" })
-                queries.append(base)
+    private static func geocodeViaVercel(query: String, city: String) async -> (Double, Double)? {
+        guard !query.isEmpty || !city.isEmpty else { return nil }
+        guard var components = URLComponents(string: Self.geocoderEndpoint) else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "venue", value: query),
+            URLQueryItem(name: "city", value: city)
+        ]
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
             }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let lat = json["lat"] as? Double, let lng = json["lng"] as? Double else {
+                return nil
+            }
+            return (lat, lng)
+        } catch {
+            return nil
         }
+    }
 
-        for query in queries {
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = query
-            if let region { request.region = region }
-            do {
-                let response = try await MKLocalSearch(request: request).start()
-                if let first = response.mapItems.first {
-                    return (index, first.placemark.coordinate.latitude, first.placemark.coordinate.longitude)
+    // MARK: - Fetch Trip Newsletters (Phase B)
+
+    func fetchTripNewsletters(tripId: String, force: Bool = false) async throws -> [TripNewsletter] {
+        let normalized = tripId.replacingOccurrences(of: "-", with: "")
+        if !force, let cached = newslettersCache[tripId], Date().timeIntervalSince(cached.at) < cacheTTL {
+            isOffline = false
+            return cached.newsletters
+        }
+        do {
+            let filter: [String: Any] = [
+                "property": "Trip",
+                "relation": ["contains": tripId]
+            ]
+            let dbData = try await queryDatabase(
+                id: TripNewsletter.databaseID,
+                sorts: [["property": "Date", "direction": "ascending"]],
+                filter: filter
+            )
+            guard let json = try? JSONSerialization.jsonObject(with: dbData) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]] else {
+                return []
+            }
+            // Parse properties + fetch page bodies. Throttle body fetches to
+            // 4 concurrent so we stay under Notion's 3 req/sec average rate
+            // limit (firing 22 in parallel was triggering 429 silently and
+            // returning empty prose).
+            var newsletters: [TripNewsletter] = []
+            let batchSize = 4
+            var i = 0
+            while i < results.count {
+                let end = min(i + batchSize, results.count)
+                let batch = Array(results[i..<end])
+                await withTaskGroup(of: TripNewsletter?.self) { group in
+                    for page in batch {
+                        group.addTask { [self] in
+                            await self.parseNewsletterPage(page, tripId: tripId)
+                        }
+                    }
+                    for await maybe in group {
+                        if let n = maybe { newsletters.append(n) }
+                    }
                 }
-            } catch {
-                print("[TravelService] geocode failed for '\(query)': \(error.localizedDescription)")
+                i = end
             }
+            newsletters.sort { $0.date < $1.date }
+            newslettersCache[tripId] = (newsletters, Date())
+            if let encoded = try? JSONEncoder().encode(newsletters) {
+                saveToDisk(encoded, name: "newsletters_\(normalized)")
+            }
+            isOffline = false
+            return newsletters
+        } catch {
+            if let cached = newslettersDiskCache(tripId: tripId) {
+                newslettersCache[tripId] = (cached, Date())
+                isOffline = true
+                return cached
+            }
+            throw error
         }
-        return nil
+    }
+
+    private func parseNewsletterPage(_ page: [String: Any], tripId: String) async -> TripNewsletter? {
+        guard let id = page["id"] as? String,
+              let props = page["properties"] as? [String: Any] else { return nil }
+
+        let date = extractDateString(from: props["Date"]) ?? ""
+        let staleBool = (props["Stale"] as? [String: Any])?["checkbox"] as? Bool ?? false
+        let itemsHash = extractRichText(from: props["Items Hash"]) ?? ""
+        let generatedAt = extractDateString(from: props["Generated At"])
+
+        let prose = await fetchPageProse(pageId: id)
+
+        return TripNewsletter(
+            id: id,
+            tripId: tripId,
+            date: date,
+            prose: prose,
+            generatedAt: generatedAt,
+            stale: staleBool,
+            itemsHash: itemsHash
+        )
+    }
+
+    private func fetchPageProse(pageId: String) async -> String {
+        guard let url = URL(string: "\(baseURL)/blocks/\(pageId)/children?page_size=100") else {
+            return ""
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return ""
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]] else {
+                return ""
+            }
+            var paragraphs: [String] = []
+            for block in results {
+                guard let type = block["type"] as? String, type == "paragraph",
+                      let paragraph = block["paragraph"] as? [String: Any],
+                      let richText = paragraph["rich_text"] as? [[String: Any]] else {
+                    continue
+                }
+                let text = richText.compactMap { $0["plain_text"] as? String }.joined()
+                if !text.isEmpty {
+                    paragraphs.append(text)
+                }
+            }
+            return paragraphs.joined(separator: "\n\n")
+        } catch {
+            return ""
+        }
     }
 
     // MARK: - Notion API

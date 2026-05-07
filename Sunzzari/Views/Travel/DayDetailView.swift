@@ -16,6 +16,7 @@ struct DayDetailView: View {
     @State private var showShareSheet = false
     @State private var showMap = true
     @State private var detailItem: TripItem?
+    @State private var newslettersByDate: [String: TripNewsletter] = [:]
 
     private static let formatter: DateFormatter = {
         let f = DateFormatter()
@@ -92,7 +93,8 @@ struct DayDetailView: View {
                             NewsletterDayCard(
                                 day: day,
                                 selectedID: selectedID,
-                                onSelect: handleRowTap
+                                onSelect: handleRowTap,
+                                notionProse: NewsletterResolver.prose(for: day, in: newslettersByDate)
                             )
                         }
                     }
@@ -123,6 +125,16 @@ struct DayDetailView: View {
         .onAppear {
             if selectedDates.isEmpty, let initial = pickInitialDate() {
                 selectedDates = [initial]
+            }
+            // Pull cached newsletters synchronously so first paint shows
+            // Notion prose immediately when available; refresh in background.
+            if let cached = TravelService.shared.newslettersDiskCache(tripId: trip.id) {
+                indexNewsletters(cached)
+            }
+            Task {
+                if let fresh = try? await TravelService.shared.fetchTripNewsletters(tripId: trip.id) {
+                    await MainActor.run { indexNewsletters(fresh) }
+                }
             }
         }
         .onChange(of: selectedID) { _, newID in
@@ -157,21 +169,30 @@ struct DayDetailView: View {
         .background(Color.sunSurface.opacity(0.5))
     }
 
-    /// Row-tap handler used by NewsletterDayCard. Sets selectedID (which
-    /// drives the shared map's selection halo + auto-pan via selectAnnotation),
-    /// pans the day's bridge as a belt-and-suspenders fallback, and on a
-    /// repeat tap opens ItemDetailSheet (matches the marker-tap two-step).
+    /// Row-tap handler. Pans the day's map to the item, then updates
+    /// selectedID so the marker halo + callout follow. Repeat tap on the
+    /// already-selected row opens ItemDetailSheet (matches marker two-step).
+    /// Pan synchronously (not via DispatchQueue.main.async): the prior async
+    /// wrap was racing the SwiftUI update pass that selectAnnotation runs
+    /// inside, so the pan was silently overridden before it animated in.
     private func handleRowTap(_ item: TripItem) {
-        if let lat = item.latitude, let lon = item.longitude {
-            DispatchQueue.main.async {
-                bridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
-            }
-        }
         if selectedID == item.id {
             detailItem = item
-        } else {
-            selectedID = item.id
+            return
         }
+        if let lat = item.latitude, let lon = item.longitude {
+            // Very tight zoom (~200m) so MapKit clustering breaks. At 800m
+            // pins 50m apart still cluster (cluster threshold is screen-pt
+            // based). 200m guarantees ~25cm/pt so any two distinct pins
+            // separate visually. The clusteringIdentifier=nil hack in
+            // TripMapView.updateUIView handles the case where two pins share
+            // the exact same coordinate.
+            bridge.panTo(
+                CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                zoom: 200
+            )
+        }
+        selectedID = item.id
     }
 
     // MARK: - Shared map
@@ -250,6 +271,12 @@ struct DayDetailView: View {
         days.first { d in d.allItems.contains(where: { $0.id == itemID }) }
     }
 
+    private func indexNewsletters(_ newsletters: [TripNewsletter]) {
+        var byDate: [String: TripNewsletter] = [:]
+        for n in newsletters { byDate[n.date] = n }
+        newslettersByDate = byDate
+    }
+
     private func buildShareText() -> String {
         var lines: [String] = []
         lines.append(trip.name)
@@ -265,6 +292,11 @@ struct DayDetailView: View {
             lines.append(header.string(from: day.date))
             lines.append(String(repeating: "-", count: 30))
 
+            if let prose = NewsletterResolver.prose(for: day, in: newslettersByDate) {
+                lines.append(prose)
+                lines.append("")
+                continue
+            }
             let narrative = DayNarrativeService.narrative(for: day)
             if !narrative.isEmpty {
                 lines.append(narrative.joined)

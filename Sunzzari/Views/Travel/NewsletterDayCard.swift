@@ -16,6 +16,9 @@ struct NewsletterDayCard: View {
     let day: DayBundle
     let selectedID: String?
     let onSelect: (TripItem) -> Void
+    /// When non-nil, this Notion-sourced prose replaces the local
+    /// DayNarrativeService output. Multiple paragraphs separated by `\n\n`.
+    var notionProse: String? = nil
 
     private static let displayHeader: DateFormatter = {
         let f = DateFormatter()
@@ -24,32 +27,64 @@ struct NewsletterDayCard: View {
         return f
     }()
 
-    private var narrative: DayNarrative {
-        DayNarrativeService.narrative(for: day)
+    /// Body paragraphs to render. Prefers the Notion prose when set; falls back
+    /// to the local generator's per-section narrative.
+    private var paragraphs: [String] {
+        if let prose = notionProse, !prose.isEmpty {
+            return prose.components(separatedBy: "\n\n")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        let n = DayNarrativeService.narrative(for: day)
+        return [n.intro, n.confirmedParagraph, n.possibilitiesParagraph, n.closing].compactMap { $0 }
+    }
+
+    /// Confirmed/Assigned anchors for the day, time-sorted when times exist.
+    private var confirmedDisplayItems: [TripItem] {
+        day.confirmed.sorted { lhs, rhs in
+            let lt = DayNarrativeService.formattedTime(for: lhs)
+            let rt = DayNarrativeService.formattedTime(for: rhs)
+            if lt != nil && rt == nil { return true }
+            if lt == nil && rt != nil { return false }
+            return (lhs.displayDate ?? "") < (rhs.displayDate ?? "")
+        }
+    }
+
+    /// Pool items the newsletter actually picked (name appears in prose).
+    /// Deduped against confirmed names so the same place doesn't appear twice
+    /// when the user has both a Confirmed and a Researching entry sharing a
+    /// name (e.g. two "Le Tout-Paris" rows in the Notion DB).
+    /// When there's no Notion prose, fall back to all possibilities.
+    private var poolDisplayItems: [TripItem] {
+        let confirmedNames = Set(day.confirmed.map { $0.name.lowercased() })
+        let confirmedIDs = Set(day.confirmed.map(\.id))
+        let basePool = day.possibilities.filter { item in
+            !confirmedIDs.contains(item.id) &&
+            !confirmedNames.contains(item.name.lowercased())
+        }
+        guard let prose = notionProse, !prose.isEmpty else {
+            return basePool
+        }
+        return basePool.filter { item in
+            !item.name.isEmpty && prose.localizedCaseInsensitiveContains(item.name)
+        }
+    }
+
+    private var hasAnyDisplayItems: Bool {
+        !confirmedDisplayItems.isEmpty || !poolDisplayItems.isEmpty
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            // Multi-paragraph narrative body. Each non-nil section becomes
-            // its own line-wrapped Text with vertical breathing room.
             VStack(alignment: .leading, spacing: 12) {
-                if let intro = narrative.intro {
-                    paragraph(intro)
-                }
-                if let confirmed = narrative.confirmedParagraph {
-                    paragraph(confirmed)
-                }
-                if let possibilities = narrative.possibilitiesParagraph {
-                    paragraph(possibilities)
-                }
-                if let closing = narrative.closing {
-                    paragraph(closing)
+                ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, p in
+                    paragraph(p)
                 }
             }
 
-            if !day.allItems.isEmpty {
+            if hasAnyDisplayItems {
                 itemsStrip
             }
         }
@@ -89,20 +124,24 @@ struct NewsletterDayCard: View {
 
     // MARK: - Items strip
 
-    /// Compact list of all the day's items. Each row is one line: status
-    /// dot + name (+ time prefix if available). Tapping routes through
-    /// `onSelect(item)` so the shared map highlights the marker and a
-    /// repeat tap opens `ItemDetailSheet`.
+    /// Items strip below the prose. Two sections: confirmed anchors (with
+    /// times, time-sorted) and possibilities the newsletter picked (name
+    /// only, no time). Tapping any row routes through `onSelect(item)` so
+    /// the shared map pans + highlights, repeat tap opens `ItemDetailSheet`.
     private var itemsStrip: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("ITEMS")
-                .font(.system(.caption2, design: .serif, weight: .semibold))
-                .foregroundStyle(Color.sunSecondary)
-                .tracking(1.0)
-                .padding(.bottom, 6)
-
-            ForEach(day.allItems) { item in
-                itemRow(item, isPossibility: !day.confirmed.contains(where: { $0.id == item.id }))
+            if !confirmedDisplayItems.isEmpty {
+                sectionHeader("CONFIRMED")
+                ForEach(confirmedDisplayItems) { item in
+                    confirmedRow(item)
+                }
+            }
+            if !poolDisplayItems.isEmpty {
+                sectionHeader("POSSIBILITIES")
+                    .padding(.top, confirmedDisplayItems.isEmpty ? 0 : 10)
+                ForEach(poolDisplayItems) { item in
+                    poolRow(item)
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -114,23 +153,47 @@ struct NewsletterDayCard: View {
         )
     }
 
-    private func itemRow(_ item: TripItem, isPossibility: Bool) -> some View {
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption2, design: .serif, weight: .semibold))
+            .foregroundStyle(Color.sunSecondary)
+            .tracking(1.0)
+            .padding(.bottom, 6)
+    }
+
+    /// Confirmed/Assigned row. Reserves a 56pt time column even when the
+    /// item has no time set, so all confirmed rows align cleanly. Time text
+    /// is rendered only when the Notion `Assigned to Date` carries a time.
+    private func confirmedRow(_ item: TripItem) -> some View {
         Button { onSelect(item) } label: {
             HStack(spacing: 8) {
-                statusDot(for: item, hollow: isPossibility)
-
-                if let timeStr = DayNarrativeService.formattedTime(for: item) {
-                    Text(timeStr)
-                        .font(.system(.caption, design: .serif, weight: .medium))
-                        .foregroundStyle(Color.sunSecondary)
-                        .frame(width: 56, alignment: .leading)
-                }
-
+                statusDot(for: item, hollow: false)
+                Text(DayNarrativeService.formattedTime(for: item) ?? "")
+                    .font(.system(.caption, design: .serif, weight: .medium))
+                    .foregroundStyle(Color.sunSecondary)
+                    .frame(width: 56, alignment: .leading)
                 Text(item.name)
                     .font(.system(.subheadline, design: .serif))
                     .foregroundStyle(Color.sunText)
                     .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 5)
+            .background(selectedID == item.id ? Color.sunAccent.opacity(0.15) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+    }
 
+    /// Pool row. Hollow dot, no time column, name only.
+    private func poolRow(_ item: TripItem) -> some View {
+        Button { onSelect(item) } label: {
+            HStack(spacing: 8) {
+                statusDot(for: item, hollow: true)
+                Text(item.name)
+                    .font(.system(.subheadline, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 5)
