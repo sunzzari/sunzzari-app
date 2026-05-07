@@ -2,8 +2,6 @@ import SwiftUI
 import UIKit
 
 struct ThoughtActionView: View {
-    @Environment(\.dismiss) private var dismiss
-
     @State private var entries: [ThoughtEntry] = []
     @State private var isLoading = true
     @State private var newText = ""
@@ -20,16 +18,7 @@ struct ThoughtActionView: View {
             Color.sunBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                PageHeader("Thought-Action") {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold, design: .serif))
-                            .foregroundStyle(Color.sunSecondary)
-                            .padding(8)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Circle())
-                    }
-                }
+                PageHeader("Thought-Action")
 
                 if isLoading {
                     Spacer()
@@ -62,6 +51,7 @@ struct ThoughtActionView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
                     .refreshable { await reload() }
                 }
 
