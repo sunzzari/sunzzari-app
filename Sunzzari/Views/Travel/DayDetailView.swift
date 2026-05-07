@@ -264,25 +264,10 @@ struct DayDetailView: View {
             lines.append("NEWSLETTER")
             lines.append(header.string(from: day.date))
             lines.append(String(repeating: "-", count: 30))
-            if let narrative = DayNarrativeService.narrative(for: day) {
-                lines.append(narrative)
-                lines.append("")
-            }
-            if !day.confirmed.isEmpty {
-                lines.append("Confirmed plan")
-                for item in day.confirmed {
-                    let timePrefix = DayNarrativeService.formattedTime(for: item).map { "\($0) " } ?? ""
-                    let venue = item.venue.isEmpty ? "" : " - \(item.venue)"
-                    lines.append("- \(timePrefix)\(item.name)\(venue)")
-                }
-                lines.append("")
-            }
-            if !day.possibilities.isEmpty {
-                lines.append("Could fit in")
-                for item in day.possibilities {
-                    let proximity = ProximityHelper.proximityLine(for: item, in: day.confirmed).map { " (\($0))" } ?? ""
-                    lines.append("- \(item.name)\(proximity)")
-                }
+
+            let narrative = DayNarrativeService.narrative(for: day)
+            if !narrative.isEmpty {
+                lines.append(narrative.joined)
                 lines.append("")
             }
         }

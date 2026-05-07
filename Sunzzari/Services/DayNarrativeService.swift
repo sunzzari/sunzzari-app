@@ -1,45 +1,65 @@
 import Foundation
 
-/// Generates a 1-2 sentence narrative intro for a `DayBundle`.
+/// Multi-paragraph narrative for a `DayBundle`. Each section is optional;
+/// `NewsletterDayCard` renders only the non-nil ones, separated by blank lines.
 ///
-/// Pure functions on the bundle. No Notion calls, no Claude. Heuristics fire
-/// in priority order: travel day, hotel changeover, beach/outdoor, foodie-
-/// anchored, single-anchor, possibility-only, generic fallback. Returns nil
-/// when the day has no content (caller hides the card).
-///
-/// All output is plain text. No emojis, no em-dashes. Sentences end with a
-/// period.
+/// Emitted entirely as plain text. No emojis, no em-dashes, period-terminated
+/// sentences (per Universal Writing Rules).
+struct DayNarrative {
+    var intro: String?
+    var confirmedParagraph: String?
+    var possibilitiesParagraph: String?
+    var closing: String?
+
+    var isEmpty: Bool {
+        intro == nil && confirmedParagraph == nil && possibilitiesParagraph == nil && closing == nil
+    }
+
+    /// All non-nil paragraphs joined by double newlines. Used by share-text
+    /// export and as a fallback for any flat-string consumer.
+    var joined: String {
+        [intro, confirmedParagraph, possibilitiesParagraph, closing]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+    }
+}
+
+/// Generates a narrative for a `DayBundle`. Pure functions, no Notion calls,
+/// no Claude. Phase B will replace this with Claude-generated prose stored in
+/// Notion; the iOS card never has to know which source the prose came from.
 enum DayNarrativeService {
 
-    static func narrative(for day: DayBundle) -> String? {
+    static func narrative(for day: DayBundle) -> DayNarrative {
         if day.confirmed.isEmpty && day.possibilities.isEmpty {
-            return nil
+            return DayNarrative()
         }
 
+        return DayNarrative(
+            intro: introLine(for: day),
+            confirmedParagraph: confirmedParagraph(for: day),
+            possibilitiesParagraph: possibilitiesParagraph(for: day),
+            closing: closingLine(for: day)
+        )
+    }
+
+    // MARK: - Intro (1-2 sentences -- the day's theme)
+
+    private static func introLine(for day: DayBundle) -> String? {
         let weekday = weekdayName(for: day.date)
         let leg = primaryLeg(for: day)
 
-        // Priority 1: travel day (any transit type confirmed).
         if let travel = travelLine(weekday: weekday, day: day) {
             return travel
         }
-
-        // Priority 2: hotel check-in (a hotel item dated to today).
         if let hotelLine = hotelChangeoverLine(weekday: weekday, day: day) {
             return hotelLine
         }
-
-        // Priority 3: beach / outdoor anchor.
         if let outdoor = outdoorLine(weekday: weekday, leg: leg, day: day) {
             return outdoor
         }
-
-        // Priority 4: foodie-anchored day (2+ restaurants, no activity).
         if let foodie = foodieLine(weekday: weekday, day: day) {
             return foodie
         }
-
-        // Priority 5: single confirmed anchor.
         if day.confirmed.count == 1, let solo = day.confirmed.first {
             let timePart = formattedTime(for: solo)
             if let timeStr = timePart {
@@ -47,20 +67,14 @@ enum DayNarrativeService {
             }
             return "\(weekday)'s anchor is \(solo.name)."
         }
-
-        // Priority 6: possibility-only day.
         if day.confirmed.isEmpty && !day.possibilities.isEmpty {
             return "\(weekday) is open. A few candidates if you want to fill it."
         }
-
-        // Generic fallback.
         if !leg.isEmpty {
             return "\(weekday) in \(leg)."
         }
         return "\(weekday) on the trip."
     }
-
-    // MARK: - Heuristic helpers
 
     private static func travelLine(weekday: String, day: DayBundle) -> String? {
         let transitTypes: Set<TripItem.ItemType> = [.flight, .train, .ferry, .carRental]
@@ -119,6 +133,84 @@ enum DayNarrativeService {
         let first = restaurants.first?.name ?? ""
         let last = restaurants.last?.name ?? ""
         return "\(weekday) is built around two reservations. Lunch at \(first), dinner at \(last)."
+    }
+
+    // MARK: - Confirmed paragraph
+
+    /// Stitch the day's confirmed items into a single sentence (or two).
+    /// Skips the case where there's only one confirmed item -- that's covered
+    /// by the intro's single-anchor heuristic.
+    private static func confirmedParagraph(for day: DayBundle) -> String? {
+        let confirmed = day.confirmed
+        guard confirmed.count >= 2 else { return nil }
+
+        let phrases = confirmed.map { describeItem($0, includeTime: true, includeVenue: true) }
+
+        if phrases.count == 2 {
+            return "Anchored by \(phrases[0]) and \(phrases[1])."
+        }
+        // 3+: list with serial commas
+        let head = phrases.dropLast().joined(separator: ", ")
+        let tail = phrases.last ?? ""
+        return "You've got \(head), and \(tail)."
+    }
+
+    /// Description of an item as a phrase fragment. Includes time prefix when
+    /// the displayDate carries time, and "at {venue}" when venue differs from
+    /// name. Lowercase first letter so it slots into a sentence cleanly.
+    private static func describeItem(_ item: TripItem, includeTime: Bool, includeVenue: Bool) -> String {
+        var parts: [String] = []
+        if includeTime, let timeStr = formattedTime(for: item) {
+            parts.append(timeStr)
+        }
+        parts.append(item.name)
+        if includeVenue && !item.venue.isEmpty && item.venue != item.name {
+            parts.append("at \(item.venue)")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    // MARK: - Possibilities paragraph
+
+    /// Stitch the day's possibilities into a sentence with proximity hints.
+    private static func possibilitiesParagraph(for day: DayBundle) -> String? {
+        let pos = day.possibilities
+        guard !pos.isEmpty else { return nil }
+
+        // Build "{name} ({proximity})" fragments. Proximity is dropped when
+        // there's no confirmed anchor for the day.
+        let fragments: [String] = pos.map { item in
+            let proximity = ProximityHelper.proximityLine(for: item, in: day.confirmed)
+            if let prox = proximity {
+                return "\(item.name) (\(prox))"
+            }
+            return item.name
+        }
+
+        switch fragments.count {
+        case 1:
+            return "Optional: \(fragments[0])."
+        case 2:
+            return "You could fit in \(fragments[0]) or \(fragments[1])."
+        default:
+            // 3+: list with serial commas
+            let head = fragments.dropLast().joined(separator: ", ")
+            let tail = fragments.last ?? ""
+            return "If you've got time, \(head), and \(tail)."
+        }
+    }
+
+    // MARK: - Closing
+
+    /// Short closing sentence. Surfaces the day's hotel anchor when the hotel
+    /// item exists in confirmed/possibilities but wasn't the intro's subject
+    /// (i.e. not a check-in day).
+    private static func closingLine(for day: DayBundle) -> String? {
+        let hotels = (day.confirmed + day.possibilities).filter { $0.type == .hotel }
+        guard let hotel = hotels.first else { return nil }
+        // If the intro already mentioned this hotel as a check-in, skip.
+        if hotel.displayDate == day.dateString { return nil }
+        return "Sleeping at \(hotel.name)."
     }
 
     // MARK: - Formatters

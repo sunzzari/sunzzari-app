@@ -2,8 +2,15 @@ import SwiftUI
 
 /// Per-day prose card. Stacked in a ScrollView inside `DayDetailView`, one
 /// per selected day. The shared interactive map lives ABOVE this card stack
-/// (in `DayDetailView`), so this card is pure prose: header + narrative
-/// intro + Confirmed bullet list + Could fit bullet list. No embedded map.
+/// (in `DayDetailView`).
+///
+/// Body composition (top to bottom):
+///   1. Header (NEWSLETTER pill + day-of-week + date)
+///   2. Multi-paragraph narrative from `DayNarrativeService`
+///   3. Compact items strip below (tappable rows that highlight on the map
+///      and open `ItemDetailSheet` on second tap)
+///
+/// No embedded mini-map.
 struct NewsletterDayCard: View {
 
     let day: DayBundle
@@ -17,45 +24,33 @@ struct NewsletterDayCard: View {
         return f
     }()
 
+    private var narrative: DayNarrative {
+        DayNarrativeService.narrative(for: day)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("NEWSLETTER")
-                    .font(.system(.caption, design: .serif, weight: .bold))
-                    .foregroundStyle(Color.sunBackground)
-                    .tracking(2.0)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.sunAccent))
-                Text(Self.displayHeader.string(from: day.date))
-                    .font(.system(.title3, design: .serif, weight: .semibold))
-                    .foregroundStyle(Color.sunText)
-                Spacer(minLength: 0)
-            }
+            header
 
-            // Narrative intro (1-2 sentences)
-            if let narrative = DayNarrativeService.narrative(for: day) {
-                Text(narrative)
-                    .font(.system(.subheadline, design: .serif))
-                    .foregroundStyle(Color.sunText.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            // Confirmed plan
-            if !day.confirmed.isEmpty {
-                sectionHeader("Confirmed plan")
-                ForEach(day.confirmed) { item in
-                    proseRow(for: item, isPossibility: false)
+            // Multi-paragraph narrative body. Each non-nil section becomes
+            // its own line-wrapped Text with vertical breathing room.
+            VStack(alignment: .leading, spacing: 12) {
+                if let intro = narrative.intro {
+                    paragraph(intro)
+                }
+                if let confirmed = narrative.confirmedParagraph {
+                    paragraph(confirmed)
+                }
+                if let possibilities = narrative.possibilitiesParagraph {
+                    paragraph(possibilities)
+                }
+                if let closing = narrative.closing {
+                    paragraph(closing)
                 }
             }
 
-            // Could fit in
-            if !day.possibilities.isEmpty {
-                sectionHeader("Could fit in")
-                ForEach(day.possibilities) { item in
-                    proseRow(for: item, isPossibility: true)
-                }
+            if !day.allItems.isEmpty {
+                itemsStrip
             }
         }
         .padding(.horizontal, 16)
@@ -64,47 +59,83 @@ struct NewsletterDayCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(.caption, design: .serif, weight: .semibold))
-            .foregroundStyle(Color.sunSecondary)
-            .tracking(0.6)
-            .padding(.top, 4)
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("NEWSLETTER")
+                .font(.system(.caption, design: .serif, weight: .bold))
+                .foregroundStyle(Color.sunBackground)
+                .tracking(2.0)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.sunAccent))
+            Text(Self.displayHeader.string(from: day.date))
+                .font(.system(.title3, design: .serif, weight: .semibold))
+                .foregroundStyle(Color.sunText)
+            Spacer(minLength: 0)
+        }
     }
 
-    @ViewBuilder
-    private func proseRow(for item: TripItem, isPossibility: Bool) -> some View {
+    // MARK: - Paragraph
+
+    private func paragraph(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.body, design: .serif))
+            .foregroundStyle(Color.sunText.opacity(0.9))
+            .lineSpacing(2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: - Items strip
+
+    /// Compact list of all the day's items. Each row is one line: status
+    /// dot + name (+ time prefix if available). Tapping routes through
+    /// `onSelect(item)` so the shared map highlights the marker and a
+    /// repeat tap opens `ItemDetailSheet`.
+    private var itemsStrip: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("ITEMS")
+                .font(.system(.caption2, design: .serif, weight: .semibold))
+                .foregroundStyle(Color.sunSecondary)
+                .tracking(1.0)
+                .padding(.bottom, 6)
+
+            ForEach(day.allItems) { item in
+                itemRow(item, isPossibility: !day.confirmed.contains(where: { $0.id == item.id }))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.sunBackground.opacity(0.5))
+        )
+    }
+
+    private func itemRow(_ item: TripItem, isPossibility: Bool) -> some View {
         Button { onSelect(item) } label: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(spacing: 8) {
                 statusDot(for: item, hollow: isPossibility)
-                    .padding(.top, 7)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(proseTitle(for: item))
-                        .font(.system(.body, design: .serif, weight: isPossibility ? .regular : .medium))
-                        .foregroundStyle(Color.sunText)
-                        .multilineTextAlignment(.leading)
-
-                    if isPossibility, let proximity = ProximityHelper.proximityLine(for: item, in: day.confirmed) {
-                        Text(proximity)
-                            .font(.system(.caption2, design: .serif))
-                            .foregroundStyle(Color.sunAccent)
-                    }
-
-                    if !item.notes.isEmpty {
-                        Text(item.notes)
-                            .font(.system(.caption, design: .serif))
-                            .foregroundStyle(Color.sunSecondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                    }
+                if let timeStr = DayNarrativeService.formattedTime(for: item) {
+                    Text(timeStr)
+                        .font(.system(.caption, design: .serif, weight: .medium))
+                        .foregroundStyle(Color.sunSecondary)
+                        .frame(width: 56, alignment: .leading)
                 }
+
+                Text(item.name)
+                    .font(.system(.subheadline, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                    .lineLimit(1)
 
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 4)
-            .background(selectedID == item.id ? Color.sunAccent.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.vertical, 5)
+            .background(selectedID == item.id ? Color.sunAccent.opacity(0.15) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.plain)
     }
@@ -121,20 +152,5 @@ struct NewsletterDayCard: View {
                 .fill(color)
                 .frame(width: 7, height: 7)
         }
-    }
-
-    private func proseTitle(for item: TripItem) -> String {
-        var parts: [String] = []
-        if let timeStr = DayNarrativeService.formattedTime(for: item) {
-            parts.append(timeStr)
-        }
-        switch item.type {
-        case .hotel:     parts.append("Stay:")
-        case .carRental: parts.append("Pickup:")
-        default:         break
-        }
-        parts.append(item.name)
-        let head = parts.joined(separator: " ")
-        return item.venue.isEmpty ? head : "\(head) — \(item.venue)"
     }
 }
