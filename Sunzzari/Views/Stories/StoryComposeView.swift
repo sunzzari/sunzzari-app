@@ -45,15 +45,6 @@ struct StoryComposeView: View {
     // Cleared on full-chain success or on photo replacement.
     @State private var lastUploadedPublicID: String?
 
-    // Photo pan + zoom (pinch-to-pan crop, Instagram-style). Pinch on the
-    // photo to zoom 1x..3x; drag to reposition the visible window within
-    // the source. Bake captures the committed transform so the upload
-    // matches what the user composed. Reset whenever the photo is replaced.
-    @State private var photoScale: CGFloat = 1
-    @State private var photoMagnifyInProgress: CGFloat = 1
-    @State private var photoOffset: CGSize = .zero
-    @State private var photoDragInProgress: CGSize = .zero
-
     /// Compose preview at the 9:16 story canvas aspect (Instagram standard).
     /// On a 9:19.5 phone this leaves a small ~9% letterbox at top and bottom
     /// in the player, filled by a blurred backdrop -- matching Instagram's
@@ -149,31 +140,19 @@ struct StoryComposeView: View {
         ZStack {
             if let image {
                 // Instagram-style story canvas: photo scaledToFill the 9:16
-                // frame, with pinch-to-zoom + drag-to-pan letting the user
-                // reposition the crop within the source. The Image's
-                // scaleEffect + offset are wrapped inside a Color.clear
-                // container that owns the layout frame -- the transform
-                // affects only the visual, never the layout size. Without
-                // this isolation, ScrollView keyboard-avoidance reads the
-                // scaled visual bounds and shifts the entire compose form
-                // horizontally when the caption TextField becomes first
-                // responder (regression in the pinch/pan commit).
-                Color.clear
+                // frame (cropping camera 4:3 to story aspect, standard story
+                // behavior). On playback, the player displays the bake at
+                // scaledToFit on the 9:19.5 phone screen, leaving a small
+                // backdrop strip at top and bottom -- not the huge dead
+                // letterbox that fitting native photo aspect into the full
+                // phone aspect produced.
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
                     .frame(maxWidth: .infinity)
                     .frame(height: Self.composedPhotoHeight)
-                    .overlay {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .scaleEffect(photoScale * photoMagnifyInProgress)
-                            .offset(
-                                x: photoOffset.width + photoDragInProgress.width,
-                                y: photoOffset.height + photoDragInProgress.height
-                            )
-                    }
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .gesture(photoTransformGesture(image: image))
                     .overlay {
                         overlayLayer
                     }
@@ -181,7 +160,6 @@ struct StoryComposeView: View {
                         Button {
                             self.image = nil
                             self.pickerItem = nil
-                            self.resetPhotoTransform()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 24, design: .serif))
@@ -317,70 +295,6 @@ struct StoryComposeView: View {
         )
     }
 
-    /// Combined drag + pinch on the photo crop. Drag pans the visible window
-    /// within the source; pinch zooms the photo. Pan is clamped at the end of
-    /// the gesture so the photo's edges don't expose background -- the slack
-    /// at any scale is the photo's render-size overflow over the frame, which
-    /// depends on the source photo's aspect.
-    private func photoTransformGesture(image: UIImage) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture()
-                .onChanged { value in
-                    photoDragInProgress = value.translation
-                }
-                .onEnded { value in
-                    photoOffset.width += value.translation.width
-                    photoOffset.height += value.translation.height
-                    photoDragInProgress = .zero
-                    clampPhotoOffset(image: image)
-                },
-            MagnifyGesture()
-                .onChanged { value in
-                    photoMagnifyInProgress = value.magnification
-                }
-                .onEnded { value in
-                    let next = photoScale * value.magnification
-                    photoScale = max(1.0, min(3.0, next))
-                    photoMagnifyInProgress = 1
-                    clampPhotoOffset(image: image)
-                }
-        )
-    }
-
-    private func clampPhotoOffset(image: UIImage) {
-        let frameW = UIScreen.main.bounds.width - 40
-        let frameH = Self.composedPhotoHeight
-        let photoAspect = image.size.width / image.size.height
-        let frameAspect = frameW / frameH
-
-        // After scaledToFill, the photo's rendered size is whichever scaling
-        // makes it cover the frame. Slack to pan is the overflow of the
-        // rendered photo over the frame, halved (centered).
-        let fillW: CGFloat
-        let fillH: CGFloat
-        if photoAspect >= frameAspect {
-            fillH = frameH
-            fillW = frameH * photoAspect
-        } else {
-            fillW = frameW
-            fillH = frameW / photoAspect
-        }
-        let renderedW = fillW * photoScale
-        let renderedH = fillH * photoScale
-        let slackX = max(0, (renderedW - frameW) / 2)
-        let slackY = max(0, (renderedH - frameH) / 2)
-
-        photoOffset.width = max(-slackX, min(slackX, photoOffset.width))
-        photoOffset.height = max(-slackY, min(slackY, photoOffset.height))
-    }
-
-    private func resetPhotoTransform() {
-        photoScale = 1
-        photoMagnifyInProgress = 1
-        photoOffset = .zero
-        photoDragInProgress = .zero
-    }
-
     private var captionField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Caption", systemImage: "text.bubble")
@@ -427,7 +341,6 @@ struct StoryComposeView: View {
                     self.image = downsized
                     self.errorMessage = nil
                     self.lastUploadedPublicID = nil
-                    self.resetPhotoTransform()
                 }
             } else {
                 // Library returned no data (iCloud download failed, low-fi
@@ -520,14 +433,11 @@ struct StoryComposeView: View {
 
         let composed = ZStack {
             // Match the compose preview: scaledToFill the photo into the 9:16
-            // story canvas with the user's committed pan + zoom applied. The
-            // player adds the blurred backdrop at playback time (when 9:16
-            // bake is letterboxed onto 9:19.5 phone screen).
+            // story canvas. The player adds the blurred backdrop at playback
+            // time (when 9:16 bake is letterboxed onto 9:19.5 phone screen).
             Image(uiImage: originalImage)
                 .resizable()
                 .scaledToFill()
-                .scaleEffect(photoScale)
-                .offset(photoOffset)
                 .frame(width: displayWidth, height: displayHeight)
                 .clipped()
 
