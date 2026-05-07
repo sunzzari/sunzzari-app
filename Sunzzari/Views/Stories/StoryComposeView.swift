@@ -45,6 +45,12 @@ struct StoryComposeView: View {
     // Cleared on full-chain success or on photo replacement.
     @State private var lastUploadedPublicID: String?
 
+    // Single focus binding for both text fields. The caption TextField has
+    // axis: .vertical so Return inserts a newline rather than dismissing,
+    // and we removed .scrollDismissesKeyboard. The keyboard toolbar Done
+    // button below toggles this off to release first responder.
+    @FocusState private var isInputFocused: Bool
+
     /// Compose preview at the 9:16 story canvas aspect (Instagram standard).
     /// On a 9:19.5 phone this leaves a small ~9% letterbox at top and bottom
     /// in the player, filled by a blurred backdrop -- matching Instagram's
@@ -111,6 +117,11 @@ struct StoryComposeView: View {
                             .fontWeight(.semibold)
                             .disabled(image == nil)
                     }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isInputFocused = false }
+                        .foregroundStyle(Color.sunAccent)
                 }
             }
             .task {
@@ -314,6 +325,7 @@ struct StoryComposeView: View {
                 .background(Color.sunSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(Color.sunText)
+                .focused($isInputFocused)
         }
     }
 
@@ -327,6 +339,7 @@ struct StoryComposeView: View {
                 .background(Color.sunSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(Color.sunText)
+                .focused($isInputFocused)
         }
     }
 
