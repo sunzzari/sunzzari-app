@@ -150,20 +150,27 @@ struct StoryComposeView: View {
             if let image {
                 // Instagram-style story canvas: photo scaledToFill the 9:16
                 // frame, with pinch-to-zoom + drag-to-pan letting the user
-                // reposition the crop within the source. Photo gestures are
-                // attached to the Image directly; SwiftUI dispatches based
-                // on touch location, so caption + location overlays (which
-                // have their own gestures) still receive their hits.
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .scaleEffect(photoScale * photoMagnifyInProgress)
-                    .offset(
-                        x: photoOffset.width + photoDragInProgress.width,
-                        y: photoOffset.height + photoDragInProgress.height
-                    )
+                // reposition the crop within the source. The Image's
+                // scaleEffect + offset are wrapped inside a Color.clear
+                // container that owns the layout frame -- the transform
+                // affects only the visual, never the layout size. Without
+                // this isolation, ScrollView keyboard-avoidance reads the
+                // scaled visual bounds and shifts the entire compose form
+                // horizontally when the caption TextField becomes first
+                // responder (regression in the pinch/pan commit).
+                Color.clear
                     .frame(maxWidth: .infinity)
                     .frame(height: Self.composedPhotoHeight)
+                    .overlay {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .scaleEffect(photoScale * photoMagnifyInProgress)
+                            .offset(
+                                x: photoOffset.width + photoDragInProgress.width,
+                                y: photoOffset.height + photoDragInProgress.height
+                            )
+                    }
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .gesture(photoTransformGesture(image: image))
