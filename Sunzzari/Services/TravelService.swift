@@ -6,7 +6,7 @@ final class TravelService: @unchecked Sendable {
     private let baseURL = "https://api.notion.com/v1"
 
     // Bump this when geocoding logic changes to clear stale caches
-    private static let geocodeVersion = 3
+    private static let geocodeVersion = 4
     private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
 
     private init() {
@@ -134,7 +134,7 @@ final class TravelService: @unchecked Sendable {
 
     func applyCachedCoordinates(_ items: [TripItem]) -> [TripItem] {
         var result = items
-        for i in result.indices where !result[i].hasCoordinates && !result[i].venue.isEmpty {
+        for i in result.indices where !result[i].hasCoordinates && Self.hasGeocodableText(result[i]) {
             let key = TripItem.geoKey(for: result[i].id)
             if let cached = UserDefaults.standard.string(forKey: key) {
                 let parts = cached.split(separator: ",")
@@ -147,11 +147,20 @@ final class TravelService: @unchecked Sendable {
         return result
     }
 
+    /// True if the item has any text we can feed to a geocoder. We fall back
+    /// to `name` when `venue` is empty because most Notion items put the
+    /// place in the title (e.g. "Sacre Coeur", "Pajar") and leave the
+    /// Provider/Venue field blank. The previous code skipped those silently,
+    /// which produced ~17% map coverage on a 400-item trip.
+    private static func hasGeocodableText(_ item: TripItem) -> Bool {
+        !item.venue.isEmpty || !item.name.isEmpty
+    }
+
     // MARK: - Geocoding
 
     func geocodeItems(_ items: [TripItem], tripLocation: String = "") async -> [TripItem] {
         var result = items
-        let toGeocode = items.enumerated().filter { !$0.element.hasCoordinates && !$0.element.venue.isEmpty }
+        let toGeocode = items.enumerated().filter { !$0.element.hasCoordinates && Self.hasGeocodableText($0.element) }
 
         // First pass: apply UserDefaults cache hits (no concurrency needed)
         var needsNetwork: [(index: Int, item: TripItem)] = []
@@ -237,21 +246,37 @@ final class TravelService: @unchecked Sendable {
     }
 
     // Geocode a single item, appending the trip location to the query so ambiguous
-    // venue names resolve to the correct country.
+    // venue names resolve to the correct country. Tries venue-based query first,
+    // then name-based query as a fallback for items without a Provider/Venue.
     private static func geocodeItem(
         _ item: TripItem,
         index: Int,
         region: MKCoordinateRegion?,
         locationContexts: [String]
     ) async -> (Int, Double, Double)? {
-        let baseQuery = [item.venue, item.legCity]
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
+        // Build candidate base queries in priority order. Venue is more
+        // location-y; name often is, too, when venue is empty.
+        var bases: [String] = []
+        if !item.venue.isEmpty {
+            bases.append([item.venue, item.legCity].filter { !$0.isEmpty }.joined(separator: ", "))
+        }
+        if !item.name.isEmpty && item.name != item.venue {
+            bases.append([item.name, item.legCity].filter { !$0.isEmpty }.joined(separator: ", "))
+        }
+        guard !bases.isEmpty else { return nil }
 
-        // Try each location context; first hit wins
-        let queries: [String] = locationContexts.isEmpty
-            ? [baseQuery]
-            : locationContexts.map { "\(baseQuery), \($0)" } + [baseQuery]
+        // Expand each base with country contexts, then add the bare base as
+        // a final fallback. Order matters: venue+context first, name+context,
+        // then bares.
+        var queries: [String] = []
+        for base in bases {
+            if locationContexts.isEmpty {
+                queries.append(base)
+            } else {
+                queries.append(contentsOf: locationContexts.map { "\(base), \($0)" })
+                queries.append(base)
+            }
+        }
 
         for query in queries {
             let request = MKLocalSearch.Request()
