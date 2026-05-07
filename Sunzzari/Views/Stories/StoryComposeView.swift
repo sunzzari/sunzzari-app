@@ -35,10 +35,12 @@ struct StoryComposeView: View {
 
     @FocusState private var isInputFocused: Bool
 
-    // Fixed compose-preview height. Small enough that the form (photo +
-    // caption + location) fits on screen above the keyboard without any
-    // scroll, eliminating the keyboard-avoidance scroll path entirely.
-    private static let photoHeight: CGFloat = 280
+    // Compose-preview photo height. Matches the size that worked in the
+    // pre-overlay layout (commit 6cb84ed~1) -- a tall portrait crop that
+    // shows the photo clearly while leaving room for caption + location
+    // fields below in a ScrollView. Scrolls naturally when the keyboard
+    // covers the lower fields.
+    private static let photoHeight: CGFloat = 480
 
     private var currentPerson: StoryPost.Person {
         AppIdentity.isHummingbird ? .cathy : .elisa
@@ -49,21 +51,23 @@ struct StoryComposeView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                VStack(spacing: 16) {
-                    photoArea
-                    if image != nil {
-                        captionField
-                        locationField
+                ScrollView {
+                    VStack(spacing: 16) {
+                        photoArea
+                        if image != nil {
+                            captionField
+                            locationField
+                        }
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.system(.caption, design: .serif))
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.center)
+                        }
                     }
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.system(.caption, design: .serif))
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                    }
-                    Spacer()
+                    .padding(20)
                 }
-                .padding(20)
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("New Story")
             .navigationBarTitleDisplayMode(.inline)
