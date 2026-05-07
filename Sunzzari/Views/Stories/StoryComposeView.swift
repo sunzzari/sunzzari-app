@@ -68,11 +68,20 @@ struct StoryComposeView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        photoArea
+                        // Caption + location ABOVE the photo. Tapping a field
+                        // brings up the keyboard but the fields are already at
+                        // the top of the scroll view, so SwiftUI's keyboard
+                        // avoidance does not need to scroll the focused field
+                        // into view from a deep offset -- which on iOS 26.x was
+                        // introducing a horizontal shift that clipped the
+                        // leading edge of every form row. The photo + drag/
+                        // pinch overlay sits below; user can dismiss the
+                        // keyboard (tap outside) to see and reposition it.
                         if image != nil {
                             captionField
                             locationField
                         }
+                        photoArea
                         if let errorMessage {
                             Text(errorMessage)
                                 .font(.system(.caption, design: .serif))
@@ -82,7 +91,6 @@ struct StoryComposeView: View {
                     }
                     .padding(20)
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("New Story")
             .navigationBarTitleDisplayMode(.inline)
