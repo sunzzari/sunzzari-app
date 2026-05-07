@@ -6,10 +6,15 @@ import MapKit
 final class TripMapBridge {
     weak var mapView: MKMapView?
 
-    func fitAll(animated: Bool = true) {
+    /// Default: fit only item annotations, ignoring the user-location dot.
+    /// Pass includeUser=true (Near Me active) to keep the user dot in frame.
+    func fitAll(animated: Bool = true, includeUser: Bool = false) {
         guard let mv = mapView else { return }
-        let anns = mv.annotations.filter { !($0 is MKUserLocation) }
-        guard !anns.isEmpty else { return }
+        let anns: [MKAnnotation] = includeUser
+            ? mv.annotations
+            : mv.annotations.filter { !($0 is MKUserLocation) }
+        let withoutUser = anns.filter { !($0 is MKUserLocation) }
+        guard !withoutUser.isEmpty else { return }
         mv.showAnnotations(anns, animated: animated)
     }
 
@@ -45,6 +50,10 @@ struct TripMKMap: UIViewRepresentable {
     // as background geocoding fills them in (mirrors elisa-travel-map's fitKey).
     // The main trip map leaves it false so a manual zoom isn't yanked away.
     var alwaysAutoFit: Bool = false
+
+    // When true, auto-fits include the user-location annotation so the user
+    // dot stays in frame. Used when Near Me is active on the parent view.
+    var fitIncludesUser: Bool = false
 
     func makeCoordinator() -> Coordinator { Coordinator(selectedID: $selectedID) }
 
@@ -127,9 +136,12 @@ struct TripMKMap: UIViewRepresentable {
         if firstLoad || filterChanged || (countTrigger && allowAutoRefit) {
             coordinator.hasFittedInitially = true
             coordinator.lastFilterKey = filterKey
+            let includeUser = fitIncludesUser
             DispatchQueue.main.async {
-                let anns = map.annotations.filter { !($0 is MKUserLocation) }
-                if !anns.isEmpty { map.showAnnotations(anns, animated: true) }
+                let itemAnns = map.annotations.filter { !($0 is MKUserLocation) }
+                guard !itemAnns.isEmpty else { return }
+                let anns: [MKAnnotation] = includeUser ? map.annotations : itemAnns
+                map.showAnnotations(anns, animated: true)
             }
         }
         coordinator.lastAnnotationCount = annotations.count
@@ -224,6 +236,16 @@ struct TripMKMap: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            // Visual halo: amber glow ring around selected marker. Mirrors web's
+            // 3px blue halo on selected markers, recolored to fit the iOS palette.
+            UIView.animate(withDuration: 0.18) {
+                view.transform = CGAffineTransform(scaleX: 1.18, y: 1.18)
+            }
+            view.layer.shadowColor = UIColor(Color.sunAccent).cgColor
+            view.layer.shadowRadius = 8
+            view.layer.shadowOpacity = 0.7
+            view.layer.shadowOffset = .zero
+
             guard !isUpdating else { return }
             if let ta = view.annotation as? TripItemAnnotation {
                 selectedID = ta.item.id
@@ -231,6 +253,11 @@ struct TripMKMap: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
+            UIView.animate(withDuration: 0.18) {
+                view.transform = .identity
+            }
+            view.layer.shadowOpacity = 0
+
             guard !isUpdating else { return }
             selectedID = nil
         }

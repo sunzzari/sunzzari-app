@@ -11,6 +11,8 @@ struct DayDetailView: View {
     let onSelect: (TripItem) -> Void
 
     @State private var selectedDates: Set<String> = []
+    @State private var activeTypes: Set<TripItem.ItemType> = []
+    @State private var bridge = TripMapBridge()
     @State private var showShareSheet = false
 
     private static let formatter: DateFormatter = {
@@ -24,6 +26,43 @@ struct DayDetailView: View {
             .sorted { $0.dateString < $1.dateString }
     }
 
+    /// Union of all visible-day items, filtered by activeTypes (legend).
+    private var sharedItems: [TripItem] {
+        let all = visibleDays.flatMap(\.allItems)
+        if activeTypes.isEmpty { return all }
+        return all.filter { item in
+            guard let t = item.type else { return false }
+            return activeTypes.contains(t)
+        }
+    }
+
+    private var sharedAnnotations: [TripItemAnnotation] {
+        sharedItems.compactMap { item in
+            guard let lat = item.latitude, let lon = item.longitude else { return nil }
+            return TripItemAnnotation(
+                item: item,
+                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            )
+        }
+    }
+
+    /// Polyline only when EXACTLY ONE day is selected. Multi-day = no polyline,
+    /// matching web parity (web has no polyline at all in any mode).
+    private var routeAnnotations: [TripItemAnnotation] {
+        guard visibleDays.count == 1, let only = visibleDays.first else { return [] }
+        return only.confirmed.compactMap { item in
+            guard let lat = item.latitude, let lon = item.longitude else { return nil }
+            return TripItemAnnotation(
+                item: item,
+                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            )
+        }
+    }
+
+    private var filterKey: String {
+        "days-\(selectedDates.sorted().joined(separator: ","))-types-\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !days.isEmpty {
@@ -31,8 +70,11 @@ struct DayDetailView: View {
                     .background(Color.sunSurface)
             }
 
+            sharedMap
+                .frame(height: 320)
+
             ScrollView {
-                LazyVStack(spacing: 16) {
+                LazyVStack(spacing: 14) {
                     if visibleDays.isEmpty {
                         Text("Select a day above")
                             .font(.system(.subheadline, design: .serif))
@@ -40,7 +82,7 @@ struct DayDetailView: View {
                             .padding(48)
                     } else {
                         ForEach(visibleDays) { day in
-                            ReadDaySection(
+                            NewsletterDayCard(
                                 day: day,
                                 selectedID: selectedID,
                                 onSelect: onSelect
@@ -49,7 +91,7 @@ struct DayDetailView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 16)
+                .padding(.vertical, 14)
             }
         }
         .background(Color.sunBackground)
@@ -74,13 +116,76 @@ struct DayDetailView: View {
             }
         }
         .onChange(of: selectedID) { _, newID in
-            // If user tapped a marker for a day not currently selected,
-            // add that day to the selection so the item is visible.
+            // If user tapped a marker for a day not currently selected, add
+            // that day to the selection so the item appears in the prose stack.
             if let id = newID, let day = day(containing: id), !selectedDates.contains(day.dateString) {
                 selectedDates.insert(day.dateString)
             }
         }
     }
+
+    // MARK: - Shared map
+
+    private var sharedMap: some View {
+        ZStack {
+            TripMKMap(
+                annotations: sharedAnnotations,
+                filterKey: filterKey,
+                selectedID: mapSelectionBinding,
+                bridge: bridge,
+                routeAnnotations: routeAnnotations,
+                interactive: true,
+                alwaysAutoFit: true
+            )
+
+            // Map controls
+            VStack(spacing: 8) {
+                mapButton(icon: "arrow.up.left.and.down.right.magnifyingglass") {
+                    bridge.fitAll()
+                }
+                mapButton(icon: "location.fill") {
+                    bridge.centerOnUser()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(12)
+
+            // Type legend
+            TripTypeLegend(activeTypes: $activeTypes)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(.leading, 12)
+                .padding(.bottom, 12)
+        }
+    }
+
+    /// Marker tap routes through onSelect (handled by parent) and also
+    /// updates the local selectedID via the parent's binding.
+    private var mapSelectionBinding: Binding<String?> {
+        Binding(
+            get: { selectedID },
+            set: { newID in
+                if let id = newID, let item = sharedItems.first(where: { $0.id == id }) {
+                    onSelect(item)
+                } else {
+                    selectedID = nil
+                }
+            }
+        )
+    }
+
+    private func mapButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(.caption, design: .serif))
+                .foregroundStyle(Color.sunText)
+                .frame(width: 36, height: 36)
+                .background(Color.sunSurface.opacity(0.9))
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.2), radius: 2)
+        }
+    }
+
+    // MARK: - Helpers
 
     private func pickInitialDate() -> String? {
         let today = Self.formatter.string(from: Date())
@@ -100,24 +205,33 @@ struct DayDetailView: View {
 
         let header = DateFormatter()
         header.dateFormat = "EEEE, MMMM d"
+        header.timeZone = TimeZone(identifier: "UTC")
 
         for day in visibleDays {
+            lines.append("NEWSLETTER")
             lines.append(header.string(from: day.date))
             lines.append(String(repeating: "-", count: 30))
+            if let narrative = DayNarrativeService.narrative(for: day) {
+                lines.append(narrative)
+                lines.append("")
+            }
             if !day.confirmed.isEmpty {
-                lines.append("Confirmed:")
+                lines.append("Confirmed plan")
                 for item in day.confirmed {
-                    lines.append("  • \(item.name)" + (item.venue.isEmpty ? "" : " — \(item.venue)"))
+                    let timePrefix = DayNarrativeService.formattedTime(for: item).map { "\($0) " } ?? ""
+                    let venue = item.venue.isEmpty ? "" : " - \(item.venue)"
+                    lines.append("- \(timePrefix)\(item.name)\(venue)")
                 }
+                lines.append("")
             }
             if !day.possibilities.isEmpty {
-                lines.append("Could fit in:")
+                lines.append("Could fit in")
                 for item in day.possibilities {
-                    let status = item.status?.rawValue ?? ""
-                    lines.append("  • \(item.name)" + (status.isEmpty ? "" : " (\(status))"))
+                    let proximity = ProximityHelper.proximityLine(for: item, in: day.confirmed).map { " (\($0))" } ?? ""
+                    lines.append("- \(item.name)\(proximity)")
                 }
+                lines.append("")
             }
-            lines.append("")
         }
         return lines.joined(separator: "\n")
     }

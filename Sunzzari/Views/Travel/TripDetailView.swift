@@ -148,8 +148,23 @@ struct TripDetailView: View {
             await loadItems()
         }
         .onChange(of: nearMeActive) { _, active in
-            if active { requestUserLocation() }
+            if active {
+                requestUserLocation()
+                // Pan to user so the dot lands in frame; auto-fit on the next
+                // updateUIView (driven by filterKey change) will then include
+                // the user via fitIncludesUser=nearMeActive.
+                if let coord = LocationService.shared.lastKnownCoordinate {
+                    DispatchQueue.main.async {
+                        bridge.panTo(coord, zoom: 5000)
+                    }
+                }
+            }
         }
+        .onChange(of: searchQuery)    { _, _ in selectedID = nil }
+        .onChange(of: activeStatuses) { _, _ in selectedID = nil }
+        .onChange(of: activeTypes)    { _, _ in selectedID = nil }
+        .onChange(of: activeLegs)     { _, _ in selectedID = nil }
+        .onChange(of: selectedDate)   { _, _ in selectedID = nil }
         .animation(.easeInOut(duration: 0.2), value: viewMode)
     }
 
@@ -233,6 +248,7 @@ struct TripDetailView: View {
 
             TripFilterBar(
                 items: items,
+                displayCount: sortedItems.count,
                 activeStatuses: $activeStatuses,
                 activeTypes: $activeTypes,
                 activeLegs: $activeLegs,
@@ -248,7 +264,8 @@ struct TripDetailView: View {
                 annotations: annotations,
                 filterKey: filterKey,
                 selectedID: $selectedID,
-                bridge: bridge
+                bridge: bridge,
+                fitIncludesUser: nearMeActive
             )
             .ignoresSafeArea(edges: .bottom)
 
@@ -259,7 +276,7 @@ struct TripDetailView: View {
                 }
 
                 mapButton(icon: "arrow.up.left.and.down.right.magnifyingglass") {
-                    bridge.fitAll()
+                    bridge.fitAll(includeUser: nearMeActive)
                 }
 
                 mapButton(icon: "location.fill") {

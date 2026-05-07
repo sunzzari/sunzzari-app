@@ -49,13 +49,13 @@ struct TripItem: Identifiable, Codable {
         var colorHex: String {
             switch self {
             case .hotel:      return "#3B82F6"
-            case .restaurant: return "#F97316"
-            case .activity:   return "#22C55E"
-            case .flight:     return "#A855F7"
-            case .train:      return "#EAB308"
+            case .restaurant: return "#EF4444"
+            case .activity:   return "#10B981"
+            case .flight:     return "#8B5CF6"
+            case .train:      return "#F59E0B"
             case .ferry:      return "#06B6D4"
-            case .carRental:  return "#6B7280"
-            case .other:      return "#9CA3AF"
+            case .carRental:  return "#F97316"
+            case .other:      return "#6B7280"
             }
         }
 
@@ -113,11 +113,11 @@ struct TripItem: Identifiable, Codable {
     }
 
     enum ItemStatus: String, Codable, CaseIterable {
-        case researching       = "Researching"
-        case shortlisted       = "Shortlisted"
+        case confirmed         = "Confirmed"
         case assigned          = "Assigned"
         case reservationPending = "Reservation Pending"
-        case confirmed         = "Confirmed"
+        case shortlisted       = "Shortlisted"
+        case researching       = "Researching"
         case cancelled         = "Cancelled"
 
         var colorHex: String {
