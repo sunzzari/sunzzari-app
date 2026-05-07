@@ -119,11 +119,26 @@ struct StoryPlayerView: View {
                     .ignoresSafeArea()
                 }
 
-                // Caption overlay rendering removed: captions are baked into
-                // the photo at compose time (StoryComposeView.bakeOverlaysIntoImage)
-                // and `caption` is written empty to Notion. Legacy stories with
-                // a non-empty caption no longer render a duplicate text block
-                // here -- the player just shows the photo as authored.
+                // Caption overlay restored after the bake-overlays-into-photo
+                // path was ripped out (compose-side regression). Caption is
+                // again stored as a string in Notion and rendered here at
+                // playback. Fixed bottom position with a translucent capsule.
+                if let captionText = currentStory?.caption, !captionText.isEmpty {
+                    VStack {
+                        Spacer()
+                        Text(captionText)
+                            .font(.system(.body, design: .serif, weight: .medium))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.45))
+                            .clipShape(Capsule())
+                            .padding(.bottom, 80)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .allowsHitTesting(false)
+                }
 
                 // Tap zones — pushed below the top header so taps on the
                 // progress bars, author name, or close button don't fall
