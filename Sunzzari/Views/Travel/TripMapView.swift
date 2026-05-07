@@ -55,7 +55,13 @@ struct TripMKMap: UIViewRepresentable {
     // dot stays in frame. Used when Near Me is active on the parent view.
     var fitIncludesUser: Bool = false
 
-    func makeCoordinator() -> Coordinator { Coordinator(selectedID: $selectedID) }
+    // Fired when the callout's (i) info accessory is tapped. Parent uses this
+    // to open ItemDetailSheet, mirroring the second-tap behavior on rows.
+    var onOpenDetail: ((TripItem) -> Void)?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail)
+    }
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -89,6 +95,10 @@ struct TripMKMap: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.isUpdating = true
         defer { coordinator.isUpdating = false }
+
+        // Refresh callout-accessory callback so it always points to the
+        // latest closure captured by the SwiftUI body.
+        coordinator.onOpenDetail = onOpenDetail
 
         // Sync annotations
         let existing = Set(map.annotations.compactMap { ($0 as? TripItemAnnotation)?.item.id })
@@ -164,6 +174,7 @@ struct TripMKMap: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         @Binding var selectedID: String?
+        var onOpenDetail: ((TripItem) -> Void)?
         var isUpdating = false
         var hasFittedInitially = false
         var lastFilterKey: String = ""
@@ -171,8 +182,17 @@ struct TripMKMap: UIViewRepresentable {
         var lastRouteKey: String = ""
         var userHasInteracted = false
 
-        init(selectedID: Binding<String?>) {
+        init(selectedID: Binding<String?>, onOpenDetail: ((TripItem) -> Void)? = nil) {
             _selectedID = selectedID
+            self.onOpenDetail = onOpenDetail
+        }
+
+        func mapView(_ mapView: MKMapView,
+                     annotationView view: MKAnnotationView,
+                     calloutAccessoryControlTapped control: UIControl) {
+            if let ta = view.annotation as? TripItemAnnotation {
+                onOpenDetail?(ta.item)
+            }
         }
 
         // animated=false typically means a user gesture; programmatic
@@ -207,9 +227,16 @@ struct TripMKMap: UIViewRepresentable {
                 for: annotation
             ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "tripItem")
             v.clusteringIdentifier = "tripItem"
-            v.canShowCallout = false
-            v.titleVisibility = .hidden
-            v.subtitleVisibility = .hidden
+            // Show MapKit's built-in callout bubble on tap, mirroring the web
+            // app's InfoWindow. Title comes from annotation.title (item name);
+            // subtitle is type + legCity + status. The right accessory is an
+            // info button that the parent treats as a "open detail" intent.
+            v.canShowCallout = true
+            v.titleVisibility = .adaptive
+            v.subtitleVisibility = .adaptive
+            let info = UIButton(type: .detailDisclosure)
+            info.tintColor = UIColor(Color.sunAccent)
+            v.rightCalloutAccessoryView = info
 
             // Color = STATUS (so confirmed/assigned/researching/shortlisted are visually distinct).
             // Glyph = TYPE (so the icon still tells you flight vs. hotel vs. restaurant).

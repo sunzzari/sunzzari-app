@@ -18,16 +18,20 @@ struct NewsletterDayCard: View {
     }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             // Header
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("NEWSLETTER")
-                    .font(.system(.caption2, design: .serif, weight: .semibold))
-                    .foregroundStyle(Color.sunAccent)
-                    .tracking(1.5)
+                    .font(.system(.caption, design: .serif, weight: .bold))
+                    .foregroundStyle(Color.sunBackground)
+                    .tracking(2.0)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.sunAccent))
                 Text(Self.displayHeader.string(from: day.date))
                     .font(.system(.title3, design: .serif, weight: .semibold))
                     .foregroundStyle(Color.sunText)
+                Spacer(minLength: 0)
             }
 
             // Narrative intro (1-2 sentences)

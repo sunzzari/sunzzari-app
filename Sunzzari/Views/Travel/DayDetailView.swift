@@ -14,6 +14,8 @@ struct DayDetailView: View {
     @State private var activeTypes: Set<TripItem.ItemType> = []
     @State private var bridge = TripMapBridge()
     @State private var showShareSheet = false
+    @State private var showMap = true
+    @State private var detailItem: TripItem?
 
     private static let formatter: DateFormatter = {
         let f = DateFormatter()
@@ -70,8 +72,13 @@ struct DayDetailView: View {
                     .background(Color.sunSurface)
             }
 
-            sharedMap
-                .frame(height: 320)
+            mapToggleBar
+
+            if showMap {
+                sharedMap
+                    .frame(height: 280)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             ScrollView {
                 LazyVStack(spacing: 14) {
@@ -85,7 +92,7 @@ struct DayDetailView: View {
                             NewsletterDayCard(
                                 day: day,
                                 selectedID: selectedID,
-                                onSelect: onSelect
+                                onSelect: handleRowTap
                             )
                         }
                     }
@@ -110,6 +117,9 @@ struct DayDetailView: View {
         .sheet(isPresented: $showShareSheet) {
             DayShareSheet(text: buildShareText())
         }
+        .sheet(item: $detailItem) { item in
+            ItemDetailSheet(item: item, userLocation: userLocation)
+        }
         .onAppear {
             if selectedDates.isEmpty, let initial = pickInitialDate() {
                 selectedDates = [initial]
@@ -121,6 +131,46 @@ struct DayDetailView: View {
             if let id = newID, let day = day(containing: id), !selectedDates.contains(day.dateString) {
                 selectedDates.insert(day.dateString)
             }
+        }
+        .animation(.easeInOut(duration: 0.25), value: showMap)
+    }
+
+    private var mapToggleBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                showMap.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showMap ? "map.fill" : "map")
+                    Text(showMap ? "Hide map" : "Show map")
+                }
+                .font(.system(.caption2, design: .serif, weight: .medium))
+                .foregroundStyle(Color.sunText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.sunSurface))
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.sunSurface.opacity(0.5))
+    }
+
+    /// Row-tap handler used by NewsletterDayCard. Sets selectedID (which
+    /// drives the shared map's selection halo + auto-pan via selectAnnotation),
+    /// pans the day's bridge as a belt-and-suspenders fallback, and on a
+    /// repeat tap opens ItemDetailSheet (matches the marker-tap two-step).
+    private func handleRowTap(_ item: TripItem) {
+        if let lat = item.latitude, let lon = item.longitude {
+            DispatchQueue.main.async {
+                bridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+            }
+        }
+        if selectedID == item.id {
+            detailItem = item
+        } else {
+            selectedID = item.id
         }
     }
 
@@ -135,7 +185,8 @@ struct DayDetailView: View {
                 bridge: bridge,
                 routeAnnotations: routeAnnotations,
                 interactive: true,
-                alwaysAutoFit: true
+                alwaysAutoFit: true,
+                onOpenDetail: { item in detailItem = item }
             )
 
             // Map controls
@@ -150,8 +201,10 @@ struct DayDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .padding(12)
 
-            // Type legend
-            TripTypeLegend(activeTypes: $activeTypes)
+            // Compact type legend (bottom-leading). Designed to fit a 280pt
+            // map without blocking the markers: collapsed by default to a
+            // single chip showing active count; tap to expand.
+            CompactTypeLegend(activeTypes: $activeTypes)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .padding(.leading, 12)
                 .padding(.bottom, 12)
@@ -234,6 +287,106 @@ struct DayDetailView: View {
             }
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - Compact type legend
+
+/// Collapsed-by-default type filter for the Day-mode shared map. A single
+/// pill shows "Types" + active count; tap to expand a horizontal chip strip
+/// with all types. Designed to coexist with a 280pt map without covering
+/// the markers (the original `TripTypeLegend` is ~290pt tall in column form).
+private struct CompactTypeLegend: View {
+    @Binding var activeTypes: Set<TripItem.ItemType>
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if expanded {
+                expandedStrip
+            }
+            collapsedPill
+        }
+    }
+
+    private var collapsedPill: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle\(activeTypes.isEmpty ? "" : ".fill")")
+                    .font(.system(.caption, design: .serif))
+                Text(activeTypes.isEmpty ? "Filter" : "Filter (\(activeTypes.count))")
+                    .font(.system(.caption2, design: .serif, weight: .medium))
+            }
+            .foregroundStyle(Color.sunText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.3), radius: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var expandedStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(TripItem.ItemType.allCases, id: \.self) { type in
+                    chip(for: type)
+                }
+                if !activeTypes.isEmpty {
+                    Button {
+                        activeTypes.removeAll()
+                    } label: {
+                        Text("Clear")
+                            .font(.system(.caption2, design: .serif))
+                            .underline()
+                            .foregroundStyle(Color.sunAccent)
+                            .padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+        .frame(maxWidth: 320)
+        .background(.ultraThinMaterial)
+        .environment(\.colorScheme, .dark)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.3), radius: 4)
+    }
+
+    private func chip(for type: TripItem.ItemType) -> some View {
+        let isActive = activeTypes.contains(type)
+        return Button {
+            if isActive { activeTypes.remove(type) }
+            else { activeTypes.insert(type) }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: type.sfSymbol)
+                    .font(.system(size: 9, design: .serif))
+                    .foregroundStyle(.white)
+                    .frame(width: 16, height: 16)
+                    .background(Circle().fill(type.color))
+                if isActive {
+                    Text(type.rawValue)
+                        .font(.system(.caption2, design: .serif, weight: .medium))
+                        .foregroundStyle(Color.sunText)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(isActive ? type.color.opacity(0.25) : Color.clear)
+            )
+            .overlay(
+                Capsule().stroke(isActive ? type.color : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
