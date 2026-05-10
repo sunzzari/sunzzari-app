@@ -29,9 +29,14 @@ struct DayDetailView: View {
             .sorted { $0.dateString < $1.dateString }
     }
 
-    /// Union of all visible-day items, filtered by activeTypes (legend).
+    /// Union of all visible-day items, subsetted to the same universe the
+    /// per-day NewsletterDayCard renders (confirmed + pool items mentioned in
+    /// the Notion newsletter prose), then filtered by activeTypes (legend).
+    /// Without this subset, the map showed pool items the newsletter dropped.
     private var sharedItems: [TripItem] {
-        let all = visibleDays.flatMap(\.allItems)
+        let all = visibleDays.flatMap { day in
+            NewsletterResolver.displayItems(for: day, in: newslettersByDate)
+        }
         if activeTypes.isEmpty { return all }
         return all.filter { item in
             guard let t = item.type else { return false }

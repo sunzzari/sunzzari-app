@@ -51,23 +51,10 @@ struct NewsletterDayCard: View {
     }
 
     /// Pool items the newsletter actually picked (name appears in prose).
-    /// Deduped against confirmed names so the same place doesn't appear twice
-    /// when the user has both a Confirmed and a Researching entry sharing a
-    /// name (e.g. two "Le Tout-Paris" rows in the Notion DB).
-    /// When there's no Notion prose, fall back to all possibilities.
+    /// Routed through `NewsletterResolver` so the Day-mode map and this card
+    /// always share the same universe.
     private var poolDisplayItems: [TripItem] {
-        let confirmedNames = Set(day.confirmed.map { $0.name.lowercased() })
-        let confirmedIDs = Set(day.confirmed.map(\.id))
-        let basePool = day.possibilities.filter { item in
-            !confirmedIDs.contains(item.id) &&
-            !confirmedNames.contains(item.name.lowercased())
-        }
-        guard let prose = notionProse, !prose.isEmpty else {
-            return basePool
-        }
-        return basePool.filter { item in
-            !item.name.isEmpty && prose.localizedCaseInsensitiveContains(item.name)
-        }
+        NewsletterResolver.poolDisplayItems(for: day, prose: notionProse)
     }
 
     private var hasAnyDisplayItems: Bool {
