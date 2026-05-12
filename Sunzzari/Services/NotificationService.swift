@@ -62,6 +62,31 @@ final class NotificationService: @unchecked Sendable {
         try? await center.add(request)
     }
 
+    /// Schedules 3 daily story-nudge notifications at 10am, 2pm, and 6pm local time.
+    /// Safe to call on every app launch — UNUserNotificationCenter dedupes on identifier.
+    func scheduleStoryNudge() async {
+        let center = UNUserNotificationCenter.current()
+        let hours: [(Int, String)] = [(10, "morning"), (14, "afternoon"), (18, "evening")]
+        for (hour, slot) in hours {
+            let content = UNMutableNotificationContent()
+            content.title = "Sunzzari"
+            content.body  = "Wha doing? Post a story!"
+            content.sound = .default
+
+            var comps = DateComponents()
+            comps.hour   = hour
+            comps.minute = 0
+
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+            let request = UNNotificationRequest(
+                identifier: "sunzzari-story-nudge-\(slot)",
+                content: content,
+                trigger: trigger
+            )
+            try? await center.add(request)
+        }
+    }
+
     /// Safety-net: schedules 9am notifications for the next 30 days using DailySetupService.selectEntry.
     /// Provides coverage for days the app is never opened and the 12:01am trigger doesn't run.
     /// DailySetupService.runDailySetup() overwrites today's notification with fresher data when it runs.

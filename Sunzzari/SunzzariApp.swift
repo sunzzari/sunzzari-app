@@ -80,6 +80,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             await NotificationService.shared.scheduleOnThisDay(allEntries: allEntries)
             // Weekly Sunday 8pm prompt for batch Best Of capture
             await NotificationService.shared.scheduleWeeklyBestOfPrompt()
+            // Daily 10am/2pm/6pm story nudge
+            await NotificationService.shared.scheduleStoryNudge()
             // Clear any stale midnight trigger notifications left from previous builds
             let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
             let stale = pending.filter { $0.identifier.hasPrefix("sunzzari-midnight-") }.map(\.identifier)
