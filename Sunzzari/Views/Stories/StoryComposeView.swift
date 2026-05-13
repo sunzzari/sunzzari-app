@@ -2,11 +2,13 @@ import SwiftUI
 import PhotosUI
 import UIKit
 import AVFoundation
+import Combine
 
-/// Instagram-style story compose. After capture, the photo fills the screen.
-/// Tap anywhere to bring up a caption editor; the caption renders as a draggable
-/// pill on the photo and is baked into the upload at post time. No separate
-/// caption/location form -- one screen, one decision.
+/// Instagram-style story compose. Opens directly into an embedded camera
+/// (fullscreen live preview + shutter + library thumbnail + flip). After a
+/// photo is captured or picked, the photo fills the screen and tapping it
+/// opens an inline caption editor. The caption renders as a draggable pill
+/// and is baked into the upload at post time.
 struct StoryComposeView: View {
     @Environment(\.dismiss) private var dismiss
     let onPosted: (StoryPost) -> Void
@@ -16,19 +18,14 @@ struct StoryComposeView: View {
     @State private var caption: String = ""
     @State private var isPosting = false
     @State private var errorMessage: String?
-    @State private var showSourceChoice = false
-    @State private var showCamera = false
     @State private var showLibrary = false
-    @State private var didAutoLaunchCamera = false
-    @State private var cameraDecisionResolved = false
 
     // Caching the publicID lets a retry skip a second Cloudinary upload if
     // the first succeeded but Notion createStoryPost failed.
     @State private var lastUploadedPublicID: String?
 
-    // Caption editor state. `isEditingCaption` toggles the inline TextField +
-    // keyboard. Drag offsets are clamped on release so the caption pill never
-    // escapes the visible photo area.
+    // Caption editor state. Drag offsets clamped on release so the pill
+    // can't escape the visible photo area.
     @State private var isEditingCaption = false
     @State private var captionOffset: CGSize = .zero
     @State private var captionDragInProgress: CGSize = .zero
@@ -49,7 +46,14 @@ struct StoryComposeView: View {
             if let image {
                 composeStage(image: image)
             } else {
-                pickerStage
+                CameraCaptureView(
+                    onCapture: { captured in
+                        self.image = captured
+                        self.errorMessage = nil
+                    },
+                    onPickFromLibrary: { showLibrary = true },
+                    onClose: { dismiss() }
+                )
             }
 
             if let errorMessage {
@@ -66,84 +70,9 @@ struct StoryComposeView: View {
                 .transition(.opacity)
             }
         }
-        .task { await maybeAutoLaunchCamera() }
-    }
-
-    // MARK: - Picker (pre-photo)
-
-    private var pickerStage: some View {
-        ZStack {
-            if cameraDecisionResolved {
-                VStack(spacing: 18) {
-                    Image(systemName: "photo.badge.plus")
-                        .font(.system(size: 56, design: .serif))
-                        .foregroundStyle(Color.sunAccent)
-                    Text("Add a photo")
-                        .font(.system(.headline, design: .serif))
-                        .foregroundStyle(.white)
-                    Text("Posting as \(currentPerson.rawValue)")
-                        .font(.system(.caption, design: .serif))
-                        .foregroundStyle(.white.opacity(0.6))
-                    HStack(spacing: 12) {
-                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                            Button("Camera") { showCamera = true }
-                                .buttonStyle(.borderedProminent)
-                                .tint(Color.sunAccent)
-                        }
-                        Button("Library") { showLibrary = true }
-                            .buttonStyle(.bordered)
-                            .tint(.white)
-                    }
-                    .padding(.top, 6)
-                }
-            }
-
-            // Cancel control, always present so the user can back out of the
-            // sheet even before they've decided on a source.
-            VStack {
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(10)
-                            .background(.ultraThinMaterial, in: Circle())
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                Spacer()
-            }
-        }
-        .confirmationDialog("Add a photo", isPresented: $showSourceChoice, titleVisibility: .hidden) {
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button("Take Photo") { showCamera = true }
-            }
-            Button("Choose from Library") { showLibrary = true }
-            Button("Cancel", role: .cancel) {}
-        }
         .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
         .onChange(of: pickerItem) { _, newItem in
             Task { await loadPicked(newItem) }
-        }
-        .fullScreenCover(isPresented: $showCamera, onDismiss: {
-            // Camera closed without producing a photo (user tapped Cancel from
-            // inside the system camera). Reveal the picker placeholder so they
-            // have a path forward without dismissing the whole sheet.
-            if image == nil {
-                cameraDecisionResolved = true
-            }
-        }) {
-            CameraPicker { captured in
-                if let captured {
-                    self.image = captured
-                    self.errorMessage = nil
-                }
-            }
-            .ignoresSafeArea()
         }
     }
 
@@ -152,9 +81,6 @@ struct StoryComposeView: View {
     private func composeStage(image: UIImage) -> some View {
         GeometryReader { geo in
             ZStack {
-                // Blurred-fill backdrop covers the letterbox area when the
-                // photo's aspect doesn't match the screen, so the whole photo
-                // stays visible (scaledToFit) instead of being zoom-cropped.
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -196,7 +122,7 @@ struct StoryComposeView: View {
             HStack {
                 if !isEditingCaption {
                     Button {
-                        // Discard the captured image, return to picker.
+                        // Discard the captured image, return to embedded camera.
                         self.image = nil
                         self.caption = ""
                         self.captionOffset = .zero
@@ -246,8 +172,6 @@ struct StoryComposeView: View {
         }
     }
 
-    /// Floating Aa button (bottom). Quick way back into the caption editor
-    /// once a caption already exists, mirroring IG's text-tool affordance.
     private var bottomBar: some View {
         VStack {
             Spacer()
@@ -316,9 +240,6 @@ struct StoryComposeView: View {
             }
     }
 
-    /// In-place TextField overlaid on the photo. Centered horizontally so the
-    /// editor reads like the final caption pill -- WYSIWYG-ish. Tapping Done
-    /// commits and renders as a draggable pill.
     private var captionEditor: some View {
         VStack {
             Spacer().frame(height: 0)
@@ -344,44 +265,11 @@ struct StoryComposeView: View {
 
     // MARK: - Actions
 
-    private func maybeAutoLaunchCamera() async {
-        guard !didAutoLaunchCamera,
-              image == nil,
-              UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            cameraDecisionResolved = true
-            return
-        }
-        didAutoLaunchCamera = true
-
-        // Only reveal the picker placeholder when we're SURE camera will not
-        // present. If camera presents, cameraDecisionResolved stays false so
-        // the placeholder never shows behind the sliding fullScreenCover —
-        // it'll be set true later when the camera dismisses without a photo.
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            showCamera = true
-        case .notDetermined:
-            let granted = await AVCaptureDevice.requestAccess(for: .video)
-            if granted {
-                showCamera = true
-            } else {
-                cameraDecisionResolved = true
-            }
-        case .denied, .restricted:
-            cameraDecisionResolved = true
-        @unknown default:
-            cameraDecisionResolved = true
-        }
-    }
-
     private func loadPicked(_ item: PhotosPickerItem?) async {
         guard let item else { return }
         do {
             if let data = try await item.loadTransferable(type: Data.self),
                let img = UIImage(data: data) {
-                // Downsample large library assets (up to 48 MP on newer iPhones)
-                // before holding them in memory. 1080x1920 is the max resolution
-                // Cloudinary serves from an active story.
                 let target = CGSize(width: 1080, height: 1920)
                 let downsized = img.preparingThumbnail(of: target) ?? img
                 await MainActor.run {
@@ -411,9 +299,6 @@ struct StoryComposeView: View {
         defer { isPosting = false }
 
         do {
-            // Bake the caption at its dragged position into the uploaded image.
-            // Notion gets an empty caption string so the player's overlay does
-            // not double-render on top of the baked text.
             let imageToUpload = bakeCaptionIntoImage() ?? originalImage
 
             let publicID: String
@@ -447,10 +332,6 @@ struct StoryComposeView: View {
         }
     }
 
-    /// Bake photo + caption pill into a single UIImage at upload time. Uses
-    /// ImageRenderer so gesture state is the source of truth -- no manual
-    /// CoreGraphics math. Returns nil when there's no caption to bake (caller
-    /// uploads the original photo instead).
     @MainActor
     private func bakeCaptionIntoImage() -> UIImage? {
         guard let originalImage = image else { return nil }
@@ -460,9 +341,6 @@ struct StoryComposeView: View {
         let screen = UIScreen.main.bounds.size
 
         let composed = ZStack {
-            // Mirror the compose stage exactly: blurred backdrop + scaledToFit
-            // photo, so the baked output looks identical to what the user saw
-            // while composing (no zoom/crop surprises after upload).
             Image(uiImage: originalImage)
                 .resizable()
                 .scaledToFill()
@@ -493,41 +371,284 @@ struct StoryComposeView: View {
     }
 }
 
-/// SwiftUI wrapper for UIImagePickerController in camera mode. PhotosUI has no
-/// camera-capture equivalent, so we drop down to UIKit. Closure-based instead
-/// of @Binding so the caller can clear errorMessage atomically with setting
-/// the image. nil = user cancelled.
-private struct CameraPicker: UIViewControllerRepresentable {
-    let onCaptured: (UIImage?) -> Void
-    @Environment(\.dismiss) private var dismiss
+// MARK: - Embedded camera
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.allowsEditing = false
-        picker.delegate = context.coordinator
-        if UIImagePickerController.isFlashAvailable(for: picker.cameraDevice) {
-            picker.cameraFlashMode = .off
+/// Instagram-style in-app camera. Renders a fullscreen AVCaptureSession live
+/// preview with a shutter button, library thumbnail, flip-camera button,
+/// and close (X). Handles video permission and gracefully falls back to the
+/// library-only UI when access is denied or the device has no camera.
+struct CameraCaptureView: View {
+    let onCapture: (UIImage) -> Void
+    let onPickFromLibrary: () -> Void
+    let onClose: () -> Void
+
+    @StateObject private var model = CameraCaptureModel()
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if model.permissionGranted {
+                CameraPreviewLayer(session: model.session)
+                    .ignoresSafeArea()
+            } else if model.permissionDenied {
+                permissionDeniedView
+            }
+
+            VStack {
+                topRow
+                Spacer()
+                bottomRow
+            }
         }
-        return picker
+        .task { await model.setup() }
+        .onDisappear { model.teardown() }
+        .onChange(of: model.capturedImage) { _, newValue in
+            if let img = newValue {
+                onCapture(img)
+                model.capturedImage = nil
+            }
+        }
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let parent: CameraPicker
-        init(_ parent: CameraPicker) { self.parent = parent }
-
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            parent.onCaptured(info[.originalImage] as? UIImage)
-            parent.dismiss()
+    private var topRow: some View {
+        HStack {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            Spacer()
+            if model.permissionGranted {
+                Button {
+                    model.flipCamera()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath.camera")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .accessibilityLabel("Flip camera")
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            parent.onCaptured(nil)
-            parent.dismiss()
+    private var bottomRow: some View {
+        HStack {
+            // Library thumbnail (left)
+            Button(action: onPickFromLibrary) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.3), lineWidth: 0.5))
+            }
+            .accessibilityLabel("Choose from library")
+
+            Spacer()
+
+            // Shutter (center)
+            if model.permissionGranted {
+                Button {
+                    model.capture()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white, lineWidth: 4)
+                            .frame(width: 76, height: 76)
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 62, height: 62)
+                    }
+                }
+                .accessibilityLabel("Take photo")
+            } else {
+                Spacer().frame(width: 76, height: 76)
+            }
+
+            Spacer()
+
+            // Symmetry placeholder (right) — keeps the shutter visually centered.
+            Color.clear.frame(width: 44, height: 44)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 36)
+    }
+
+    private var permissionDeniedView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 44, design: .serif))
+                .foregroundStyle(.white.opacity(0.7))
+            Text("Camera access needed")
+                .font(.system(.headline, design: .serif))
+                .foregroundStyle(.white)
+            Text("Enable Camera in Settings to take a photo, or pick one from your library.")
+                .font(.system(.footnote, design: .serif))
+                .foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color.sunAccent)
+            .padding(.top, 4)
+        }
+    }
+}
+
+/// AVCaptureSession-backed model. Session work happens on a private serial
+/// queue (per Apple's guidance); only `@Published` writes are dispatched
+/// back to MainActor.
+@MainActor
+final class CameraCaptureModel: NSObject, ObservableObject {
+    let session = AVCaptureSession()
+    @Published var permissionGranted = false
+    @Published var permissionDenied = false
+    @Published var capturedImage: UIImage?
+
+    private let sessionQueue = DispatchQueue(label: "sunzzari.camera.session")
+    private let photoOutput = AVCapturePhotoOutput()
+    private var videoInput: AVCaptureDeviceInput?
+    private var position: AVCaptureDevice.Position = .back
+
+    func setup() async {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            permissionGranted = true
+            configureSession()
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            permissionGranted = granted
+            permissionDenied = !granted
+            if granted { configureSession() }
+        case .denied, .restricted:
+            permissionDenied = true
+        @unknown default:
+            permissionDenied = true
+        }
+    }
+
+    func teardown() {
+        sessionQueue.async { [session] in
+            if session.isRunning { session.stopRunning() }
+        }
+    }
+
+    func capture() {
+        let settings = AVCapturePhotoSettings()
+        settings.flashMode = .off
+        sessionQueue.async { [photoOutput, weak self] in
+            guard let self else { return }
+            photoOutput.capturePhoto(with: settings, delegate: self)
+        }
+    }
+
+    func flipCamera() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.session.beginConfiguration()
+            defer { self.session.commitConfiguration() }
+            if let current = self.videoInput {
+                self.session.removeInput(current)
+            }
+            let newPosition: AVCaptureDevice.Position = (self.position == .back) ? .front : .back
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPosition),
+                  let input = try? AVCaptureDeviceInput(device: device),
+                  self.session.canAddInput(input) else {
+                // Revert: re-add previous input if available
+                if let prev = self.videoInput, self.session.canAddInput(prev) {
+                    self.session.addInput(prev)
+                }
+                return
+            }
+            self.session.addInput(input)
+            self.videoInput = input
+            self.position = newPosition
+        }
+    }
+
+    private func configureSession() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .photo
+
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: self.position),
+                  let input = try? AVCaptureDeviceInput(device: device),
+                  self.session.canAddInput(input) else {
+                self.session.commitConfiguration()
+                return
+            }
+            self.session.addInput(input)
+            self.videoInput = input
+
+            if self.session.canAddOutput(self.photoOutput) {
+                self.session.addOutput(self.photoOutput)
+            }
+            self.session.commitConfiguration()
+            self.session.startRunning()
+        }
+    }
+}
+
+extension CameraCaptureModel: AVCapturePhotoCaptureDelegate {
+    nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        guard error == nil,
+              let data = photo.fileDataRepresentation(),
+              let image = UIImage(data: data) else { return }
+        let oriented = image.normalized()
+        Task { @MainActor in
+            self.capturedImage = oriented
+        }
+    }
+}
+
+/// UIView wrapper around AVCaptureVideoPreviewLayer. SwiftUI doesn't expose
+/// the layer-backed preview directly, so we drop down to UIKit.
+struct CameraPreviewLayer: UIViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeUIView(context: Context) -> PreviewUIView {
+        let view = PreviewUIView()
+        view.videoPreviewLayer.session = session
+        view.videoPreviewLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateUIView(_ uiView: PreviewUIView, context: Context) {}
+
+    final class PreviewUIView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+            // swiftlint:disable:next force_cast
+            layer as! AVCaptureVideoPreviewLayer
+        }
+    }
+}
+
+private extension UIImage {
+    /// Re-render with `.up` orientation baked into pixels so downstream code
+    /// (Cloudinary, ImageRenderer) doesn't have to track EXIF orientation.
+    func normalized() -> UIImage {
+        if imageOrientation == .up { return self }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = scale
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
         }
     }
 }
