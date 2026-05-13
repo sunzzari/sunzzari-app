@@ -15,6 +15,7 @@ struct StoryComposeView: View {
 
     @State private var pickerItem: PhotosPickerItem?
     @State private var image: UIImage?
+    @State private var imageFromCamera = false
     @State private var caption: String = ""
     @State private var isPosting = false
     @State private var errorMessage: String?
@@ -49,6 +50,7 @@ struct StoryComposeView: View {
                 CameraCaptureView(
                     onCapture: { captured in
                         self.image = captured
+                        self.imageFromCamera = true
                         self.errorMessage = nil
                     },
                     onPickFromLibrary: { showLibrary = true },
@@ -91,8 +93,9 @@ struct StoryComposeView: View {
 
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    .aspectRatio(contentMode: imageFromCamera ? .fill : .fit)
                     .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if !isEditingCaption {
@@ -124,6 +127,7 @@ struct StoryComposeView: View {
                     Button {
                         // Discard the captured image, return to embedded camera.
                         self.image = nil
+                        self.imageFromCamera = false
                         self.caption = ""
                         self.captionOffset = .zero
                         self.captionDragInProgress = .zero
@@ -351,8 +355,9 @@ struct StoryComposeView: View {
 
             Image(uiImage: originalImage)
                 .resizable()
-                .scaledToFit()
+                .aspectRatio(contentMode: imageFromCamera ? .fill : .fit)
                 .frame(width: screen.width, height: screen.height)
+                .clipped()
 
             Text(caption)
                 .font(.system(.title3, design: .serif, weight: .semibold))
