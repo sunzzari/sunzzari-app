@@ -152,11 +152,21 @@ struct StoryComposeView: View {
     private func composeStage(image: UIImage) -> some View {
         GeometryReader { geo in
             ZStack {
+                // Blurred-fill backdrop covers the letterbox area when the
+                // photo's aspect doesn't match the screen, so the whole photo
+                // stays visible (scaledToFit) instead of being zoom-cropped.
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
+                    .blur(radius: 32)
+                    .overlay(Color.black.opacity(0.15))
+
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: geo.size.width, height: geo.size.height)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if !isEditingCaption {
@@ -450,11 +460,21 @@ struct StoryComposeView: View {
         let screen = UIScreen.main.bounds.size
 
         let composed = ZStack {
+            // Mirror the compose stage exactly: blurred backdrop + scaledToFit
+            // photo, so the baked output looks identical to what the user saw
+            // while composing (no zoom/crop surprises after upload).
             Image(uiImage: originalImage)
                 .resizable()
                 .scaledToFill()
                 .frame(width: screen.width, height: screen.height)
                 .clipped()
+                .blur(radius: 32)
+                .overlay(Color.black.opacity(0.15))
+
+            Image(uiImage: originalImage)
+                .resizable()
+                .scaledToFit()
+                .frame(width: screen.width, height: screen.height)
 
             Text(caption)
                 .font(.system(.title3, design: .serif, weight: .semibold))
