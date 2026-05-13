@@ -38,3 +38,15 @@ struct EmptyStateView: View {
         .background(Color.sunBackground)
     }
 }
+
+#Preview("Loading") {
+    LoadingView()
+}
+
+#Preview("Empty State") {
+    EmptyStateView(
+        systemImage: "star.circle",
+        title: "Nothing here yet",
+        subtitle: "Add your first entry to get started"
+    )
+}

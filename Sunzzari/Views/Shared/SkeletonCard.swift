@@ -59,3 +59,13 @@ struct SkeletonEntryCard: View {
             .frame(width: width, height: height)
     }
 }
+
+#Preview {
+    VStack(spacing: 12) {
+        SkeletonEntryCard()
+        SkeletonEntryCard()
+        SkeletonEntryCard()
+    }
+    .padding()
+    .background(Color.sunBackground)
+}

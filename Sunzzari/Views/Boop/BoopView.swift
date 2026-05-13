@@ -103,3 +103,7 @@ struct BoopView: View {
         isSending = false
     }
 }
+
+#Preview {
+    BoopView()
+}

@@ -50,3 +50,7 @@ struct HubView: View {
         }
     }
 }
+
+#Preview {
+    HubView()
+}

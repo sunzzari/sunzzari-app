@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 struct AddMemoryView: View {
     @Environment(\.dismiss) private var dismiss
@@ -11,6 +12,7 @@ struct AddMemoryView: View {
     @State private var selectedImage: UIImage?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
 
     var body: some View {
         NavigationStack {
@@ -152,6 +154,10 @@ struct AddMemoryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }.foregroundStyle(Color.sunSecondary)
                 }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraCapture(image: $selectedImage)
+                    .ignoresSafeArea()
             }
         }
     }

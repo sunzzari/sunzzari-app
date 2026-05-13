@@ -21,3 +21,13 @@ struct CategoryChip: View {
             .shadow(color: isSelected ? Color(hex: colorHex).opacity(0.4) : .clear, radius: 6, y: 0)
     }
 }
+
+#Preview {
+    HStack(spacing: 8) {
+        CategoryChip(label: "Best Moments", colorHex: "#54A0FF")
+        CategoryChip(label: "Funny Moment", colorHex: "#FFD93D", isSelected: true)
+        CategoryChip(label: "Best Bites", colorHex: "#FF9F43")
+    }
+    .padding()
+    .background(Color.sunBackground)
+}
