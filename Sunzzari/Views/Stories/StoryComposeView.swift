@@ -384,6 +384,12 @@ struct CameraCaptureView: View {
 
     @StateObject private var model = CameraCaptureModel()
 
+    // Pinch-zoom state. `baseZoom` is the device's videoZoomFactor at the
+    // start of the gesture; MagnificationGesture multiplies it on .onChanged
+    // and we commit back to base on .onEnded.
+    @State private var baseZoom: CGFloat = 1.0
+    @State private var currentZoom: CGFloat = 1.0
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -391,6 +397,28 @@ struct CameraCaptureView: View {
             if model.permissionGranted {
                 CameraPreviewLayer(session: model.session)
                     .ignoresSafeArea()
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let target = baseZoom * value
+                                currentZoom = model.setZoom(target)
+                            }
+                            .onEnded { _ in
+                                baseZoom = currentZoom
+                            }
+                    )
+
+                if currentZoom > 1.05 {
+                    Text(String(format: "%.1fx", currentZoom))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 130)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .allowsHitTesting(false)
+                }
             } else if model.permissionDenied {
                 permissionDeniedView
             }
@@ -405,7 +433,12 @@ struct CameraCaptureView: View {
         .onDisappear { model.teardown() }
         .onChange(of: model.capturedImage) { _, newValue in
             if let img = newValue {
-                onCapture(img)
+                // Crop to the screen aspect so what was visible in the preview
+                // is exactly what shows up in compose — AVCaptureSession ships
+                // the full 4:3 sensor, but the preview was .resizeAspectFill,
+                // so the user only ever saw the cropped portion.
+                let cropped = img.croppedToAspectRatio(of: UIScreen.main.bounds.size)
+                onCapture(cropped)
                 model.capturedImage = nil
             }
         }
@@ -556,6 +589,24 @@ final class CameraCaptureModel: NSObject, ObservableObject {
         }
     }
 
+    /// Apply a pinch-driven zoom factor to the active camera device. Returns
+    /// the clamped value so the UI can show "1.5x" etc. without recomputing
+    /// the device's max zoom on every drag tick.
+    @discardableResult
+    func setZoom(_ factor: CGFloat) -> CGFloat {
+        guard let device = videoInput?.device else { return 1.0 }
+        let maxFactor = min(device.activeFormat.videoMaxZoomFactor, 10.0)
+        let clamped = max(1.0, min(maxFactor, factor))
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = clamped
+            device.unlockForConfiguration()
+        } catch {
+            return device.videoZoomFactor
+        }
+        return clamped
+    }
+
     func flipCamera() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -636,6 +687,33 @@ struct CameraPreviewLayer: UIViewRepresentable {
             // swiftlint:disable:next force_cast
             layer as! AVCaptureVideoPreviewLayer
         }
+    }
+}
+
+extension UIImage {
+    /// Center-crop the image to match the aspect ratio of `target`. The
+    /// AVCaptureSession ships a full 4:3 sensor frame but the preview uses
+    /// `.resizeAspectFill`, so the user only ever saw the screen-shaped
+    /// crop. Re-cropping to screen aspect here makes the captured photo
+    /// match what was in the viewfinder.
+    func croppedToAspectRatio(of target: CGSize) -> UIImage {
+        guard let cg = cgImage, target.width > 0, target.height > 0 else { return self }
+        let pixelWidth = CGFloat(cg.width)
+        let pixelHeight = CGFloat(cg.height)
+        let targetAR = target.width / target.height
+        let imageAR = pixelWidth / pixelHeight
+        let cropPixelRect: CGRect
+        if imageAR > targetAR {
+            let newWidth = pixelHeight * targetAR
+            let x = (pixelWidth - newWidth) / 2
+            cropPixelRect = CGRect(x: x, y: 0, width: newWidth, height: pixelHeight)
+        } else {
+            let newHeight = pixelWidth / targetAR
+            let y = (pixelHeight - newHeight) / 2
+            cropPixelRect = CGRect(x: 0, y: y, width: pixelWidth, height: newHeight)
+        }
+        guard let cropped = cg.cropping(to: cropPixelRect) else { return self }
+        return UIImage(cgImage: cropped, scale: scale, orientation: .up)
     }
 }
 
