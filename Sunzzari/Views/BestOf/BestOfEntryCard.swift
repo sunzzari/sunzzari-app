@@ -50,3 +50,24 @@ struct BestOfEntryCard: View {
         }
     }
 }
+
+#Preview {
+    VStack(spacing: 12) {
+        BestOfEntryCard(entry: BestOfEntry(
+            id: "1",
+            entry: "That time we got lost in Shibuya",
+            date: Date(),
+            category: .funnyMoment,
+            notes: "We ended up finding the best ramen place"
+        ))
+        BestOfEntryCard(entry: BestOfEntry(
+            id: "2",
+            entry: "Sushi Ginza Onodera",
+            date: Date(),
+            category: .bestRestaurant,
+            notes: ""
+        ))
+    }
+    .padding()
+    .background(Color.sunBackground)
+}

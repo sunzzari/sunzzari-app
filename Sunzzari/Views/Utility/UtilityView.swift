@@ -11,6 +11,8 @@ struct UtilityView: View {
 
     private var rows: [Row] {
         [
+            Row(label: "Stories Archive", symbol: "rectangle.stack.fill", colorHex: "#F472B6",
+                destination: AnyView(StoryArchiveView())),
             Row(label: "Best Of", symbol: "star.circle.fill", colorHex: "#FBBF24",
                 destination: AnyView(BestOfView())),
             Row(label: "Search", symbol: "magnifyingglass", colorHex: "#38BDF8",

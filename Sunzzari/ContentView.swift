@@ -94,6 +94,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openInbox)) { _ in
             showInbox = true
         }
+        // After the user views a story, re-sync inbox so the unseen count
+        // drops (or the entry auto-marks read when the bucket is fully watched).
+        // Local update — uses cached stories, no Notion refetch.
+        .onReceive(NotificationCenter.default.publisher(for: .storiesDidMarkSeen)) { _ in
+            Task { await refreshInboxFromCachedStories() }
+        }
         .task {
             if AppIdentity.current == nil {
                 showIdentitySetup = true
@@ -143,12 +149,12 @@ struct ContentView: View {
     /// Debounced to 30s so rapid foreground/background cycles (returning
     /// from Photos picker, Settings, Control Center) don't burn through the
     /// Notion 3 req/s rate limit.
-    private func syncStoriesIntoInbox() async {
+    private func syncStoriesIntoInbox(force: Bool = false) async {
         guard AppIdentity.current != nil else { return }
         let key = "sunzzari_last_story_sync"
         let last = UserDefaults.standard.double(forKey: key)
         let now = Date().timeIntervalSince1970
-        if last > 0, now - last < 30 { return }
+        if !force, last > 0, now - last < 30 { return }
         UserDefaults.standard.set(now, forKey: key)
 
         let stories: [StoryPost]
@@ -169,13 +175,23 @@ struct ContentView: View {
         for (_, bucket) in grouped {
             let sorted = bucket.sorted { $0.postedAt > $1.postedAt }
             guard let latest = sorted.first else { continue }
-            let count = bucket.count
             let person = latest.person
             let dayStr = dayFormatter.string(from: latest.postedAt)
+            let entryID = "sunzzari-story-day-\(person.rawValue)-\(dayStr)"
 
-            let title = count == 1
+            // Count UNSEEN stories only -- "Elisa posted 5 stories" was always
+            // showing the day's total, even when you'd already watched some.
+            // Fall back to latest's seen state so an all-seen bucket auto-marks
+            // its inbox entry read instead of lingering with a stale "new" badge.
+            let unseen = SeenStoriesStore.shared.unseenCount(in: bucket)
+            if unseen == 0 {
+                NotificationInboxService.shared.markRead(entryID)
+                continue
+            }
+
+            let title = unseen == 1
                 ? "\(person.rawValue) posted a story"
-                : "\(person.rawValue) posted \(count) stories"
+                : "\(person.rawValue) posted \(unseen) stories"
 
             let subtitle: String
             if !latest.caption.isEmpty {
@@ -187,13 +203,57 @@ struct ContentView: View {
             }
 
             NotificationInboxService.shared.upsert(
-                id: "sunzzari-story-day-\(person.rawValue)-\(dayStr)",
+                id: entryID,
                 type: .storyUpdate,
                 title: title,
                 subtitle: subtitle,
                 timestamp: latest.postedAt
             )
         }
+    }
+
+    /// Local-only inbox refresh after a story is viewed. Recomputes unseen
+    /// counts against the cached active stories so the badge / inbox text
+    /// updates immediately without burning a Notion request.
+    private func refreshInboxFromCachedStories() async {
+        guard AppIdentity.current != nil,
+              let stories = NotionService.shared.storiesActiveDiskCache() else { return }
+        let me: StoryPost.Person = AppIdentity.isHummingbird ? .cathy : .elisa
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "yyyy-MM-dd"
+        let grouped = Dictionary(grouping: stories.filter { $0.person != me }) { story -> String in
+            "\(story.person.rawValue)-\(dayFormatter.string(from: story.postedAt))"
+        }
+        for (_, bucket) in grouped {
+            guard let latest = bucket.max(by: { $0.postedAt < $1.postedAt }) else { continue }
+            let person = latest.person
+            let dayStr = dayFormatter.string(from: latest.postedAt)
+            let entryID = "sunzzari-story-day-\(person.rawValue)-\(dayStr)"
+            let unseen = SeenStoriesStore.shared.unseenCount(in: bucket)
+            if unseen == 0 {
+                NotificationInboxService.shared.markRead(entryID)
+                continue
+            }
+            let title = unseen == 1
+                ? "\(person.rawValue) posted a story"
+                : "\(person.rawValue) posted \(unseen) stories"
+            let subtitle: String
+            if !latest.caption.isEmpty {
+                subtitle = latest.caption
+            } else if let loc = latest.location, !loc.isEmpty {
+                subtitle = loc
+            } else {
+                subtitle = "Tap to watch"
+            }
+            NotificationInboxService.shared.upsert(
+                id: entryID,
+                type: .storyUpdate,
+                title: title,
+                subtitle: subtitle,
+                timestamp: latest.postedAt
+            )
+        }
+        await syncBadgeFromInbox()
     }
 
     /// Recovery path: if the Sunday 8pm weekly notification fired while the app was
@@ -213,4 +273,8 @@ struct ContentView: View {
             subtitle: "Any highlights from the week?"
         )
     }
+}
+
+#Preview {
+    ContentView()
 }

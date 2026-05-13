@@ -84,3 +84,12 @@ struct HubCardView: View {
         }
     }
 }
+
+#Preview {
+    VStack(spacing: 16) {
+        HubCardView(title: "Restaurants", subtitle: "My Guide", coverURL: nil)
+        HubCardView(title: "Wine", subtitle: "My Collection", coverURL: nil)
+    }
+    .padding()
+    .background(Color.sunBackground)
+}

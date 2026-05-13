@@ -7,3 +7,7 @@ struct TravelView: View {
         TripListView()
     }
 }
+
+#Preview {
+    TravelView()
+}

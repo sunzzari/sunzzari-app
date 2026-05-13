@@ -186,6 +186,10 @@ struct StoryPlayerView: View {
             // restarts from the current index.
             .task(id: PlayKey(index: currentIndex, active: isActive)) {
                 guard isActive else { return }
+                if let story = currentStory {
+                    SeenStoriesStore.shared.markSeen(story.id)
+                    NotificationCenter.default.post(name: .storiesDidMarkSeen, object: nil)
+                }
                 await runProgressLoop()
             }
             .statusBarHidden(true)
