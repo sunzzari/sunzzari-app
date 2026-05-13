@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-05-13 (later)
+
+### Stories follow-ups
+
+- **Embedded IG-style camera.** Tapping the Stories tab now opens
+  directly into a fullscreen in-app camera (live preview, shutter,
+  flip, library thumbnail) instead of the old system camera flashed
+  behind an "Add a photo" intermediate screen. The intermediate
+  picker is gone.
+- **No more zoom-crop in compose.** Photos render with `scaledToFit`
+  + blurred backdrop, so the entire frame is visible while composing
+  and the baked upload matches what you see.
+
 ## 2026-05-13
 
 ### Stories overhaul
