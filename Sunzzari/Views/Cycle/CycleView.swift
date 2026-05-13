@@ -139,9 +139,10 @@ struct CycleView: View {
             }
 
             // Weekday headers
+            let weekdays = ["S","M","T","W","T","F","S"]
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 4) {
-                ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
-                    Text(d)
+                ForEach(0..<7, id: \.self) { i in
+                    Text(weekdays[i])
                         .font(.system(size: 11, weight: .medium, design: .serif))
                         .foregroundStyle(Color.sunSecondary)
                         .frame(maxWidth: .infinity)
