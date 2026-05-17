@@ -14,13 +14,13 @@ struct TripAssistantSheet: View {
     @State private var isLoading = false
     @State private var response: TripAssistantResponse?
     @State private var errorMessage: String?
+    @State private var selectedItemID: String?
     @FocusState private var queryFocused: Bool
 
     private var matchedItems: [TripItem] {
         guard let response else { return [] }
-        let idSet = Set(response.matchedItemIds)
         let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        return response.matchedItemIds.compactMap { byID[$0] }.filter { idSet.contains($0.id) }
+        return response.matchedItemIds.compactMap { byID[$0] }
     }
 
     var body: some View {
@@ -115,39 +115,71 @@ struct TripAssistantSheet: View {
 
     @ViewBuilder
     private func responseSection(_ resp: TripAssistantResponse) -> some View {
-        // Answer prose
         Text(resp.answer)
             .font(.system(.subheadline, design: .serif))
             .foregroundStyle(Color.sunText)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-        // Matched trip items
         if !matchedItems.isEmpty {
-            sectionHeader("From your trip")
+            sectionHeader("From your trip", source: .notion)
             ForEach(matchedItems) { item in
                 tripItemCard(item)
             }
         }
 
-        // External suggestions
         if !resp.suggestions.isEmpty {
-            sectionHeader("Suggestions")
+            sectionHeader("Suggestions", source: .claude)
             ForEach(resp.suggestions, id: \.name) { suggestion in
                 suggestionCard(suggestion)
             }
         }
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.system(.caption2, design: .serif, weight: .semibold))
-            .foregroundStyle(Color.sunSecondary)
-            .tracking(0.8)
+    private enum ResultSource { case notion, claude }
+
+    private func sectionHeader(_ title: String, source: ResultSource) -> some View {
+        HStack(spacing: 6) {
+            Text(title.uppercased())
+                .font(.system(.caption2, design: .serif, weight: .semibold))
+                .foregroundStyle(Color.sunSecondary)
+                .tracking(0.8)
+
+            sourceBadge(source)
+        }
+    }
+
+    @ViewBuilder
+    private func sourceBadge(_ source: ResultSource) -> some View {
+        switch source {
+        case .notion:
+            Text("Notion")
+                .font(.system(size: 9, weight: .semibold, design: .serif))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Color(hex: "#3B82F6"))
+                .clipShape(Capsule())
+        case .claude:
+            HStack(spacing: 2) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 8, weight: .semibold))
+                Text("Claude")
+                    .font(.system(size: 9, weight: .semibold, design: .serif))
+            }
+            .foregroundStyle(Color.sunAccent)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.sunAccent.opacity(0.15))
+            .clipShape(Capsule())
+        }
     }
 
     private func tripItemCard(_ item: TripItem) -> some View {
-        Button {
-            dismiss()
+        let isSelected = selectedItemID == item.id
+
+        return Button {
+            guard selectedItemID != item.id else { return }
+            selectedItemID = item.id
             onSelectItem(item)
         } label: {
             HStack(spacing: 12) {
@@ -189,16 +221,27 @@ struct TripAssistantSheet: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold, design: .serif))
-                    .foregroundStyle(Color.sunSecondary)
+                if isSelected {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(.subheadline, design: .serif))
+                        .foregroundStyle(Color.sunAccent)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.sunSecondary)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .background(Color.sunSurface)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.sunAccent : Color.clear, lineWidth: 1.5)
+            )
         }
         .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 
     private func suggestionCard(_ suggestion: TripAssistantResponse.ExternalSuggestion) -> some View {
@@ -250,6 +293,7 @@ struct TripAssistantSheet: View {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, !isLoading else { return }
         errorMessage = nil
+        selectedItemID = nil
         isLoading = true
 
         Task {
