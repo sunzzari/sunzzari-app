@@ -334,8 +334,12 @@ struct TripDetailView: View {
 
     private func selectItem(_ item: TripItem) {
         if let lat = item.latitude, let lon = item.longitude {
+            let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
             DispatchQueue.main.async {
-                self.bridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                // 600m zoom breaks city-level clusters so the individual pin
+                // is visible when selectPin fires 0.7s later.
+                self.bridge.panTo(coord, zoom: 600)
+                self.bridge.selectPin(id: item.id)
             }
         }
         if selectedID == item.id {

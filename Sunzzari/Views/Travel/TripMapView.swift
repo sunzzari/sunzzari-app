@@ -30,6 +30,18 @@ final class TripMapBridge {
         guard let mv = mapView, let loc = mv.userLocation.location else { return }
         panTo(loc.coordinate, zoom: 4000)
     }
+
+    /// Selects the annotation with the given trip item ID after a short delay so
+    /// the pan animation can finish and clusters have a chance to dissolve.
+    /// Must be called AFTER panTo so the zoom level is already set.
+    func selectPin(id: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            guard let mv = self?.mapView,
+                  let ann = mv.annotations.first(where: { ($0 as? TripItemAnnotation)?.item.id == id })
+            else { return }
+            mv.selectAnnotation(ann, animated: true)
+        }
+    }
 }
 
 // MARK: - UIViewRepresentable
