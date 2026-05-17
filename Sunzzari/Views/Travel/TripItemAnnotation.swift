@@ -6,6 +6,7 @@ final class TripItemAnnotation: NSObject, MKAnnotation {
     @objc dynamic var coordinate: CLLocationCoordinate2D
     var title: String? { item.name }
     var subtitle: String? {
+        if !item.notes.isEmpty { return item.notes }
         var parts: [String] = []
         if let type = item.type { parts.append(type.rawValue) }
         if !item.legCity.isEmpty { parts.append(item.legCity) }

@@ -167,7 +167,6 @@ struct TripMKMap: UIViewRepresentable {
                 continue
             }
             let isSelected = ta.item.id == selectedID
-            view.clusteringIdentifier = isSelected ? nil : "tripItem"
             view.displayPriority = isSelected ? .required : .defaultHigh
         }
 

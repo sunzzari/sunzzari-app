@@ -149,7 +149,7 @@ struct RestaurantMKMap: UIViewRepresentable {
                 let v = mapView.dequeueReusableAnnotationView(
                     withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier,
                     for: cluster
-                ) as! MKMarkerAnnotationView
+                ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: cluster, reuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
                 v.markerTintColor = UIColor(red: 0.984, green: 0.749, blue: 0.141, alpha: 1) // #FBBF24
                 v.glyphText = "\(cluster.memberAnnotations.count)"
                 v.titleVisibility = .hidden
@@ -161,7 +161,7 @@ struct RestaurantMKMap: UIViewRepresentable {
             let v = mapView.dequeueReusableAnnotationView(
                 withIdentifier: "restaurant",
                 for: annotation
-            ) as! MKMarkerAnnotationView
+            ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "restaurant")
             v.clusteringIdentifier = "restaurant"
             v.canShowCallout = false
             v.titleVisibility = .hidden
