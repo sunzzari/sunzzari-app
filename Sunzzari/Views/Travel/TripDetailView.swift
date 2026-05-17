@@ -47,6 +47,9 @@ struct TripDetailView: View {
     // Detail sheet
     @State private var detailItem: TripItem?
 
+    // AI assistant
+    @State private var showAssistant = false
+
     private var dayBundles: [DayBundle] {
         DayGrouper.group(items: items, trip: trip)
     }
@@ -145,6 +148,16 @@ struct TripDetailView: View {
         }
         .sheet(item: $detailItem) { item in
             ItemDetailSheet(item: item, userLocation: userLocation)
+        }
+        .sheet(isPresented: $showAssistant) {
+            TripAssistantSheet(
+                items: items,
+                trip: trip,
+                userLocation: userLocation,
+                onSelectItem: { item in selectItem(item) }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .task {
             await loadItems()
@@ -275,6 +288,18 @@ struct TripDetailView: View {
 
             // Map controls - top right
             VStack(spacing: 8) {
+                Button {
+                    showAssistant = true
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(.caption, design: .serif))
+                        .foregroundStyle(Color.sunAccent)
+                        .frame(width: 36, height: 36)
+                        .background(Color.sunSurface.opacity(0.9))
+                        .clipShape(Circle())
+                        .shadow(color: Color.sunAccent.opacity(0.3), radius: 4)
+                }
+
                 mapButton(icon: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
                     withAnimation { isFullscreen.toggle() }
                 }

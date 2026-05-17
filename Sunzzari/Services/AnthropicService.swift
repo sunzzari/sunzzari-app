@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import CoreLocation
 
 final class AnthropicService: @unchecked Sendable {
     static let shared = AnthropicService()
@@ -194,6 +195,109 @@ final class AnthropicService: @unchecked Sendable {
 
         let text = try await sendRequest(body)
         return try parseIDArray(text)
+    }
+
+    // MARK: - Trip Assistant
+
+    func askTripAssistant(
+        query: String,
+        items: [TripItem],
+        trip: Trip,
+        userLocation: CLLocationCoordinate2D?
+    ) async throws -> TripAssistantResponse {
+        let compact: [[String: Any]] = items.map { item in
+            var obj: [String: Any] = [
+                "id": item.id,
+                "name": item.name,
+                "legCity": item.legCity,
+                "venue": item.venue,
+                "notes": item.notes,
+                "reservationRequired": item.reservationRequired
+            ]
+            if let t = item.type { obj["type"] = t.rawValue }
+            if let s = item.status { obj["status"] = s.rawValue }
+            if let d = item.displayDate { obj["date"] = d }
+            if let de = item.displayDateEnd { obj["dateEnd"] = de }
+            if let lat = item.latitude { obj["lat"] = lat }
+            if let lon = item.longitude { obj["lon"] = lon }
+            return obj
+        }
+        let corpusData = try JSONSerialization.data(withJSONObject: compact)
+        let corpusStr = String(data: corpusData, encoding: .utf8) ?? "[]"
+
+        let dateRange = trip.dateRangeDisplay.isEmpty ? "dates unknown" : trip.dateRangeDisplay
+        let locationStr = trip.location.isEmpty ? "unknown" : trip.location
+        let locationLine: String
+        if let loc = userLocation {
+            locationLine = "\(loc.latitude), \(loc.longitude)"
+        } else {
+            locationLine = "unknown"
+        }
+
+        let system = """
+        You are the Trip Assistant for Elisa and Cathy on their \(trip.name) trip (\(dateRange), \(locationStr)).
+
+        THEIR PREFERENCES:
+        - Wine: Old World structured reds (Burgundy Pinot, Brunello, Nebbiolo); also bold California reds; crisp dry whites; dry rose; Champagne. AVOID jammy, sweet, oaky, dilute.
+        - Food: Mix of Michelin and casual local. Truffles whenever possible. Cheese caves/fromageries. Long lunches OK.
+        - Hotels: Modern Marriott (Luxury Collection, Autograph, W) or best-in-class boutique. Clean, fresh, not heavy with antiques.
+        - Activities: NO museums, history tours, or heritage walks. Loves hilltop villages at golden hour, sunset boats, coastal walks, wine tastings, food markets, scuba.
+        - Logistics: Private driver over rental. Countryside estates for wine country.
+
+        THEIR TRIP ITEMS (use these FIRST):
+        \(corpusStr)
+
+        CURRENT LOCATION (if querying "near me"): \(locationLine)
+
+        QUERY: "\(query)"
+
+        Respond with ONLY this JSON object (no markdown, no prose outside JSON):
+        {
+          "answer": "1-3 sentence direct answer to their question",
+          "matchedItemIds": ["...ids from THEIR TRIP ITEMS that are relevant..."],
+          "suggestions": [
+            {"name": "...", "type": "...", "neighborhood": "...", "reason": "..."}
+          ]
+        }
+
+        Rules:
+        - Factual queries (train times, hotel for night X): answer directly, populate matchedItemIds with relevant items, leave suggestions empty.
+        - Find queries with DB hits: answer briefly, populate matchedItemIds ordered by relevance, leave suggestions empty.
+        - Find queries with NO DB hits: populate suggestions with 2-3 places from your training knowledge matching the preferences above. matchedItemIds empty.
+        - "Near me" = within ~2km of current location. Sort by distance.
+        - Never invent items, dates, or IDs. Only use IDs from THEIR TRIP ITEMS.
+        """
+
+        let body: [String: Any] = [
+            "model": Constants.Anthropic.model,
+            "max_tokens": 1024,
+            "system": system,
+            "messages": [[
+                "role": "user",
+                "content": [[
+                    "type": "text",
+                    "text": query
+                ]]
+            ]]
+        ]
+
+        let text = try await sendRequest(body)
+        return try parseTripAssistantResponse(text)
+    }
+
+    private func parseTripAssistantResponse(_ text: String) throws -> TripAssistantResponse {
+        let stripped = text
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let jsonStr = extractJSON(from: stripped)
+        guard let data = jsonStr.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(TripAssistantResponse.self, from: data)
+        else {
+            throw AnthropicError.apiError("Could not parse trip assistant response from Claude")
+        }
+        return decoded
     }
 
     private func parseIDArray(_ text: String) throws -> [String] {
