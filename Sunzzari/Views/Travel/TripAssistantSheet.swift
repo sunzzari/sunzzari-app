@@ -176,11 +176,12 @@ struct TripAssistantSheet: View {
 
     private func tripItemCard(_ item: TripItem) -> some View {
         let isSelected = selectedItemID == item.id
+        let hasLocation = item.hasCoordinates
 
         return Button {
             guard selectedItemID != item.id else { return }
             selectedItemID = item.id
-            onSelectItem(item)
+            if hasLocation { onSelectItem(item) }
         } label: {
             HStack(spacing: 12) {
                 if let type = item.type {
@@ -225,6 +226,10 @@ struct TripAssistantSheet: View {
                     Image(systemName: "mappin.circle.fill")
                         .font(.system(.subheadline, design: .serif))
                         .foregroundStyle(Color.sunAccent)
+                } else if !hasLocation {
+                    Image(systemName: "mappin.slash")
+                        .font(.system(size: 11, design: .serif))
+                        .foregroundStyle(Color.sunSecondary.opacity(0.5))
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold, design: .serif))

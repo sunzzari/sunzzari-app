@@ -236,12 +236,14 @@ struct TripDetailView: View {
                         Spacer()
                     }
 
-                    TripBottomSheetView(
-                        items: sortedItems,
-                        selectedID: $selectedID,
-                        userLocation: userLocation,
-                        onSelect: selectItem
-                    )
+                    if !showAssistant {
+                        TripBottomSheetView(
+                            items: sortedItems,
+                            selectedID: $selectedID,
+                            userLocation: userLocation,
+                            onSelect: selectItem
+                        )
+                    }
                 }
             }
         }
