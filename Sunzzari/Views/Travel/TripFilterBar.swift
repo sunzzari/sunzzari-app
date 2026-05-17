@@ -13,6 +13,7 @@ struct TripFilterBar: View {
     @Binding var nearMeActive: Bool
 
     @State private var showFilters = false
+    @FocusState private var searchFocused: Bool
 
     private var activeFilterCount: Int {
         activeStatuses.count + activeTypes.count + activeLegs.count + (filterReservationOnly ? 1 : 0)
@@ -54,6 +55,14 @@ struct TripFilterBar: View {
                 .font(.system(.caption, design: .serif))
                 .foregroundStyle(Color.sunText)
                 .frame(width: searchQuery.isEmpty ? 60 : 110)
+                .focused($searchFocused)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { searchFocused = false }
+                            .font(.system(.body, design: .serif))
+                    }
+                }
             if !searchQuery.isEmpty {
                 Button { searchQuery = "" } label: {
                     Image(systemName: "xmark.circle.fill")

@@ -14,6 +14,7 @@ struct TripAssistantSheet: View {
     @State private var isLoading = false
     @State private var response: TripAssistantResponse?
     @State private var errorMessage: String?
+    @FocusState private var queryFocused: Bool
 
     private var matchedItems: [TripItem] {
         guard let response else { return [] }
@@ -39,6 +40,7 @@ struct TripAssistantSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(Color.sunBackground)
             .navigationTitle("Trip Assistant")
             .navigationBarTitleDisplayMode(.inline)
@@ -66,7 +68,15 @@ struct TripAssistantSheet: View {
                 .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(Color.sunText)
                 .submitLabel(.send)
+                .focused($queryFocused)
                 .onSubmit { submit() }
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { queryFocused = false }
+                            .font(.system(.body, design: .serif))
+                    }
+                }
 
             if isLoading {
                 ProgressView()

@@ -286,20 +286,9 @@ struct TripDetailView: View {
             )
             .ignoresSafeArea(edges: .bottom)
 
-            // Map controls - top right
+            // Map controls - top right. Sparkles is last so it clears
+            // the filter bar + date timeline that overlay the top ~90pt.
             VStack(spacing: 8) {
-                Button {
-                    showAssistant = true
-                } label: {
-                    Image(systemName: "sparkles")
-                        .font(.system(.caption, design: .serif))
-                        .foregroundStyle(Color.sunAccent)
-                        .frame(width: 36, height: 36)
-                        .background(Color.sunSurface.opacity(0.9))
-                        .clipShape(Circle())
-                        .shadow(color: Color.sunAccent.opacity(0.3), radius: 4)
-                }
-
                 mapButton(icon: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
                     withAnimation { isFullscreen.toggle() }
                 }
@@ -311,15 +300,21 @@ struct TripDetailView: View {
                 mapButton(icon: "location.fill") {
                     bridge.centerOnUser()
                 }
+
+                Button {
+                    showAssistant = true
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(.caption, design: .serif))
+                        .foregroundStyle(Color.sunAccent)
+                        .frame(width: 36, height: 36)
+                        .background(Color.sunSurface.opacity(0.9))
+                        .clipShape(Circle())
+                        .shadow(color: Color.sunAccent.opacity(0.3), radius: 4)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .padding(12)
-
-            // Type legend - bottom left (always visible)
-            TripTypeLegend(activeTypes: $activeTypes)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                .padding(.leading, 12)
-                .padding(.bottom, sizeClass == .regular ? 16 : 140)
         }
     }
 
