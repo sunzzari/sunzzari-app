@@ -39,6 +39,7 @@ struct TripDetailView: View {
     @State private var selectedDate: String?
     @State private var sortMode: TripSortMode = .type
     @State private var nearMeActive = false
+    @State private var filterReservationOnly = false
 
     // Location
     @State private var userLocation: CLLocation?
@@ -67,7 +68,8 @@ struct TripDetailView: View {
                 }
                 return loc.distance(from: CLLocation(latitude: lat, longitude: lon)) <= 5000
             }()
-            return statusOK && typeOK && legOK && searchOK && dateOK && nearMeOK
+            let reservOK = !filterReservationOnly || item.reservationRequired
+            return statusOK && typeOK && legOK && searchOK && dateOK && nearMeOK && reservOK
         }
     }
 
@@ -252,6 +254,7 @@ struct TripDetailView: View {
                 activeStatuses: $activeStatuses,
                 activeTypes: $activeTypes,
                 activeLegs: $activeLegs,
+                filterReservationOnly: $filterReservationOnly,
                 searchQuery: $searchQuery,
                 nearMeActive: $nearMeActive
             )
@@ -265,7 +268,8 @@ struct TripDetailView: View {
                 filterKey: filterKey,
                 selectedID: $selectedID,
                 bridge: bridge,
-                fitIncludesUser: nearMeActive
+                fitIncludesUser: nearMeActive,
+                onOpenDetail: { item in detailItem = item }
             )
             .ignoresSafeArea(edges: .bottom)
 
