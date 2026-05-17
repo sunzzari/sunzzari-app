@@ -49,6 +49,10 @@ struct TripDetailView: View {
 
     // AI assistant
     @State private var showAssistant = false
+    @State private var assistantQuery = ""
+    @State private var assistantResponse: TripAssistantResponse?
+    @State private var assistantError: String?
+    @State private var assistantSelectedItemID: String?
 
     private var dayBundles: [DayBundle] {
         DayGrouper.group(items: items, trip: trip)
@@ -113,6 +117,10 @@ struct TripDetailView: View {
         Array(Set(items.compactMap(\.displayDate))).sorted()
     }
 
+    private var highlightedItemIds: Set<String> {
+        Set(assistantResponse?.matchedItemIds ?? [])
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -154,10 +162,29 @@ struct TripDetailView: View {
                 items: items,
                 trip: trip,
                 userLocation: userLocation,
-                onSelectItem: { item in selectItem(item) }
+                onSelectItem: { item in
+                    // Clear date filter so this item's annotation is on the map
+                    if selectedDate != nil && item.displayDate != selectedDate {
+                        selectedDate = nil
+                    }
+                    selectItem(item)
+                },
+                query: $assistantQuery,
+                response: $assistantResponse,
+                errorMessage: $assistantError,
+                selectedItemID: $assistantSelectedItemID
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .onChange(of: assistantResponse) { _, newResponse in
+            guard let newResponse, !newResponse.matchedItemIds.isEmpty else { return }
+            // Usurp the day filter so all matched items appear on the map
+            selectedDate = nil
+            let matchedIds = Set(newResponse.matchedItemIds)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                bridge.fitToIDs(matchedIds, in: items)
+            }
         }
         .task {
             await loadItems()
@@ -284,7 +311,8 @@ struct TripDetailView: View {
                 selectedID: $selectedID,
                 bridge: bridge,
                 fitIncludesUser: nearMeActive,
-                onOpenDetail: { item in detailItem = item }
+                onOpenDetail: { item in detailItem = item },
+                highlightedItemIds: highlightedItemIds
             )
             .ignoresSafeArea(edges: .bottom)
 

@@ -10,11 +10,11 @@ struct TripAssistantSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var query = ""
+    @Binding var query: String
+    @Binding var response: TripAssistantResponse?
+    @Binding var errorMessage: String?
+    @Binding var selectedItemID: String?
     @State private var isLoading = false
-    @State private var response: TripAssistantResponse?
-    @State private var errorMessage: String?
-    @State private var selectedItemID: String?
     @FocusState private var queryFocused: Bool
 
     private var matchedItems: [TripItem] {
@@ -35,6 +35,12 @@ struct TripAssistantSheet: View {
 
                     if let response {
                         responseSection(response)
+                    } else if !isLoading {
+                        Text("Ask about your trip — train times, nearby restaurants, wine bars, or what's booked on a given day.")
+                            .font(.system(.subheadline, design: .serif))
+                            .foregroundStyle(Color.sunSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 4)
                     }
                 }
                 .padding(.horizontal, 16)

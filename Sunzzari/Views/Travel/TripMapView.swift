@@ -31,6 +31,34 @@ final class TripMapBridge {
         panTo(loc.coordinate, zoom: 4000)
     }
 
+    /// Fits the map to the annotations whose item IDs are in `ids`.
+    /// Falls back to fitAll if no matching annotations are found.
+    func fitToIDs(_ ids: Set<String>, in items: [TripItem]) {
+        guard let mv = mapView else { return }
+        let coords = items
+            .filter { ids.contains($0.id) }
+            .compactMap { item -> CLLocationCoordinate2D? in
+                guard let lat = item.latitude, let lon = item.longitude else { return nil }
+                return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            }
+        guard !coords.isEmpty else {
+            fitAll()
+            return
+        }
+        if coords.count == 1 {
+            panTo(coords[0], zoom: 2000)
+            return
+        }
+        var rect = MKMapRect.null
+        for c in coords {
+            let p = MKMapPoint(c)
+            rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+        }
+        let dx = max(rect.size.width * 0.4, 500)
+        let dy = max(rect.size.height * 0.4, 500)
+        mv.setVisibleMapRect(rect.insetBy(dx: -dx, dy: -dy), animated: true)
+    }
+
     /// Selects the annotation with the given trip item ID after a short delay so
     /// the pan animation can finish and clusters have a chance to dissolve.
     /// Must be called AFTER panTo so the zoom level is already set.
@@ -70,6 +98,9 @@ struct TripMKMap: UIViewRepresentable {
     // Fired when the callout's (i) info accessory is tapped. Parent uses this
     // to open ItemDetailSheet, mirroring the second-tap behavior on rows.
     var onOpenDetail: ((TripItem) -> Void)?
+
+    // Item IDs returned by the AI assistant — rendered in a distinct blue tint.
+    var highlightedItemIds: Set<String> = []
 
     func makeCoordinator() -> Coordinator {
         Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail)
@@ -168,11 +199,8 @@ struct TripMKMap: UIViewRepresentable {
         }
         coordinator.lastAnnotationCount = annotations.count
 
-        // Sync selection. To make sure the selected pin actually pops out of
-        // any cluster (so the user sees their item, not a "16" badge), we
-        // also clear its clusteringIdentifier and force .required display
-        // priority. Restore those on previously-selected pins so they go
-        // back to clustering when zoomed out.
+        // Sync highlight and selection state on visible annotation views.
+        coordinator.highlightedItemIds = highlightedItemIds
         for ann in map.annotations {
             guard let ta = ann as? TripItemAnnotation,
                   let view = map.view(for: ann) as? MKMarkerAnnotationView else {
@@ -180,6 +208,12 @@ struct TripMKMap: UIViewRepresentable {
             }
             let isSelected = ta.item.id == selectedID
             view.displayPriority = isSelected ? .required : .defaultHigh
+            if highlightedItemIds.contains(ta.item.id) {
+                view.markerTintColor = UIColor(red: 0.231, green: 0.510, blue: 0.965, alpha: 1)
+            } else {
+                let status = ta.item.status ?? .researching
+                view.markerTintColor = UIColor(Color(hex: status.colorHex))
+            }
         }
 
         if let id = selectedID {
@@ -206,6 +240,7 @@ struct TripMKMap: UIViewRepresentable {
         var lastAnnotationCount = 0
         var lastRouteKey: String = ""
         var userHasInteracted = false
+        var highlightedItemIds: Set<String> = []
 
         init(selectedID: Binding<String?>, onOpenDetail: ((TripItem) -> Void)? = nil) {
             _selectedID = selectedID
@@ -263,10 +298,13 @@ struct TripMKMap: UIViewRepresentable {
             info.tintColor = UIColor(Color.sunAccent)
             v.rightCalloutAccessoryView = info
 
-            // Color = STATUS (so confirmed/assigned/researching/shortlisted are visually distinct).
-            // Glyph = TYPE (so the icon still tells you flight vs. hotel vs. restaurant).
-            let status = ta.item.status ?? .researching
-            v.markerTintColor = UIColor(Color(hex: status.colorHex))
+            // Color = AI-highlighted (blue) > STATUS color. Glyph = TYPE.
+            if self.highlightedItemIds.contains(ta.item.id) {
+                v.markerTintColor = UIColor(red: 0.231, green: 0.510, blue: 0.965, alpha: 1)
+            } else {
+                let status = ta.item.status ?? .researching
+                v.markerTintColor = UIColor(Color(hex: status.colorHex))
+            }
 
             let type = ta.item.type ?? .other
             v.glyphImage = UIImage(systemName: type.sfSymbol)
