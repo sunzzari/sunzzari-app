@@ -46,6 +46,10 @@ struct RestaurantMKMap: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(selectedID: $selectedID) }
 
+    static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
+        coordinator.stopHeading()
+    }
+
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
@@ -64,6 +68,8 @@ struct RestaurantMKMap: UIViewRepresentable {
             forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier
         )
         bridge.mapView = map
+        context.coordinator.mapView = map
+        context.coordinator.startHeading()
         return map
     }
 
@@ -131,19 +137,62 @@ struct RestaurantMKMap: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, MKMapViewDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, CLLocationManagerDelegate {
         @Binding var selectedID: String?
         var isUpdating = false
         var didFitAll = false
         var lastFilterKey: String = ""
         private var didCenterOnUser = false
 
+        private var headingManager: CLLocationManager?
+        weak var userLocView: UserLocationAnnotationView?
+        weak var mapView: MKMapView?
+        private var lastDeviceHeading: CLLocationDirection = 0
+        private var lastHeadingAccuracy: CLLocationDirection = 27.5
+
         init(selectedID: Binding<String?>) {
             _selectedID = selectedID
         }
 
+        func startHeading() {
+            guard CLLocationManager.headingAvailable() else { return }
+            let mgr = CLLocationManager()
+            mgr.delegate = self
+            mgr.headingFilter = 3
+            mgr.startUpdatingHeading()
+            headingManager = mgr
+        }
+
+        func stopHeading() {
+            headingManager?.stopUpdatingHeading()
+            headingManager = nil
+        }
+
+        private func updateCone() {
+            let mapRotation = mapView?.camera.heading ?? 0
+            userLocView?.setHeading(lastDeviceHeading - mapRotation, accuracy: lastHeadingAccuracy)
+        }
+
+        func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+            guard newHeading.headingAccuracy >= 0 else { return }
+            lastDeviceHeading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+            lastHeadingAccuracy = newHeading.headingAccuracy
+            updateCone()
+        }
+
+        func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool {
+            return true
+        }
+
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            if annotation is MKUserLocation { return nil }
+            if annotation is MKUserLocation {
+                let v = UserLocationAnnotationView(
+                    annotation: annotation,
+                    reuseIdentifier: UserLocationAnnotationView.reuseID
+                )
+                userLocView = v
+                return v
+            }
 
             if let cluster = annotation as? MKClusterAnnotation {
                 let v = mapView.dequeueReusableAnnotationView(
@@ -173,6 +222,14 @@ struct RestaurantMKMap: UIViewRepresentable {
                 v.markerTintColor = .systemGray2
             }
             return v
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            updateCone()
+        }
+
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            updateCone()
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
