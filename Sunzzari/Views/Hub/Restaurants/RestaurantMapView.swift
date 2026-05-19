@@ -270,15 +270,21 @@ struct RestaurantMapView: View {
 
     // Filters
     @State private var showBeenThereOnly = false
+    @State private var showOpenNowOnly = false
     @State private var selectedLocations: Set<String> = []
     @State private var selectedPreferences: Set<String> = [] // pref rawValue or "Unrated"
+
+    // Open Now status: restaurant.id → isOpen. Absent key = unknown = show by default.
+    @State private var openNowStatus: [String: Bool] = [:]
+    @State private var isFetchingOpenNow = false
+    @State private var openNowTask: Task<Void, Never>? = nil
 
     private var uniqueLocations: [String] {
         Array(Set(restaurants.map(\.location).filter { !$0.isEmpty })).sorted()
     }
 
     private var hasActiveFilters: Bool {
-        showBeenThereOnly || !selectedLocations.isEmpty || !selectedPreferences.isEmpty
+        showBeenThereOnly || showOpenNowOnly || !selectedLocations.isEmpty || !selectedPreferences.isEmpty
     }
 
     private var filteredRestaurants: [Restaurant] {
@@ -287,7 +293,9 @@ struct RestaurantMapView: View {
             let locOK = selectedLocations.isEmpty || selectedLocations.contains(r.location)
             let prefOK = selectedPreferences.isEmpty ||
                 selectedPreferences.contains(r.preference?.rawValue ?? "Unrated")
-            return beenOK && locOK && prefOK
+            // nil = no data yet = show. Only hide when we know it's closed.
+            let openOK = !showOpenNowOnly || openNowStatus[r.id] != false
+            return beenOK && locOK && prefOK && openOK
         }
     }
 
@@ -302,7 +310,7 @@ struct RestaurantMapView: View {
     private var filterKey: String {
         let locs = selectedLocations.sorted().joined(separator: ",")
         let prefs = selectedPreferences.sorted().joined(separator: ",")
-        return "\(showBeenThereOnly)|\(locs)|\(prefs)"
+        return "\(showBeenThereOnly)|\(showOpenNowOnly)|\(locs)|\(prefs)"
     }
 
     private var selectedRestaurant: Binding<Restaurant?> {
@@ -337,8 +345,11 @@ struct RestaurantMapView: View {
                     ratingLegend
                         .padding(.leading, 16)
                     Spacer()
-                    locateMeButton
-                        .padding(.trailing, 16)
+                    HStack(spacing: 8) {
+                        openNowButton
+                        locateMeButton
+                    }
+                    .padding(.trailing, 16)
                 }
                 .padding(.bottom, 32)
             }
@@ -382,6 +393,7 @@ struct RestaurantMapView: View {
                 if hasActiveFilters {
                     Button {
                         showBeenThereOnly = false
+                        showOpenNowOnly = false
                         selectedLocations = []
                         selectedPreferences = []
                     } label: {
@@ -522,6 +534,40 @@ struct RestaurantMapView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
     }
 
+    // MARK: - Open Now button
+
+    private var openNowButton: some View {
+        Button {
+            showOpenNowOnly.toggle()
+            if showOpenNowOnly {
+                openNowTask = Task { await fetchOpenNowStatus() }
+            } else {
+                openNowTask?.cancel()
+                openNowTask = nil
+            }
+        } label: {
+            HStack(spacing: 5) {
+                if isFetchingOpenNow {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .tint(showOpenNowOnly ? Color.sunBackground : Color.sunAccent)
+                } else {
+                    Image(systemName: "clock")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                Text("Open")
+                    .font(.system(size: 13, weight: .medium, design: .serif))
+            }
+            .foregroundStyle(showOpenNowOnly ? Color.sunBackground : Color.sunAccent)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 11)
+            .background(showOpenNowOnly ? Color.sunAccent : Color.sunSurface)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.5), radius: 8, y: 3)
+            .shadow(color: showOpenNowOnly ? Color.sunAccent.opacity(0.4) : .clear, radius: 6)
+        }
+    }
+
     // MARK: - Locate Me button
 
     private var locateMeButton: some View {
@@ -582,6 +628,28 @@ struct RestaurantMapView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Open Now
+
+    @MainActor
+    private func fetchOpenNowStatus() async {
+        isFetchingOpenNow = true
+        defer { isFetchingOpenNow = false }
+        await withTaskGroup(of: (String, Bool?).self) { group in
+            var inFlight = 0
+            var index = 0
+            while (index < restaurants.count || inFlight > 0) && !Task.isCancelled {
+                while inFlight < 5 && index < restaurants.count && !Task.isCancelled {
+                    let r = restaurants[index]; index += 1; inFlight += 1
+                    group.addTask { (r.id, await PlacesService.shared.isOpenNow(restaurant: r)) }
+                }
+                if let (id, status) = await group.next() {
+                    inFlight -= 1
+                    if let status { openNowStatus[id] = status }
+                }
+            }
         }
     }
 
