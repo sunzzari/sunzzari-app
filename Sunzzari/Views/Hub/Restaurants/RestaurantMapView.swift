@@ -394,6 +394,8 @@ struct RestaurantMapView: View {
                     Button {
                         showBeenThereOnly = false
                         showOpenNowOnly = false
+                        openNowTask?.cancel()
+                        openNowTask = nil
                         selectedLocations = []
                         selectedPreferences = []
                     } label: {
