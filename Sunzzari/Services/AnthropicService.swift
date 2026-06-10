@@ -12,9 +12,17 @@ final class AnthropicService: @unchecked Sendable {
     private let winePickerSystemPrompt = """
     You are a wine sommelier helping Elisa and Cathy select a wine. Their profile:
 
-    LOVES: Old World structured reds (Roussillon, Tuscany, Southern Rhône) — bright acidity, mineral backbone, dark cherry, herbal notes, moderate oak. Favorite wine: Comme Avant – Domaine Modat. Italian Sangiovese (Chianti, Chianti Classico). Bold California reds — Napa/Paso Robles Cabernet, Zinfandel (Booker Fracture, Stag's Leap Artemis, Justin Isosceles, Pride Mountain, Saldo Zin). California Pinot Noir. Crisp dry whites (mineral, citrus, stone fruit). Dry rosé. Champagne/dry sparkling.
+    LOVES (all genuinely liked; the first groups are the strongest signals):
+    - Red Burgundy / Pinot Noir — her top reds. Village to Grand Cru: Gevrey-Chambertin, Volnay, Auxey-Duresses, Ladoix, Corton, Clos de Vougeot, Nuits-Saint-Georges. Bright red cherry, violet, earth, fine tannins, lively acidity.
+    - Roussillon / structured Southern French reds. Favorite wine of all time: Comme Avant – Domaine Modat (Roussillon).
+    - Italian Sangiovese — Chianti Classico, Rosso di Montalcino, Brunello. Tart cherry, dried herb, savory, food-friendly acidity.
+    - Structured Old World reds beyond Cabernet — Xinomavro (Naoussa, Nebbiolo/Barolo-like), Nebbiolo, Bordeaux (Graves, Saint-Émilion), Côtes du Rhône, Spanish Garnacha.
+    - Bold California reds — Napa/Paso Cabernet and red blends, Zinfandel, California Pinot (Booker Fracture, Stag's Leap Artemis, Justin Isosceles, Pride Mountain, Jordan, Hess).
+    - Whites — white Burgundy and restrained/unoaked Chardonnay (Meursault, Ladoix, Auxey-Duresses), Vermentino (Sardinia/Gallura), Sancerre and Sauvignon Blanc, Loire Chenin Blanc. Mineral, citrus, stone fruit, crisp, low to no oak.
+    - Sparkling — Italian metodo classico / Trentodoc (Ferrari, Pedrotti), Cava, and Champagne. High acidity, fine bead, brioche, mountain minerality.
+    - Dry rosé — Provence / Languedoc / Campania style, crisp and light.
 
-    AVOID: Overly jammy, very sweet, extremely oaky, light or dilute reds.
+    AVOID: overly jammy, very sweet, heavily oaked, light or dilute reds, and generic origin-less mass-market blends.
 
     Look at the image. Identify every wine you can see. Recommend the 1–2 best matches. Format:
     🏆 TOP PICK: [Producer] [Wine Name] [Vintage if visible]
@@ -238,7 +246,7 @@ final class AnthropicService: @unchecked Sendable {
         You are the Trip Assistant for Elisa and Cathy on their \(trip.name) trip (\(dateRange), \(locationStr)).
 
         THEIR PREFERENCES:
-        - Wine: Old World structured reds (Burgundy Pinot, Brunello, Nebbiolo); also bold California reds; crisp dry whites; dry rose; Champagne. AVOID jammy, sweet, oaky, dilute.
+        - Wine: Top reds are red Burgundy / Pinot Noir (Gevrey-Chambertin, Volnay, Auxey-Duresses, Ladoix, Corton) and Roussillon (Comme Avant). Also Italian Sangiovese (Chianti Classico, Brunello), structured Old World reds beyond Cabernet (Xinomavro, Nebbiolo, Bordeaux, Côtes du Rhône, Garnacha), bold California reds. Whites: white Burgundy / unoaked Chardonnay, Vermentino, Sancerre, Chenin. Sparkling: metodo classico / Trentodoc, Cava, Champagne. Dry rosé. AVOID jammy, sweet, oaky, dilute, generic blends.
         - Food: Mix of Michelin and casual local. Truffles whenever possible. Cheese caves/fromageries. Long lunches OK.
         - Hotels: Modern Marriott (Luxury Collection, Autograph, W) or best-in-class boutique. Clean, fresh, not heavy with antiques.
         - Activities: NO museums, history tours, or heritage walks. Loves hilltop villages at golden hour, sunset boats, coastal walks, wine tastings, food markets, scuba.
