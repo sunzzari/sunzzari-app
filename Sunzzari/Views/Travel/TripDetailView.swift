@@ -2,17 +2,6 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
-enum TripViewMode: String, CaseIterable, Identifiable {
-    case mapList, day
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .mapList: return "Map"
-        case .day:     return "Day"
-        }
-    }
-}
-
 struct TripDetailView: View {
     let trip: Trip
 
@@ -23,8 +12,8 @@ struct TripDetailView: View {
     @State private var isLoading = true
     @State private var isOffline = false
 
-    // View mode
-    @State private var viewMode: TripViewMode = .mapList
+    // Itinerary viewer
+    @State private var showItinerary = false
 
     // Map
     @State private var selectedID: String?
@@ -53,10 +42,6 @@ struct TripDetailView: View {
     @State private var assistantResponse: TripAssistantResponse?
     @State private var assistantError: String?
     @State private var assistantSelectedItemID: String?
-
-    private var dayBundles: [DayBundle] {
-        DayGrouper.group(items: items, trip: trip)
-    }
 
     // MARK: - Computed
 
@@ -121,6 +106,12 @@ struct TripDetailView: View {
         Set(assistantResponse?.matchedItemIds ?? [])
     }
 
+    private var itineraryURLString: String {
+        if let u = trip.itineraryURL, !u.isEmpty { return u }
+        let slug = trip.id.replacingOccurrences(of: "-", with: "")
+        return "https://elisa-travel-map.vercel.app/\(slug)/itinerary"
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -139,18 +130,15 @@ struct TripDetailView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color.sunSurface, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("View", selection: $viewMode) {
-                    ForEach(TripViewMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 240)
+            ToolbarItem(placement: .topBarTrailing) {
+                TripSortPicker(sortMode: $sortMode, nearMeActive: nearMeActive)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                if viewMode == .mapList {
-                    TripSortPicker(sortMode: $sortMode, nearMeActive: nearMeActive)
+                Button {
+                    showItinerary = true
+                } label: {
+                    Image(systemName: "list.bullet.clipboard")
+                        .foregroundStyle(Color.sunAccent)
                 }
             }
         }
@@ -176,6 +164,9 @@ struct TripDetailView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showItinerary) {
+            ItineraryWebView(urlString: itineraryURLString)
         }
         .onChange(of: assistantResponse) { _, newResponse in
             guard let newResponse, !newResponse.matchedItemIds.isEmpty else { return }
@@ -207,25 +198,11 @@ struct TripDetailView: View {
         .onChange(of: activeTypes)    { _, _ in selectedID = nil }
         .onChange(of: activeLegs)     { _, _ in selectedID = nil }
         .onChange(of: selectedDate)   { _, _ in selectedID = nil }
-        .animation(.easeInOut(duration: 0.2), value: viewMode)
     }
 
     @ViewBuilder
     private var mainContent: some View {
-        switch viewMode {
-        case .mapList:
-            mapListContent
-                .transition(.opacity)
-        case .day:
-            DayDetailView(
-                trip: trip,
-                days: dayBundles,
-                selectedID: $selectedID,
-                userLocation: userLocation,
-                onSelect: selectItem
-            )
-            .transition(.opacity)
-        }
+        mapListContent
     }
 
     @ViewBuilder

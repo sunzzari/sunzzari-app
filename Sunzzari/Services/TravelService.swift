@@ -35,14 +35,12 @@ final class TravelService: @unchecked Sendable {
 
     private var tripsCache: (trips: [Trip], at: Date)?
     private var itemsCache: [String: (items: [TripItem], at: Date)] = [:]
-    private var newslettersCache: [String: (newsletters: [TripNewsletter], at: Date)] = [:]
     private let cacheTTL: TimeInterval = 300 // 5 minutes
 
     var isOffline = false
 
     func invalidateTrips() { tripsCache = nil }
     func invalidateItems(tripId: String) { itemsCache[tripId] = nil }
-    func invalidateNewsletters(tripId: String) { newslettersCache[tripId] = nil }
 
     // MARK: - Disk cache
 
@@ -71,10 +69,34 @@ final class TravelService: @unchecked Sendable {
         return loadFromDisk(name: "items_\(normalized)").map { parseItems(from: $0, tripId: tripId) }
     }
 
-    func newslettersDiskCache(tripId: String) -> [TripNewsletter]? {
-        let normalized = tripId.replacingOccurrences(of: "-", with: "")
-        guard let data = loadFromDisk(name: "newsletters_\(normalized)") else { return nil }
-        return try? JSONDecoder().decode([TripNewsletter].self, from: data)
+    // MARK: - Itinerary HTML cache (live route, cached for offline)
+
+    private func itineraryCacheName(_ urlString: String) -> String {
+        "itinerary_\(UInt(bitPattern: urlString.hashValue))"
+    }
+
+    func itineraryDiskCacheHTML(urlString: String) -> String? {
+        let url = diskCacheDir.appendingPathComponent("sunzzari_travel_\(itineraryCacheName(urlString)).html")
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// Fetch the live itinerary HTML, cache to disk on success, fall back to the
+    /// cached copy when offline. Returns nil only when neither network nor cache
+    /// has anything to show.
+    func fetchItineraryHTML(urlString: String) async -> String? {
+        guard let url = URL(string: urlString) else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else {
+                return itineraryDiskCacheHTML(urlString: urlString)
+            }
+            let cacheURL = diskCacheDir.appendingPathComponent("sunzzari_travel_\(itineraryCacheName(urlString)).html")
+            try? html.write(to: cacheURL, atomically: true, encoding: .utf8)
+            return html
+        } catch {
+            return itineraryDiskCacheHTML(urlString: urlString)
+        }
     }
 
     // MARK: - Headers
@@ -276,123 +298,6 @@ final class TravelService: @unchecked Sendable {
         }
     }
 
-    // MARK: - Fetch Trip Newsletters (Phase B)
-
-    func fetchTripNewsletters(tripId: String, force: Bool = false) async throws -> [TripNewsletter] {
-        let normalized = tripId.replacingOccurrences(of: "-", with: "")
-        if !force, let cached = newslettersCache[tripId], Date().timeIntervalSince(cached.at) < cacheTTL {
-            isOffline = false
-            return cached.newsletters
-        }
-        do {
-            let filter: [String: Any] = [
-                "property": "Trip",
-                "relation": ["contains": tripId]
-            ]
-            let dbData = try await queryDatabase(
-                id: TripNewsletter.databaseID,
-                sorts: [["property": "Date", "direction": "ascending"]],
-                filter: filter
-            )
-            guard let json = try? JSONSerialization.jsonObject(with: dbData) as? [String: Any],
-                  let results = json["results"] as? [[String: Any]] else {
-                return []
-            }
-            // Parse properties + fetch page bodies. Throttle body fetches to
-            // 4 concurrent so we stay under Notion's 3 req/sec average rate
-            // limit (firing 22 in parallel was triggering 429 silently and
-            // returning empty prose).
-            var newsletters: [TripNewsletter] = []
-            let batchSize = 4
-            var i = 0
-            while i < results.count {
-                let end = min(i + batchSize, results.count)
-                let batch = Array(results[i..<end])
-                await withTaskGroup(of: TripNewsletter?.self) { group in
-                    for page in batch {
-                        group.addTask { [self] in
-                            await self.parseNewsletterPage(page, tripId: tripId)
-                        }
-                    }
-                    for await maybe in group {
-                        if let n = maybe { newsletters.append(n) }
-                    }
-                }
-                i = end
-            }
-            newsletters.sort { $0.date < $1.date }
-            newslettersCache[tripId] = (newsletters, Date())
-            if let encoded = try? JSONEncoder().encode(newsletters) {
-                saveToDisk(encoded, name: "newsletters_\(normalized)")
-            }
-            isOffline = false
-            return newsletters
-        } catch {
-            if let cached = newslettersDiskCache(tripId: tripId) {
-                newslettersCache[tripId] = (cached, Date())
-                isOffline = true
-                return cached
-            }
-            throw error
-        }
-    }
-
-    private func parseNewsletterPage(_ page: [String: Any], tripId: String) async -> TripNewsletter? {
-        guard let id = page["id"] as? String,
-              let props = page["properties"] as? [String: Any] else { return nil }
-
-        let date = extractDateString(from: props["Date"]) ?? ""
-        let staleBool = (props["Stale"] as? [String: Any])?["checkbox"] as? Bool ?? false
-        let itemsHash = extractRichText(from: props["Items Hash"]) ?? ""
-        let generatedAt = extractDateString(from: props["Generated At"])
-
-        let prose = await fetchPageProse(pageId: id)
-
-        return TripNewsletter(
-            id: id,
-            tripId: tripId,
-            date: date,
-            prose: prose,
-            generatedAt: generatedAt,
-            stale: staleBool,
-            itemsHash: itemsHash
-        )
-    }
-
-    private func fetchPageProse(pageId: String) async -> String {
-        guard let url = URL(string: "\(baseURL)/blocks/\(pageId)/children?page_size=100") else {
-            return ""
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return ""
-            }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let results = json["results"] as? [[String: Any]] else {
-                return ""
-            }
-            var paragraphs: [String] = []
-            for block in results {
-                guard let type = block["type"] as? String, type == "paragraph",
-                      let paragraph = block["paragraph"] as? [String: Any],
-                      let richText = paragraph["rich_text"] as? [[String: Any]] else {
-                    continue
-                }
-                let text = richText.compactMap { $0["plain_text"] as? String }.joined()
-                if !text.isEmpty {
-                    paragraphs.append(text)
-                }
-            }
-            return paragraphs.joined(separator: "\n\n")
-        } catch {
-            return ""
-        }
-    }
-
     // MARK: - Notion API
 
     private func queryDatabase(id: String, sorts: [[String: Any]], filter: [String: Any]? = nil) async throws -> Data {
@@ -453,7 +358,8 @@ final class TravelService: @unchecked Sendable {
                 departureDate:  extractDateString(from: props["Departure Date"]),
                 returnDate:     extractDateString(from: props["Return Date"]),
                 status:         statusStr.flatMap { Trip.TripStatus(rawValue: $0) },
-                coverImageURL:  coverURL
+                coverImageURL:  coverURL,
+                itineraryURL:   extractURL(from: props["Itinerary URL"])
             )
         }.sorted { a, b in
             let today = Date()

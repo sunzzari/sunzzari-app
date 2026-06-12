@@ -9,6 +9,7 @@ struct Trip: Identifiable, Codable {
     var returnDate: String?
     var status: TripStatus?
     var coverImageURL: String?
+    var itineraryURL: String?
 
     enum TripStatus: String, Codable, CaseIterable {
         case planning   = "Planning"
