@@ -345,20 +345,49 @@ final class AnthropicService: @unchecked Sendable {
         request.setValue(Constants.Status.pushSecret, forHTTPHeaderField: "x-sunzzari-secret")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        // Backend runs on Vercel Hobby (10s function cap). A clearer ceiling here
+        // means a stuck request surfaces as a friendly timeout, not a 60s spinner.
+        request.timeoutInterval = 30
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlErr as URLError where urlErr.code == .timedOut {
+            throw AnthropicError.apiError("This is taking longer than usual. Try again, or use a clearer, closer photo of the label.")
+        }
         guard let http = response as? HTTPURLResponse else {
             throw AnthropicError.invalidResponse
         }
         guard (200...299).contains(http.statusCode) else {
-            let preview = String(data: data, encoding: .utf8) ?? "unknown"
-            throw AnthropicError.apiError("HTTP \(http.statusCode): \(preview.prefix(200))")
+            let preview = String(data: data, encoding: .utf8) ?? ""
+            throw AnthropicError.apiError(friendlyMessage(status: http.statusCode, body: preview))
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? [[String: Any]],
               let text = content.first?["text"] as? String
         else { throw AnthropicError.invalidResponse }
         return text
+    }
+
+    /// Maps backend/Anthropic failures to short, human-readable text for the alert.
+    /// Falls back to a trimmed raw preview so unexpected errors are still debuggable.
+    private func friendlyMessage(status: Int, body: String) -> String {
+        let lower = body.lowercased()
+        if lower.contains("usage limit") || lower.contains("usage limits") {
+            return "The wine service is temporarily over its monthly limit. Please try again later."
+        }
+        switch status {
+        case 429:
+            return "The wine service is busy right now. Wait a moment and try again."
+        case 408, 502, 503, 504:
+            return "This is taking longer than usual. Try again, or use a clearer, closer photo of the label."
+        case 401:
+            return "The wine service rejected the request (auth). This needs a quick fix in the app config."
+        default:
+            let preview = body.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160)
+            return preview.isEmpty ? "Wine service error (HTTP \(status))." : "Wine service error: \(preview)"
+        }
     }
 
     private func extractJSON(from text: String) -> String {
