@@ -284,6 +284,7 @@ struct AddRestaurantView: View {
                 id:           UUID().uuidString,
                 name:         name,
                 beenThere:    beenThere,
+                thinkingAbout: false,
                 preference:   beenThere ? preference : nil,
                 location:     location,
                 neighborhood: neighborhood,

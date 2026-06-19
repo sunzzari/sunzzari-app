@@ -10,4 +10,6 @@ struct Activity: Identifiable, Codable {
     var seasonal: Bool
     var home: Bool
     var calendarSynced: Bool
+    var thinkingAbout: Bool
+    var done: Bool
 }

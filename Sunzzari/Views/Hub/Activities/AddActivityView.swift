@@ -136,7 +136,9 @@ struct AddActivityView: View {
                 active:         active,
                 seasonal:       seasonal,
                 home:           home,
-                calendarSynced: false
+                calendarSynced: false,
+                thinkingAbout:  false,
+                done:           false
             )
             try await NotionService.shared.createActivity(a)
             UINotificationFeedbackGenerator().notificationOccurred(.success)

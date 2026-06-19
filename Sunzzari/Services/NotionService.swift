@@ -231,6 +231,10 @@ final class NotionService: @unchecked Sendable {
         try await updatePage(id: id, body: ["archived": true])
     }
 
+    func updatePageCheckbox(pageID: String, property: String, value: Bool) async throws {
+        try await updatePage(id: pageID, body: ["properties": [property: ["checkbox": value]]])
+    }
+
     /// Returns year-only Best Of entries (YYYY-01-01 sentinel),
     /// filtered to Funny Moment and Best Bites — used as the notification fallback pool.
     func fetchUnassignedBestOf() async throws -> [BestOfEntry] {
@@ -822,15 +826,16 @@ final class NotionService: @unchecked Sendable {
                   let props = page["properties"] as? [String: Any] else { return nil }
             let prefStr = extractSelect(from: props["Preference"])
             return Restaurant(
-                id:           id,
-                name:         extractTitle(from: props["Name"]) ?? "Untitled",
-                beenThere:    (props["Been There?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
-                preference:   prefStr.flatMap { Restaurant.Preference(rawValue: $0) },
-                location:     extractSelect(from: props["Location"]) ?? "",
-                neighborhood: extractRichText(from: props["Neighborhood"]) ?? "",
-                goodFor:      extractMultiSelect(from: props["Good For"]),
-                topDishes:    extractRichText(from: props["Top Dishes"]) ?? "",
-                comments:     extractRichText(from: props["Comments"]) ?? ""
+                id:            id,
+                name:          extractTitle(from: props["Name"]) ?? "Untitled",
+                beenThere:     (props["Been There?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                thinkingAbout: (props["Thinking About"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                preference:    prefStr.flatMap { Restaurant.Preference(rawValue: $0) },
+                location:      extractSelect(from: props["Location"]) ?? "",
+                neighborhood:  extractRichText(from: props["Neighborhood"]) ?? "",
+                goodFor:       extractMultiSelect(from: props["Good For"]),
+                topDishes:     extractRichText(from: props["Top Dishes"]) ?? "",
+                comments:      extractRichText(from: props["Comments"]) ?? ""
             )
         }
     }
@@ -873,7 +878,9 @@ final class NotionService: @unchecked Sendable {
                 active:         (props["Active?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
                 seasonal:       (props["Seasonal?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
                 home:           (props["Home?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
-                calendarSynced: (props["Calendar Synced?"] as? [String: Any])?["checkbox"] as? Bool ?? false
+                calendarSynced: (props["Calendar Synced?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                thinkingAbout:  (props["Thinking About"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                done:           (props["Done?"] as? [String: Any])?["checkbox"] as? Bool ?? false
             )
         }
     }
@@ -975,12 +982,13 @@ final class NotionService: @unchecked Sendable {
 
     private func restaurantPayload(_ r: Restaurant) -> [String: Any] {
         var props: [String: Any] = [
-            "Name":       titleProp(r.name),
-            "Been There?": ["checkbox": r.beenThere],
-            "Good For":   ["multi_select": r.goodFor.map { ["name": $0] }],
-            "Neighborhood": richTextProp(r.neighborhood),
-            "Top Dishes": richTextProp(r.topDishes),
-            "Comments":   richTextProp(r.comments)
+            "Name":           titleProp(r.name),
+            "Been There?":    ["checkbox": r.beenThere],
+            "Thinking About": ["checkbox": r.thinkingAbout],
+            "Good For":       ["multi_select": r.goodFor.map { ["name": $0] }],
+            "Neighborhood":   richTextProp(r.neighborhood),
+            "Top Dishes":     richTextProp(r.topDishes),
+            "Comments":       richTextProp(r.comments)
         ]
         if !r.location.isEmpty { props["Location"] = ["select": ["name": r.location]] }
         if let pref = r.preference { props["Preference"] = ["select": ["name": pref.rawValue]] }
@@ -1005,13 +1013,15 @@ final class NotionService: @unchecked Sendable {
 
     private func activityPayload(_ a: Activity) -> [String: Any] {
         var props: [String: Any] = [
-            "Name":            titleProp(a.name),
-            "Location":        richTextProp(a.location),
-            "Active?":         ["checkbox": a.active],
-            "Seasonal?":       ["checkbox": a.seasonal],
-            "Home?":           ["checkbox": a.home],
-            "Date-Specific?":  ["checkbox": a.dateSpecific],
-            "Calendar Synced?": ["checkbox": a.calendarSynced]
+            "Name":             titleProp(a.name),
+            "Location":         richTextProp(a.location),
+            "Active?":          ["checkbox": a.active],
+            "Seasonal?":        ["checkbox": a.seasonal],
+            "Home?":            ["checkbox": a.home],
+            "Date-Specific?":   ["checkbox": a.dateSpecific],
+            "Calendar Synced?": ["checkbox": a.calendarSynced],
+            "Thinking About":   ["checkbox": a.thinkingAbout],
+            "Done?":            ["checkbox": a.done]
         ]
         if a.dateSpecific, let date = a.dateActive { props["Date Active"] = dateProp(date) }
         return ["parent": ["database_id": Constants.Notion.activitiesDBID], "properties": props]

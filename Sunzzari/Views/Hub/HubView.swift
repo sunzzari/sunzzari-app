@@ -40,6 +40,11 @@ struct HubView: View {
                                 HubCardView(title: "Activities", subtitle: "Things To Do", assetName: "hubActivities")
                             }
                             .buttonStyle(.plain)
+
+                            NavigationLink(destination: AroundTownView()) {
+                                HubCardView(title: "Around Town", subtitle: "LA & SF Bay", symbolName: "mappin.and.ellipse")
+                            }
+                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 20)

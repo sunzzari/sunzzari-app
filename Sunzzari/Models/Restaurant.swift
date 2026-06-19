@@ -4,6 +4,7 @@ struct Restaurant: Identifiable, Codable {
     let id: String
     var name: String
     var beenThere: Bool
+    var thinkingAbout: Bool
     var preference: Preference?
     var location: String
     var neighborhood: String
