@@ -4,6 +4,7 @@ struct AddRestaurantView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var beenThere = false
+    @State private var thinkingAbout = false
     @State private var preference: Restaurant.Preference? = nil
     @State private var location = ""
     @State private var neighborhood = ""
@@ -42,6 +43,19 @@ struct AddRestaurantView: View {
                                 .padding()
                                 .background(Color.sunSurface)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .onChange(of: beenThere) { _, isOn in
+                                    if isOn { thinkingAbout = false }
+                                }
+                        }
+
+                        if !beenThere {
+                            formField(label: "Want to Try?", icon: "bookmark") {
+                                Toggle("", isOn: $thinkingAbout.animation())
+                                    .tint(.sunAccent)
+                                    .padding()
+                                    .background(Color.sunSurface)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
                         }
 
                         if beenThere {
@@ -284,7 +298,7 @@ struct AddRestaurantView: View {
                 id:           UUID().uuidString,
                 name:         name,
                 beenThere:    beenThere,
-                thinkingAbout: false,
+                thinkingAbout: beenThere ? false : thinkingAbout,
                 preference:   beenThere ? preference : nil,
                 location:     location,
                 neighborhood: neighborhood,

@@ -9,6 +9,7 @@ struct AddActivityView: View {
     @State private var home = false
     @State private var dateSpecific = false
     @State private var dateActive = Date()
+    @State private var thinkingAbout = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -30,6 +31,15 @@ struct AddActivityView: View {
 
                         formField(label: "Location (optional)", icon: "mappin") {
                             TextField("Where is this?", text: $location)
+                                .padding()
+                                .background(Color.sunSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .foregroundStyle(Color.sunText)
+                        }
+
+                        formField(label: "Want to Do?", icon: "bookmark") {
+                            Toggle("", isOn: $thinkingAbout.animation())
+                                .tint(.sunAccent)
                                 .padding()
                                 .background(Color.sunSurface)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -137,7 +147,7 @@ struct AddActivityView: View {
                 seasonal:       seasonal,
                 home:           home,
                 calendarSynced: false,
-                thinkingAbout:  false,
+                thinkingAbout:  thinkingAbout,
                 done:           false
             )
             try await NotionService.shared.createActivity(a)
