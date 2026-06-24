@@ -2,8 +2,9 @@ import SwiftUI
 
 /// Stories tab is now a pure compose launcher: tapping the tab opens the
 /// compose flow immediately, regardless of whether there are stories to view.
-/// Viewing partner stories happens via `StoryHeaderButton` on the Today screen
-/// (Instagram-style ring), and the archive lives under the More tab.
+/// Viewing stories happens via `StoryHeaderButton` on the Today screen
+/// (Instagram-style ring) — which falls back to the archive when nothing is
+/// live — and the archive also lives under the More tab.
 struct StoriesView: View {
     @Binding var selectedTab: Int
 
@@ -65,14 +66,19 @@ struct StoriesView: View {
     }
 }
 
-/// Instagram-style story ring shown in the Today page header. Renders the
-/// partner's initial inside a colored ring when they have any active story
-/// (24h window). Ring is solid accent if any story is unseen, faded grey
-/// once everything has been viewed. Hidden entirely when there are no
-/// active partner stories.
+/// Instagram-style story ring shown in the Today page header. This is the
+/// permanent entry point for viewing stories — it always renders.
+///
+/// When the partner has an active story (24h window) it shows their initial
+/// inside a colored ring: solid accent if any story is unseen, faded grey once
+/// everything has been viewed. Tapping opens the live reel.
+///
+/// When there are no active partner stories it falls back to a faded dashed
+/// "stories" ring that opens the archive, so there's always a way in.
 struct StoryHeaderButton: View {
     @State private var stories: [StoryPost] = []
     @State private var showPlayer = false
+    @State private var showArchive = false
     @Environment(\.scenePhase) private var scenePhase
 
     private var currentPerson: StoryPost.Person {
@@ -123,6 +129,25 @@ struct StoryHeaderButton: View {
                     }
                 }
                 .accessibilityLabel("View \(partner.rawValue)'s story")
+            } else {
+                // No live story — permanent fallback ring into the archive.
+                Button {
+                    showArchive = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(
+                                Color.white.opacity(0.25),
+                                style: StrokeStyle(lineWidth: 2, dash: [3, 3])
+                            )
+                            .frame(width: 34, height: 34)
+
+                        Image(systemName: "circle.dashed.inset.filled")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                    }
+                }
+                .accessibilityLabel("View story archive")
             }
         }
         .fullScreenCover(isPresented: $showPlayer) {
@@ -136,6 +161,17 @@ struct StoryHeaderButton: View {
             )
             .ignoresSafeArea()
             .statusBarHidden(true)
+        }
+        .sheet(isPresented: $showArchive) {
+            NavigationStack {
+                StoryArchiveView()
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") { showArchive = false }
+                                .foregroundStyle(Color.sunAccent)
+                        }
+                    }
+            }
         }
         .task { await load() }
         .onChange(of: scenePhase) { _, phase in
