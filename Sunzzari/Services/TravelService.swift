@@ -1,12 +1,14 @@
 import Foundation
 import MapKit
+import CryptoKit
 
 final class TravelService: @unchecked Sendable {
     static let shared = TravelService()
     private let baseURL = "https://api.notion.com/v1"
 
     // Bump this when geocoding logic changes to clear stale caches
-    private static let geocodeVersion = 6
+    // v7: cache values carry a text hash so edited venues re-geocode
+    private static let geocodeVersion = 7
     private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
 
     // Vercel-side Google Maps geocoder. The web app gets ~100% coverage from
@@ -36,8 +38,6 @@ final class TravelService: @unchecked Sendable {
     private var tripsCache: (trips: [Trip], at: Date)?
     private var itemsCache: [String: (items: [TripItem], at: Date)] = [:]
     private let cacheTTL: TimeInterval = 300 // 5 minutes
-
-    var isOffline = false
 
     func invalidateTrips() { tripsCache = nil }
     func invalidateItems(tripId: String) { itemsCache[tripId] = nil }
@@ -71,8 +71,13 @@ final class TravelService: @unchecked Sendable {
 
     // MARK: - Itinerary HTML cache (live route, cached for offline)
 
+    // SHA-256, NOT String.hashValue: hashValue is seed-randomized per process
+    // launch, so a hashValue-derived filename written in one session can never
+    // be found in the next — which silently broke offline itinerary caching.
     private func itineraryCacheName(_ urlString: String) -> String {
-        "itinerary_\(UInt(bitPattern: urlString.hashValue))"
+        let digest = SHA256.hash(data: Data(urlString.utf8))
+        let hex = digest.prefix(12).map { String(format: "%02x", $0) }.joined()
+        return "itinerary_\(hex)"
     }
 
     func itineraryDiskCacheHTML(urlString: String) -> String? {
@@ -85,8 +90,10 @@ final class TravelService: @unchecked Sendable {
     /// has anything to show.
     func fetchItineraryHTML(urlString: String) async -> String? {
         guard let url = URL(string: urlString) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8 // fail fast to the disk cache when offline
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let html = String(data: data, encoding: .utf8) else {
                 return itineraryDiskCacheHTML(urlString: urlString)
@@ -111,10 +118,12 @@ final class TravelService: @unchecked Sendable {
 
     // MARK: - Fetch Trips
 
-    func fetchTrips(force: Bool = false) async throws -> [Trip] {
+    /// isOffline is returned per-call (not stored on the singleton) so two
+    /// concurrent fetches — e.g. the trip list and a trip detail — can't
+    /// cross-contaminate each other's offline banners.
+    func fetchTrips(force: Bool = false) async throws -> (trips: [Trip], isOffline: Bool) {
         if !force, let cached = tripsCache, Date().timeIntervalSince(cached.at) < cacheTTL {
-            isOffline = false
-            return cached.trips
+            return (cached.trips, false)
         }
         do {
             let data = try await queryDatabase(
@@ -124,14 +133,12 @@ final class TravelService: @unchecked Sendable {
             let trips = parseTrips(from: data)
             tripsCache = (trips, Date())
             saveToDisk(data, name: "trips")
-            isOffline = false
-            return trips
+            return (trips, false)
         } catch {
             if let diskData = loadFromDisk(name: "trips") {
                 let trips = parseTrips(from: diskData)
                 tripsCache = (trips, Date())
-                isOffline = true
-                return trips
+                return (trips, true)
             }
             throw error
         }
@@ -139,11 +146,10 @@ final class TravelService: @unchecked Sendable {
 
     // MARK: - Fetch Trip Items
 
-    func fetchTripItems(tripId: String, force: Bool = false) async throws -> [TripItem] {
+    func fetchTripItems(tripId: String, force: Bool = false) async throws -> (items: [TripItem], isOffline: Bool) {
         let normalized = tripId.replacingOccurrences(of: "-", with: "")
         if !force, let cached = itemsCache[tripId], Date().timeIntervalSince(cached.at) < cacheTTL {
-            isOffline = false
-            return cached.items
+            return (cached.items, false)
         }
         do {
             let filter: [String: Any] = [
@@ -158,14 +164,12 @@ final class TravelService: @unchecked Sendable {
             let items = parseItems(from: data, tripId: tripId)
             itemsCache[tripId] = (items, Date())
             saveToDisk(data, name: "items_\(normalized)")
-            isOffline = false
-            return items
+            return (items, false)
         } catch {
             if let diskData = loadFromDisk(name: "items_\(normalized)") {
                 let items = parseItems(from: diskData, tripId: tripId)
                 itemsCache[tripId] = (items, Date())
-                isOffline = true
-                return items
+                return (items, true)
             }
             throw error
         }
@@ -179,13 +183,31 @@ final class TravelService: @unchecked Sendable {
             let key = TripItem.geoKey(for: result[i].id)
             guard let cached = UserDefaults.standard.string(forKey: key),
                   !cached.hasPrefix(Self.failureCachePrefix) else { continue }
-            let parts = cached.split(separator: ",")
-            if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
+            if let (lat, lon) = Self.cachedCoords(cached, for: result[i]) {
                 result[i].latitude = lat
                 result[i].longitude = lon
             }
         }
         return result
+    }
+
+    // Cached geocode values are "lat,lon|textHash". The hash covers the text
+    // fed to the geocoder, so editing a venue in Notion invalidates just that
+    // item's coordinate instead of requiring an app-wide geocodeVersion bump.
+    private static func geoTextHash(_ item: TripItem) -> String {
+        var h: UInt64 = 0xcbf29ce484222325 // FNV-1a: stable across launches
+        for b in "\(item.venue)|\(item.name)|\(item.legCity)".utf8 {
+            h = (h ^ UInt64(b)) &* 0x100000001b3
+        }
+        return String(h, radix: 16)
+    }
+
+    private static func cachedCoords(_ cached: String, for item: TripItem) -> (Double, Double)? {
+        let pieces = cached.split(separator: "|")
+        guard pieces.count == 2, String(pieces[1]) == geoTextHash(item) else { return nil }
+        let parts = pieces[0].split(separator: ",")
+        guard parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
+        return (lat, lon)
     }
 
     /// True if the item has any text we can feed to a geocoder. We fall back
@@ -211,14 +233,12 @@ final class TravelService: @unchecked Sendable {
                 if cached.hasPrefix(Self.failureCachePrefix) {
                     let ts = TimeInterval(cached.dropFirst(Self.failureCachePrefix.count)) ?? 0
                     if now - ts < Self.failureRetryInterval { continue }
-                } else {
-                    let parts = cached.split(separator: ",")
-                    if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
-                        result[index].latitude = lat
-                        result[index].longitude = lon
-                        continue
-                    }
+                } else if let (lat, lon) = Self.cachedCoords(cached, for: item) {
+                    result[index].latitude = lat
+                    result[index].longitude = lon
+                    continue
                 }
+                // Stale text hash falls through and re-geocodes.
             }
             needsNetwork.append((index, item))
         }
@@ -245,7 +265,7 @@ final class TravelService: @unchecked Sendable {
                     if let (lat, lon) = coords {
                         result[index].latitude = lat
                         result[index].longitude = lon
-                        UserDefaults.standard.set("\(lat),\(lon)", forKey: key)
+                        UserDefaults.standard.set("\(lat),\(lon)|\(Self.geoTextHash(result[index]))", forKey: key)
                     } else {
                         UserDefaults.standard.set("\(Self.failureCachePrefix)\(now)", forKey: key)
                     }
@@ -380,10 +400,14 @@ final class TravelService: @unchecked Sendable {
             guard let id = page["id"] as? String,
                   let props = page["properties"] as? [String: Any] else { return nil }
 
-            // Filter by trip relation
+            // Filter by trip relation. Check EVERY linked trip, not just the
+            // first — an item linked to two trips must not vanish from one of
+            // them because of Notion's relation ordering.
             let relations = (props["Trip"] as? [String: Any])?["relation"] as? [[String: Any]] ?? []
-            guard let linkedId = relations.first?["id"] as? String,
-                  linkedId.replacingOccurrences(of: "-", with: "") == normalizedTripId else { return nil }
+            guard let linkedId = relations
+                .compactMap({ $0["id"] as? String })
+                .first(where: { $0.replacingOccurrences(of: "-", with: "") == normalizedTripId })
+            else { return nil }
 
             let typeStr = extractSelect(from: props["Type"])
             let priorityStr = extractSelect(from: props["Priority"])

@@ -4,6 +4,7 @@ struct TripListView: View {
     @State private var trips: [Trip] = []
     @State private var isLoading = true
     @State private var isOffline = false
+    @State private var loadErrorMessage: String?
     @State private var showCompleted = false
 
     private var visibleTrips: [Trip] {
@@ -43,6 +44,8 @@ struct TripListView: View {
                     }
                     .padding()
                     .redacted(reason: .placeholder)
+                } else if trips.isEmpty, let message = loadErrorMessage {
+                    loadErrorState(message)
                 } else {
                     ScrollView {
                         if isOffline {
@@ -52,7 +55,7 @@ struct TripListView: View {
                         LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(visibleTrips) { trip in
                                 NavigationLink(destination: TripDetailView(trip: trip)) {
-                                    TripCard(trip: trip, gradient: gradients[abs(trip.id.hashValue) % gradients.count])
+                                    TripCard(trip: trip, gradient: gradients[stableGradientIndex(trip.id)])
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -93,8 +96,10 @@ struct TripListView: View {
         }
         if trips.isEmpty { isLoading = true }
         do {
-            trips = try await TravelService.shared.fetchTrips(force: force)
-            isOffline = TravelService.shared.isOffline
+            let result = try await TravelService.shared.fetchTrips(force: force)
+            trips = result.trips
+            isOffline = result.isOffline
+            loadErrorMessage = nil
         } catch is CancellationError {
             return
         } catch let urlErr as URLError where urlErr.code == .cancelled {
@@ -104,8 +109,41 @@ struct TripListView: View {
                 trips = cached
                 isOffline = true
             }
+            // No cache to fall back on: say what failed instead of rendering
+            // an empty grid indistinguishable from "no trips yet".
+            if trips.isEmpty { loadErrorMessage = error.localizedDescription }
         }
         isLoading = false
+    }
+
+    private func loadErrorState(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(.title2, design: .serif))
+                .foregroundStyle(Color.sunAccent)
+            Text("Couldn't load trips")
+                .font(.system(.headline, design: .serif))
+                .foregroundStyle(Color.sunText)
+            Text(message)
+                .font(.system(.caption, design: .serif))
+                .foregroundStyle(Color.sunSecondary)
+                .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await loadTrips(force: true) }
+            }
+            .font(.system(.subheadline, design: .serif))
+            .foregroundStyle(Color.sunAccent)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // FNV-1a, NOT String.hashValue: hashValue is randomized per launch, which
+    // made cover-less trip cards change gradient on every cold start.
+    private func stableGradientIndex(_ id: String) -> Int {
+        var h: UInt64 = 0xcbf29ce484222325
+        for b in id.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        return Int(h % UInt64(gradients.count))
     }
 }
 

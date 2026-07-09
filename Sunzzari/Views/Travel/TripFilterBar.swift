@@ -24,6 +24,9 @@ struct TripFilterBar: View {
             searchField
             nearMeChip
             filterButton
+            if activeFilterCount > 0 {
+                clearFiltersButton
+            }
             Spacer()
             Text("\(displayCount)")
                 .font(.system(.caption2, design: .serif))
@@ -91,6 +94,26 @@ struct TripFilterBar: View {
             .background(nearMeActive ? Color.sunAccent : Color.white.opacity(0.08))
             .clipShape(Capsule())
             .shadow(color: nearMeActive ? Color.sunAccent.opacity(0.4) : .clear, radius: nearMeActive ? 6 : 0)
+        }
+    }
+
+    // One-tap clear for everything the filter sheet controls, so clearing
+    // doesn't require opening the sheet. Search and Near Me keep their own
+    // affordances (x in the field, chip toggle).
+    private var clearFiltersButton: some View {
+        Button {
+            activeStatuses.removeAll()
+            activeTypes.removeAll()
+            activeLegs.removeAll()
+            filterReservationOnly = false
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(.caption2, design: .serif, weight: .semibold))
+                .foregroundStyle(Color.sunText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .clipShape(Capsule())
         }
     }
 

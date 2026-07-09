@@ -42,6 +42,23 @@ final class LocationService: @unchecked Sendable {
         manager.requestLocation()
     }
 
+    /// One-shot location for Near Me. Prompts for When-In-Use authorization on
+    /// first use (nothing else in the app ever requested it, so on a fresh
+    /// install lastKnownCoordinate stays nil forever without this). The result
+    /// lands in lastKnownCoordinate and fires .ownLocationDidUpdate.
+    func requestLocationForNearMe() {
+        manager.delegate = delegate
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+            // The delegate's authorization callback fires requestLocation().
+        case .authorizedWhenInUse, .authorizedAlways:
+            manager.requestLocation()
+        default:
+            break // denied/restricted — caller shows the unavailable state
+        }
+    }
+
     /// Last known own location from UserDefaults (instant, no network)
     var lastKnownCoordinate: CLLocationCoordinate2D? {
         let lat = UserDefaults.standard.double(forKey: LocationService.latKey)
@@ -60,6 +77,7 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
         // Persist last-known location
         UserDefaults.standard.set(coord.latitude,  forKey: LocationService.latKey)
         UserDefaults.standard.set(coord.longitude, forKey: LocationService.lonKey)
+        NotificationCenter.default.post(name: .ownLocationDidUpdate, object: nil)
         // Push to Notion in background (fire-and-forget)
         let pageID = ownPageID()
         guard !pageID.isEmpty else { return }
@@ -73,10 +91,17 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus == .authorizedAlways {
+        switch manager.authorizationStatus {
+        case .authorizedAlways:
             manager.allowsBackgroundLocationUpdates = true
             manager.pausesLocationUpdatesAutomatically = false
             manager.startMonitoringSignificantLocationChanges()
+            manager.requestLocation()
+        case .authorizedWhenInUse:
+            // Completes a pending Near Me one-shot after the permission prompt.
+            manager.requestLocation()
+        default:
+            break
         }
     }
 
@@ -85,5 +110,10 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
             ? Constants.Status.branchPageID
             : Constants.Status.hummingbirdPageID
     }
+}
+
+extension Notification.Name {
+    /// Fired whenever a fresh own-location fix is persisted.
+    static let ownLocationDidUpdate = Notification.Name("sunzzari.ownLocationDidUpdate")
 }
 

@@ -11,6 +11,8 @@ struct TripDetailView: View {
     @State private var items: [TripItem] = []
     @State private var isLoading = true
     @State private var isOffline = false
+    @State private var isRefreshing = false
+    @State private var loadErrorMessage: String?
 
     // Itinerary viewer
     @State private var showItinerary = false
@@ -55,9 +57,11 @@ struct TripDetailView: View {
                 item.venue.localizedCaseInsensitiveContains(searchQuery)
             let dateOK = selectedDate == nil || item.displayDate == selectedDate
             let nearMeOK: Bool = {
-                guard nearMeActive, let loc = userLocation, let lat = item.latitude, let lon = item.longitude else {
-                    return !nearMeActive
-                }
+                // No fix yet: don't filter — the old code returned false here,
+                // which blanked the ENTIRE map whenever Near Me was toggled
+                // before a location arrived. A banner explains the wait instead.
+                guard nearMeActive, let loc = userLocation else { return true }
+                guard let lat = item.latitude, let lon = item.longitude else { return false }
                 return loc.distance(from: CLLocation(latitude: lat, longitude: lon)) <= 5000
             }()
             let reservOK = !filterReservationOnly || item.reservationRequired
@@ -121,6 +125,8 @@ struct TripDetailView: View {
             if isLoading && items.isEmpty {
                 ProgressView()
                     .tint(Color.sunAccent)
+            } else if items.isEmpty, let message = loadErrorMessage {
+                loadErrorState(message)
             } else {
                 mainContent
             }
@@ -132,6 +138,26 @@ struct TripDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 TripSortPicker(sortMode: $sortMode, nearMeActive: nearMeActive)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                // Manual refresh: edits made in Notion mid-planning shouldn't
+                // have to wait out the 5-minute cache TTL.
+                Button {
+                    guard !isRefreshing else { return }
+                    Task {
+                        isRefreshing = true
+                        await loadItems(force: true)
+                        isRefreshing = false
+                    }
+                } label: {
+                    if isRefreshing {
+                        ProgressView()
+                            .tint(Color.sunAccent)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(Color.sunAccent)
+                    }
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -193,6 +219,16 @@ struct TripDetailView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .ownLocationDidUpdate)) { _ in
+            // A one-shot fix requested by Near Me (or any background update)
+            // just landed — adopt it and frame the user if Near Me is waiting.
+            guard let coord = LocationService.shared.lastKnownCoordinate else { return }
+            let hadLocation = userLocation != nil
+            userLocation = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+            if nearMeActive && !hadLocation {
+                bridge.panTo(coord, zoom: 5000)
+            }
+        }
         .onChange(of: searchQuery)    { _, _ in selectedID = nil }
         .onChange(of: activeStatuses) { _, _ in selectedID = nil }
         .onChange(of: activeTypes)    { _, _ in selectedID = nil }
@@ -208,21 +244,24 @@ struct TripDetailView: View {
     @ViewBuilder
     private var mapListContent: some View {
         if sizeClass == .regular {
-            // iPad: sidebar + map
+            // iPad: sidebar + map. Fullscreen hides the sidebar — previously
+            // the button toggled state this branch never read (dead tap target).
             HStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    filterBar
-                    if !uniqueDates.isEmpty {
-                        DayTimelineView(dates: uniqueDates, selectedDate: $selectedDate)
+                if !isFullscreen {
+                    VStack(spacing: 0) {
+                        filterBar
+                        if !uniqueDates.isEmpty {
+                            DayTimelineView(dates: uniqueDates, selectedDate: $selectedDate)
+                        }
+                        TripSidebarView(
+                            items: sortedItems,
+                            selectedID: selectedID,
+                            userLocation: userLocation,
+                            onSelect: selectItem
+                        )
                     }
-                    TripSidebarView(
-                        items: sortedItems,
-                        selectedID: selectedID,
-                        userLocation: userLocation,
-                        onSelect: selectItem
-                    )
+                    .frame(width: 300)
                 }
-                .frame(width: 300)
 
                 mapLayer
             }
@@ -265,6 +304,18 @@ struct TripDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
                 .background(Color.sunAccent)
+            }
+
+            if nearMeActive && userLocation == nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "location.slash")
+                    Text("Waiting for location — showing all items")
+                }
+                .font(.system(.caption, design: .serif))
+                .foregroundStyle(Color.sunSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .background(Color.sunSurface)
             }
 
             TripFilterBar(
@@ -359,7 +410,32 @@ struct TripDetailView: View {
     private func requestUserLocation() {
         if let coord = LocationService.shared.lastKnownCoordinate {
             userLocation = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        } else {
+            // Nothing cached (fresh install, or location never authorized):
+            // prompt + one-shot fix; .ownLocationDidUpdate delivers the result.
+            LocationService.shared.requestLocationForNearMe()
         }
+    }
+
+    private func loadErrorState(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(.title2, design: .serif))
+                .foregroundStyle(Color.sunAccent)
+            Text("Couldn't load trip items")
+                .font(.system(.headline, design: .serif))
+                .foregroundStyle(Color.sunText)
+            Text(message)
+                .font(.system(.caption, design: .serif))
+                .foregroundStyle(Color.sunSecondary)
+                .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await loadItems(force: true) }
+            }
+            .font(.system(.subheadline, design: .serif))
+            .foregroundStyle(Color.sunAccent)
+        }
+        .padding(24)
     }
 
     // MARK: - Data
@@ -367,12 +443,13 @@ struct TripDetailView: View {
     private func loadItems(force: Bool = false) async {
         if items.isEmpty { isLoading = true }
         do {
-            var fetched = try await TravelService.shared.fetchTripItems(tripId: trip.id, force: force)
+            let result = try await TravelService.shared.fetchTripItems(tripId: trip.id, force: force)
             // Phase 1: show items with cached coordinates immediately
-            fetched = TravelService.shared.applyCachedCoordinates(fetched)
+            let fetched = TravelService.shared.applyCachedCoordinates(result.items)
             items = fetched
             isLoading = false
-            isOffline = TravelService.shared.isOffline
+            isOffline = result.isOffline
+            loadErrorMessage = nil
             // Phase 2: geocode remaining items in background, biased by trip location
             // so "Paris"/"Rome" resolve to the right country.
             let geocoded = await TravelService.shared.geocodeItems(fetched, tripLocation: trip.location)
@@ -386,6 +463,8 @@ struct TripDetailView: View {
                 items = cached
                 isOffline = true
             }
+            // No cache: name the failure instead of showing an empty map.
+            if items.isEmpty { loadErrorMessage = error.localizedDescription }
         }
         isLoading = false
     }

@@ -80,16 +80,7 @@ struct TripMKMap: UIViewRepresentable {
     @Binding var selectedID: String?
     let bridge: TripMapBridge
 
-    /// When non-empty, renders a dashed polyline through these annotations in array order.
-    /// Used to show the day's confirmed-stop route in Today/Read modes.
-    var routeAnnotations: [TripItemAnnotation] = []
-
     var interactive: Bool = true
-
-    // Per-day Read view sets this true so the map keeps framing "this day's" pins
-    // as background geocoding fills them in (mirrors elisa-travel-map's fitKey).
-    // The main trip map leaves it false so a manual zoom isn't yanked away.
-    var alwaysAutoFit: Bool = false
 
     // When true, auto-fits include the user-location annotation so the user
     // dot stays in frame. Used when Near Me is active on the parent view.
@@ -164,22 +155,6 @@ struct TripMKMap: UIViewRepresentable {
             map.addAnnotations(toAdd)
         }
 
-        // Sync polyline overlay only when the route actually changes. Without
-        // this gate, every selection-change-driven updateUIView would tear down
-        // and recreate the polyline, flickering the dashed route on every tap.
-        let routeKey = routeAnnotations.map(\.item.id).joined(separator: ",")
-        if routeKey != coordinator.lastRouteKey {
-            coordinator.lastRouteKey = routeKey
-            let routeCoords = routeAnnotations.compactMap { $0.coordinate }
-                .filter { CLLocationCoordinate2DIsValid($0) }
-            let existingPolylines = map.overlays.compactMap { $0 as? MKPolyline }
-            map.removeOverlays(existingPolylines)
-            if routeCoords.count >= 2 {
-                let line = MKPolyline(coordinates: routeCoords, count: routeCoords.count)
-                map.addOverlay(line)
-            }
-        }
-
         // Re-fit when filter changes, on first load, OR when annotations grow
         // AND the user hasn't manually panned/zoomed yet. The user-interaction
         // flag is set in regionWillChangeAnimated when animated=false (gesture-
@@ -189,10 +164,7 @@ struct TripMKMap: UIViewRepresentable {
         let filterChanged = filterKey != coordinator.lastFilterKey
         let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
         let annotationsGrew = annotations.count > coordinator.lastAnnotationCount
-        let annotationsChanged = annotations.count != coordinator.lastAnnotationCount
-        let allowAutoRefit = alwaysAutoFit || !coordinator.userHasInteracted
-        let countTrigger = alwaysAutoFit ? annotationsChanged : annotationsGrew
-        if firstLoad || filterChanged || (countTrigger && allowAutoRefit) {
+        if firstLoad || filterChanged || (annotationsGrew && !coordinator.userHasInteracted) {
             coordinator.hasFittedInitially = true
             coordinator.lastFilterKey = filterKey
             let includeUser = fitIncludesUser
@@ -244,7 +216,6 @@ struct TripMKMap: UIViewRepresentable {
         var hasFittedInitially = false
         var lastFilterKey: String = ""
         var lastAnnotationCount = 0
-        var lastRouteKey: String = ""
         var userHasInteracted = false
         var highlightedItemIds: Set<String> = []
 
@@ -374,15 +345,6 @@ struct TripMKMap: UIViewRepresentable {
             v.displayPriority = isSelected ? .required : .defaultHigh
 
             return v
-        }
-
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
-            let r = MKPolylineRenderer(polyline: line)
-            r.strokeColor = UIColor(Color.sunAccent).withAlphaComponent(0.7)
-            r.lineWidth = 2
-            r.lineDashPattern = [4, 4]
-            return r
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
