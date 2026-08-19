@@ -25,6 +25,10 @@ struct TodayView: View {
     @State private var toastTask: Task<Void, Never>? = nil
     @State private var showCustomBoop = false
 
+    // Home checklists (restaurants / activities / movies / shows) + period summary
+    @StateObject private var lists = HomeListsModel()
+    @State private var addTarget: HomeList? = nil
+
     @State private var selectedEntry: BestOfEntry? = nil
     @State private var entryToEdit: BestOfEntry? = nil
     @Namespace private var cardNamespace
@@ -72,7 +76,7 @@ struct TodayView: View {
                                 boopGrid
                                     .listRowBackground(Color.sunBackground)
                                     .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16))
+                                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
                             } header: {
                                 sectionHeader("BOOPS", accent: true)
                             }
@@ -82,7 +86,7 @@ struct TodayView: View {
                                 Section {
                                     ForEach(memoryEntries) { entry in entryRow(entry) }
                                 } header: {
-                                    sectionHeader("MEMORY · \(memoryEntries.count)", accent: false)
+                                    sectionHeader("ON THIS DAY · \(memoryEntries.count)", accent: false)
                                 }
                             }
 
@@ -108,27 +112,57 @@ struct TodayView: View {
                                         }
                                         .listRowBackground(Color.sunBackground)
                                         .listRowSeparator(.hidden)
-                                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                                        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
                                 } header: {
-                                    sectionHeader("NUDGE", accent: true)
+                                    sectionHeader("MEMORIES", accent: true)
                                 }
                             }
 
-                            if !hasMemory && nudgeEntry == nil {
-                                Section {
-                                    Text("Nothing to show today — check back later!")
-                                        .font(.system(.subheadline, design: .serif))
-                                        .foregroundStyle(Color.sunSecondary)
-                                        .padding(.vertical, 20)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .listRowBackground(Color.sunBackground)
-                                        .listRowSeparator(.hidden)
-                                }
+                            // NEXT PERIOD (read-only summary; logging stays on Cycle)
+                            Section {
+                                HomeNextPeriodRow(entries: lists.cycleEntries)
+                                    .listRowBackground(Color.sunBackground)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
+                            } header: {
+                                sectionHeader("NEXT PERIOD", accent: false)
                             }
+
+                            // THE FOUR CHECKLISTS — 2 per row so the page stays short
+                            Section {
+                                VStack(spacing: 10) {
+                                    // Restaurants gets the full width — it is the
+                                    // list Elisa wants to see the most of.
+                                    checklistCard(.restaurants)
+
+                                    LazyVGrid(
+                                        columns: [GridItem(.flexible(), spacing: 10, alignment: .top),
+                                                  GridItem(.flexible(), spacing: 10, alignment: .top)],
+                                        alignment: .leading,
+                                        spacing: 10
+                                    ) {
+                                        ForEach([HomeList.activities, .movies, .shows, .recipes]) { list in
+                                            checklistCard(list)
+                                        }
+                                    }
+                                }
+                                .listRowBackground(Color.sunBackground)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
+                            } header: {
+                                sectionHeader("THINGS WE'VE BEEN TALKING ABOUT", accent: false)
+                            }
+
+
                         }
                         .listStyle(.plain)
+                        .listSectionSpacing(4)
                         .scrollContentBackground(.hidden)
-                        .refreshable { await load(force: true) }
+                        .refreshable {
+                            async let a: Void = load(force: true)
+                            async let b: Void = lists.load(force: true)
+                            _ = await (a, b)
+                        }
                     }
                 }
 
@@ -183,7 +217,18 @@ struct TodayView: View {
         .sheet(isPresented: $showCustomBoop) {
             BoopView()
         }
+        .sheet(item: $addTarget) { list in
+            HomeChecklistAddView(list: list) { name, chip in
+                await lists.add(title: name, chip: chip, to: list)
+            }
+        }
         .task { await load() }
+        .task { await lists.load() }
+        .onChange(of: lists.toast) { _, msg in
+            guard let msg else { return }
+            showToast(msg)
+            lists.toast = nil
+        }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
@@ -335,6 +380,21 @@ struct TodayView: View {
             .foregroundStyle(accent ? Color.sunAccent : Color.sunSecondary)
             .textCase(nil)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+    }
+
+    // MARK: - Home checklists
+
+    private func checklistCard(_ list: HomeList) -> some View {
+        HomeChecklistCard(
+            list: list,
+            items: lists[keyPath: list.itemsKey],
+            completing: lists.completing,
+            onAdd: { addTarget = list },
+            onComplete: { item in
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Task { await lists.complete(item, in: list) }
+            }
+        )
     }
 
     // MARK: - Nudge card

@@ -14,16 +14,6 @@ struct CycleView: View {
     private let cal = Calendar(identifier: .gregorian)
     /// Assumed period duration in days (no end date stored in DB)
     private let periodLengthDays = 5
-    /// How many recent cycles to average over once history exists
-    private let avgWindow = 6
-
-    private func defaultAvgCycle(for person: CycleEntry.Person) -> Int {
-        switch person {
-        case .elisa: return 28
-        case .cathy: return 30
-        }
-    }
-
     // MARK: - Derived state
 
     private var latestElisa: CycleEntry? { entries.first(where: { $0.person == .elisa }) }
@@ -341,31 +331,14 @@ struct CycleView: View {
         person == .elisa ? latestElisa : latestCathy
     }
 
-    // Computed from the gaps between recent period starts, not the per-entry stored
-    // value — the stored field goes stale the moment a new period is logged.
+    // Prediction math lives in CyclePrediction so Home and this screen can never
+    // disagree about a date.
     private func averageCycle(for person: CycleEntry.Person) -> Int {
-        let history = entries
-            .filter { $0.person == person }
-            .sorted { $0.periodStart > $1.periodStart }
-
-        guard history.count >= 2 else { return defaultAvgCycle(for: person) }
-
-        let recent = Array(history.prefix(avgWindow + 1))
-        var gaps: [Int] = []
-        for i in 0..<(recent.count - 1) {
-            let newer = recent[i].periodStart
-            let older = recent[i + 1].periodStart
-            if let days = cal.dateComponents([.day], from: older, to: newer).day, days > 0 {
-                gaps.append(days)
-            }
-        }
-        guard !gaps.isEmpty else { return defaultAvgCycle(for: person) }
-        return Int((Double(gaps.reduce(0, +)) / Double(gaps.count)).rounded())
+        CyclePrediction.averageCycle(in: entries, for: person)
     }
 
     private func predictedNext(for person: CycleEntry.Person) -> Date? {
-        guard let latest = latestEntry(for: person) else { return nil }
-        return cal.date(byAdding: .day, value: averageCycle(for: person), to: latest.periodStart)
+        CyclePrediction.predictedNext(in: entries, for: person)
     }
 
     private func gapBefore(_ entry: CycleEntry) -> Int? {

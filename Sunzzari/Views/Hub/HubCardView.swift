@@ -15,59 +15,74 @@ struct HubCardView: View {
         self.symbolName = symbolName
     }
 
+    // A definite 16:9 frame FIRST, artwork layered onto it.
+    //
+    // This view used to be a ZStack whose first child was a GeometryReader, with
+    // .aspectRatio(16/9, .fit) applied at the end. GeometryReader has no intrinsic
+    // size, so the grid laid each cell out far SHORTER than the card that actually
+    // got painted, and the artwork overflowed down across the cell beneath it.
+    // .clipShape hides that overflow but does not move the tap frames, so the lower
+    // third of every card answered for the card below it: tapping the middle or
+    // bottom of Wine opened Activities (reported on device 2026-08-18, then
+    // reproduced — Wine is drawn 773-1068pt but stopped accepting taps at ~960pt).
+    //
+    // Color.clear.aspectRatio gives the view a real 16:9 size, so the frame the
+    // grid measures is the card the user actually sees.
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            GeometryReader { geo in
-                if let assetName {
-                    Image(assetName)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
-                } else if let urlStr = coverURL, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: geo.size.width, height: geo.size.height)
-                                .clipped()
-                        case .failure, .empty:
-                            symbolTile
-                                .frame(width: geo.size.width, height: geo.size.height)
-                        @unknown default:
-                            symbolTile
-                                .frame(width: geo.size.width, height: geo.size.height)
-                        }
+        Color.clear
+            .aspectRatio(16 / 9, contentMode: .fit)
+            // Artwork is clipped BEFORE the labels go on. A .scaledToFill image
+            // overflows its frame, and if it shares a ZStack with the labels it
+            // drags the stack's bounds along — that hid the Activities title.
+            .overlay { artwork }
+            .clipped()
+            .overlay(alignment: .bottomLeading) {
+                ZStack(alignment: .bottomLeading) {
+                    LinearGradient(
+                        colors: [.black.opacity(0.75), .black.opacity(0.05)],
+                        startPoint: .bottom, endPoint: .top
+                    )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(subtitle)
+                            .font(.system(size: 10, weight: .semibold, design: .serif))
+                            .tracking(1.0)
+                            .foregroundStyle(.white.opacity(0.7))
+                        Text(title)
+                            .font(.system(size: 20, weight: .bold, design: .serif))
+                            .fontDesign(.serif)
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
-                } else {
-                    symbolTile
-                        .frame(width: geo.size.width, height: geo.size.height)
+                    .padding(14)
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            // Hit area == the drawn card.
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+    }
 
-            LinearGradient(
-                colors: [.black.opacity(0.75), .black.opacity(0.05)],
-                startPoint: .bottom, endPoint: .top
-            )
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(subtitle)
-                    .font(.system(size: 10, weight: .semibold, design: .serif))
-                    .tracking(1.0)
-                    .foregroundStyle(.white.opacity(0.7))
-                Text(title)
-                    .font(.system(size: 20, weight: .bold, design: .serif))
-                    .fontDesign(.serif)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+    @ViewBuilder
+    private var artwork: some View {
+        if let assetName {
+            Image(assetName)
+                .resizable()
+                .scaledToFill()
+        } else if let urlStr = coverURL, let url = URL(string: urlStr) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                case .failure, .empty:
+                    symbolTile
+                @unknown default:
+                    symbolTile
+                }
             }
-            .padding(14)
+        } else {
+            symbolTile
         }
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var symbolTile: some View {

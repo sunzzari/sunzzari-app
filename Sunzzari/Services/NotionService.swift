@@ -17,6 +17,7 @@ final class NotionService: @unchecked Sendable {
     private var thoughtsCache: (entries: [ThoughtEntry], at: Date)?
     private var storiesActiveCache: (entries: [StoryPost], at: Date)?
     private var storiesArchiveCache: [Int: (entries: [StoryPost], at: Date)] = [:]
+    private var watchlistCache: (items: [WatchlistItem], at: Date)?
     private let cacheTTL: TimeInterval = 300 // 5 minutes
     /// Tighter TTL for the active-stories feed so a fresh post shows up quickly
     /// without forcing the user to pull-to-refresh.
@@ -32,6 +33,7 @@ final class NotionService: @unchecked Sendable {
     func invalidateCredits() { creditsCache = nil }
     func invalidateInfo() { infoCache = nil }
     func invalidateThoughts() { thoughtsCache = nil }
+    func invalidateWatchlist() { watchlistCache = nil }
     func invalidateStories() {
         storiesActiveCache = nil
         storiesArchiveCache.removeAll()
@@ -85,6 +87,11 @@ final class NotionService: @unchecked Sendable {
 
     func creditsDiskCache() -> [CreditEntry]? {
         loadFromDisk(name: "credits").map { parseCreditEntries(from: $0) }
+    }
+
+    func watchlistDiskCache() -> [WatchlistItem]? {
+        guard let data = loadFromDisk(name: "watchlist") else { return nil }
+        return parseWatchlist(from: data)
     }
 
     func thoughtsDiskCache() -> [ThoughtEntry]? {
@@ -235,6 +242,14 @@ final class NotionService: @unchecked Sendable {
         try await updatePage(id: pageID, body: ["properties": [property: ["checkbox": value]]])
     }
 
+    /// Flips several checkboxes in ONE request. Checking a restaurant off has to
+    /// set `Been There?` and clear `Thinking About` together — two sequential
+    /// writes can leave the row half-updated if the second one fails.
+    func updatePageCheckboxes(pageID: String, values: [String: Bool]) async throws {
+        let props = values.mapValues { ["checkbox": $0] }
+        try await updatePage(id: pageID, body: ["properties": props])
+    }
+
     /// Returns year-only Best Of entries (YYYY-01-01 sentinel),
     /// filtered to Funny Moment and Best Bites — used as the notification fallback pool.
     func fetchUnassignedBestOf() async throws -> [BestOfEntry] {
@@ -331,6 +346,23 @@ final class NotionService: @unchecked Sendable {
         try await createPage(body: restaurantPayload(r))
     }
 
+    /// Minimal add from the Home checklist: name only, flagged onto the shortlist.
+    /// Returns the page ID so the new row can be checked off without a refetch.
+    func createRestaurantOnShortlist(name: String, neighborhood: String? = nil) async throws -> String {
+        var props: [String: Any] = [
+            "Name":           titleProp(name),
+            "Been There?":    ["checkbox": false],
+            "Thinking About": ["checkbox": true]
+        ]
+        if let neighborhood, !neighborhood.isEmpty { props["Neighborhood"] = richTextProp(neighborhood) }
+        let id = try await createPageReturningID(body: [
+            "parent": ["database_id": Constants.Notion.restaurantsDBID],
+            "properties": props
+        ])
+        restaurantsCache = nil
+        return id
+    }
+
     // MARK: - Wines
 
     func fetchWines(force: Bool = false) async throws -> [Wine] {
@@ -387,6 +419,68 @@ final class NotionService: @unchecked Sendable {
 
     func createActivity(_ a: Activity) async throws {
         try await createPage(body: activityPayload(a))
+    }
+
+    /// `Thinking About` requires `Home?` on this DB (see STRUCTURE.md), so both
+    /// are set together — a shortlist activity is by definition a home activity.
+    func createActivityOnShortlist(name: String) async throws -> String {
+        let body: [String: Any] = [
+            "parent": ["database_id": Constants.Notion.activitiesDBID],
+            "properties": [
+                "Name":           titleProp(name),
+                "Home?":          ["checkbox": true],
+                "Active?":        ["checkbox": true],
+                "Date-Specific?": ["checkbox": false],
+                "Done?":          ["checkbox": false],
+                "Thinking About": ["checkbox": true]
+            ]
+        ]
+        let id = try await createPageReturningID(body: body)
+        activitiesCache = nil
+        return id
+    }
+
+    // MARK: - Watchlist (movies + shows)
+
+    func fetchWatchlist(force: Bool = false) async throws -> [WatchlistItem] {
+        if !force, let cached = watchlistCache, Date().timeIntervalSince(cached.at) < cacheTTL {
+            return cached.items
+        }
+        do {
+            let data = try await queryDatabase(
+                id: Constants.Notion.watchlistDBID,
+                sorts: [["property": "Title", "direction": "ascending"]]
+            )
+            let items = parseWatchlist(from: data)
+            watchlistCache = (items, Date())
+            saveToDisk(data, name: "watchlist")
+            return items
+        } catch {
+            if let diskData = loadFromDisk(name: "watchlist") {
+                let items = parseWatchlist(from: diskData)
+                watchlistCache = (items, Date())
+                return items
+            }
+            throw error
+        }
+    }
+
+    /// Returns the item carrying its real Notion page ID, so the caller can
+    /// check it off immediately without waiting for a refetch.
+    @discardableResult
+    func createWatchlistItem(title: String, kind: WatchlistItem.Kind, location: String? = nil) async throws -> WatchlistItem {
+        var props: [String: Any] = [
+            "Title":   titleProp(title),
+            "Type":    ["select": ["name": kind.rawValue]],
+            "Watched": ["checkbox": false]
+        ]
+        if let location, !location.isEmpty { props["Where"] = ["select": ["name": location]] }
+        let id = try await createPageReturningID(body: [
+            "parent": ["database_id": Constants.Notion.watchlistDBID],
+            "properties": props
+        ])
+        watchlistCache = nil
+        return WatchlistItem(id: id, title: title, kind: kind, watched: false, location: location)
     }
 
     // MARK: - Cycle Tracker
@@ -637,6 +731,26 @@ final class NotionService: @unchecked Sendable {
         }
     }
 
+    /// Same as `createPage` but hands back the new page's ID. Needed wherever the
+    /// caller has to act on the row it just made (a locally minted UUID would 404).
+    private func createPageReturningID(body: [String: Any]) async throws -> String {
+        let url = URL(string: "\(baseURL)/pages")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NotionError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["id"] as? String else {
+            throw NotionError.httpError(http.statusCode)
+        }
+        return id
+    }
+
     private func updatePage(id: String, body: [String: Any]) async throws {
         let url = URL(string: "\(baseURL)/pages/\(id)")!
         var request = URLRequest(url: url)
@@ -836,6 +950,23 @@ final class NotionService: @unchecked Sendable {
                 goodFor:       extractMultiSelect(from: props["Good For"]),
                 topDishes:     extractRichText(from: props["Top Dishes"]) ?? "",
                 comments:      extractRichText(from: props["Comments"]) ?? ""
+            )
+        }
+    }
+
+    private func parseWatchlist(from data: Data) -> [WatchlistItem] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]] else { return [] }
+        return results.compactMap { page in
+            guard let id = page["id"] as? String,
+                  let props = page["properties"] as? [String: Any] else { return nil }
+            let kindStr = extractSelect(from: props["Type"]) ?? WatchlistItem.Kind.movie.rawValue
+            return WatchlistItem(
+                id:       id,
+                title:    extractTitle(from: props["Title"]) ?? "Untitled",
+                kind:     WatchlistItem.Kind(rawValue: kindStr) ?? .movie,
+                watched:  (props["Watched"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                location: extractSelect(from: props["Where"])
             )
         }
     }
