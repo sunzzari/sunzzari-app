@@ -28,6 +28,8 @@ struct TodayView: View {
     // Home checklists (restaurants / activities / movies / shows) + period summary
     @StateObject private var lists = HomeListsModel()
     @State private var addTarget: HomeList? = nil
+    @State private var browseTarget: HomeList? = nil
+    @State private var showCycle = false
 
     @State private var selectedEntry: BestOfEntry? = nil
     @State private var entryToEdit: BestOfEntry? = nil
@@ -120,7 +122,13 @@ struct TodayView: View {
 
                             // NEXT PERIOD (read-only summary; logging stays on Cycle)
                             Section {
-                                HomeNextPeriodRow(entries: lists.cycleEntries)
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    showCycle = true
+                                } label: {
+                                    HomeNextPeriodRow(entries: lists.cycleEntries)
+                                }
+                                .buttonStyle(.plain)
                                     .listRowBackground(Color.sunBackground)
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
@@ -181,6 +189,14 @@ struct TodayView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            // MUST be inside the NavigationStack. Attached outside it, this
+            // modifier is silently inert and Browse All does nothing.
+            .navigationDestination(item: $browseTarget) { list in
+                switch list {
+                case .restaurants: RestaurantHubView()
+                default:           ActivitiesHubView()
+                }
+            }
         }
         .overlay {
             if let entry = selectedEntry {
@@ -217,9 +233,12 @@ struct TodayView: View {
         .sheet(isPresented: $showCustomBoop) {
             BoopView()
         }
+        .sheet(isPresented: $showCycle) {
+            CycleView()
+        }
         .sheet(item: $addTarget) { list in
-            HomeChecklistAddView(list: list) { name, chip in
-                await lists.add(title: name, chip: chip, to: list)
+            HomeChecklistAddView(list: list) { name, chips in
+                await lists.add(title: name, chips: chips, to: list)
             }
         }
         .task { await load() }
@@ -390,6 +409,7 @@ struct TodayView: View {
             items: lists[keyPath: list.itemsKey],
             completing: lists.completing,
             onAdd: { addTarget = list },
+            onBrowse: { browseTarget = list },
             onComplete: { item in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Task { await lists.complete(item, in: list) }

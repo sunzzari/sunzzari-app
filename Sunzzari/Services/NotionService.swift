@@ -468,19 +468,19 @@ final class NotionService: @unchecked Sendable {
     /// Returns the item carrying its real Notion page ID, so the caller can
     /// check it off immediately without waiting for a refetch.
     @discardableResult
-    func createWatchlistItem(title: String, kind: WatchlistItem.Kind, location: String? = nil) async throws -> WatchlistItem {
+    func createWatchlistItem(title: String, kind: WatchlistItem.Kind, locations: [String] = []) async throws -> WatchlistItem {
         var props: [String: Any] = [
             "Title":   titleProp(title),
             "Type":    ["select": ["name": kind.rawValue]],
             "Watched": ["checkbox": false]
         ]
-        if let location, !location.isEmpty { props["Where"] = ["select": ["name": location]] }
+        if !locations.isEmpty { props["Where"] = ["multi_select": locations.map { ["name": $0] }] }
         let id = try await createPageReturningID(body: [
             "parent": ["database_id": Constants.Notion.watchlistDBID],
             "properties": props
         ])
         watchlistCache = nil
-        return WatchlistItem(id: id, title: title, kind: kind, watched: false, location: location)
+        return WatchlistItem(id: id, title: title, kind: kind, watched: false, locations: locations)
     }
 
     // MARK: - Cycle Tracker
@@ -676,6 +676,70 @@ final class NotionService: @unchecked Sendable {
         }
         try await updatePage(id: credit.id, body: ["properties": props])
         creditsCache = nil
+    }
+
+    // MARK: - Home Cooking page (block append, no database)
+
+    /// Maps a chip label to the real heading text on the Home Cooking page.
+    private static let homeCookingHeadings: [String: String] = [
+        "Healthy":     "🥗 Healthy",
+        "Not Healthy": "🍔 Not Healthy",
+        "Special":     "✨ Special",
+        "Asian":       "🌏 Asian"
+    ]
+
+    /// Appends a recipe as a bulleted item under the chosen heading on the Home
+    /// Cooking page. Inserts AFTER that section's last item so it does not land
+    /// at the bottom of the page under an unrelated heading.
+    /// Appends the recipe under EVERY selected section. A heading-based page can
+    /// only express "this is both Healthy and Asian" by appearing under both.
+    func appendRecipeToHomeCooking(name: String, sections: [String]) async throws {
+        for section in sections {
+            try await appendRecipe(name: name, section: section)
+        }
+    }
+
+    private func appendRecipe(name: String, section: String) async throws {
+        guard let heading = Self.homeCookingHeadings[section] else { return }
+        let blocks = try await fetchBlockChildren(blockID: Constants.Notion.homeCookingPageID)
+
+        // Find the heading, then walk to the last block before the next heading.
+        var headingIndex: Int? = nil
+        for (i, b) in blocks.enumerated() {
+            guard let type = b["type"] as? String, type.hasPrefix("heading") else { continue }
+            let rich = (b[type] as? [String: Any])?["rich_text"] as? [[String: Any]] ?? []
+            let text = rich.compactMap { $0["plain_text"] as? String }.joined()
+            if text.trimmingCharacters(in: .whitespaces) == heading { headingIndex = i; break }
+        }
+        guard let start = headingIndex else { return }
+
+        var anchorID = blocks[start]["id"] as? String
+        var i = start + 1
+        while i < blocks.count {
+            guard let type = blocks[i]["type"] as? String else { break }
+            if type.hasPrefix("heading") { break }
+            anchorID = blocks[i]["id"] as? String
+            i += 1
+        }
+
+        var body: [String: Any] = [
+            "children": [[
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": ["rich_text": [["type": "text", "text": ["content": name]]]]
+            ]]
+        ]
+        if let anchorID { body["after"] = anchorID }
+
+        let url = URL(string: "\(baseURL)/blocks/\(Constants.Notion.homeCookingPageID)/children")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NotionError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
     }
 
     // MARK: - Private: API
@@ -966,7 +1030,7 @@ final class NotionService: @unchecked Sendable {
                 title:    extractTitle(from: props["Title"]) ?? "Untitled",
                 kind:     WatchlistItem.Kind(rawValue: kindStr) ?? .movie,
                 watched:  (props["Watched"] as? [String: Any])?["checkbox"] as? Bool ?? false,
-                location: extractSelect(from: props["Where"])
+                locations: extractMultiSelect(from: props["Where"])
             )
         }
     }

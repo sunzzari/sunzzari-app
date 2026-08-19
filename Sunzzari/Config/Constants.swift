@@ -16,6 +16,10 @@ enum Constants {
         static let sunzzariInfoDBID   = "34650319-3d6e-4b7f-96c2-b81efaf8a279"
         static let storiesDBID        = "16a712e2-2d18-4245-84f5-cb21c362d2de"
         static let watchlistDBID      = "3c1f3cdd-67a4-813a-aad8-d09dfeeb2178"
+        /// A PAGE, not a database — Elisa's long-standing recipe list, kept as
+        /// bulleted items under emoji headings. Recipes added from Home are
+        /// appended to it; it is never read into the Home card (100+ items).
+        static let homeCookingPageID  = "324f3cdd-67a4-813e-aff5-fe5ebff067c2"
         static let version          = "2022-06-28"
     }
 
