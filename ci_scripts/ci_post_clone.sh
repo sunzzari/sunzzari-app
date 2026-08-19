@@ -1,7 +1,20 @@
 #!/bin/sh
 # Xcode Cloud post-clone script
 # Generates Secrets.swift from environment variables set in App Store Connect.
+#
 # Required env vars: NOTION_TOKEN, PUSH_SECRET
+# Optional env vars: GOOGLE_PLACES_API_KEY
+#
+# IMPORTANT: every `Secrets.X.y` reference anywhere in the app must have a
+# matching member emitted below. Secrets.swift is gitignored, so a member that
+# exists only in the local copy compiles fine on this machine and fails EVERY
+# cloud build. That is exactly what happened when the Google Places "Open Now"
+# filter shipped: `Secrets.GooglePlaces.apiKey` was never added here, so every
+# Xcode Cloud build failed at Archive with "Type 'Secrets' has no member
+# 'GooglePlaces'" while local builds passed. Builds 70-75 all died this way and
+# TestFlight sat on an expiring build 69 for ~3 months.
+#
+# Before adding a new Secrets member, add it here AND to Secrets.template.
 
 set -e
 
@@ -17,6 +30,13 @@ if [ -z "$PUSH_SECRET" ]; then
   exit 1
 fi
 
+# Optional. PlacesService guards on an empty key and simply disables the
+# "Open Now" filter, so a missing value degrades one feature instead of
+# breaking the whole build.
+if [ -z "$GOOGLE_PLACES_API_KEY" ]; then
+  echo "Warning: GOOGLE_PLACES_API_KEY is not set — the Open Now filter will be disabled in this build."
+fi
+
 cat > "$SECRETS_FILE" << EOF
 import Foundation
 
@@ -27,6 +47,9 @@ enum Secrets {
     }
     enum Push {
         static let secret = "$PUSH_SECRET"
+    }
+    enum GooglePlaces {
+        static let apiKey = "$GOOGLE_PLACES_API_KEY"
     }
 }
 EOF
