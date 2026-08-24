@@ -18,6 +18,7 @@ final class NotionService: @unchecked Sendable {
     private var storiesActiveCache: (entries: [StoryPost], at: Date)?
     private var storiesArchiveCache: [Int: (entries: [StoryPost], at: Date)] = [:]
     private var watchlistCache: (items: [WatchlistItem], at: Date)?
+    private var wishlistCache: (items: [TravelWishlistItem], at: Date)?
     private let cacheTTL: TimeInterval = 300 // 5 minutes
     /// Tighter TTL for the active-stories feed so a fresh post shows up quickly
     /// without forcing the user to pull-to-refresh.
@@ -34,6 +35,7 @@ final class NotionService: @unchecked Sendable {
     func invalidateInfo() { infoCache = nil }
     func invalidateThoughts() { thoughtsCache = nil }
     func invalidateWatchlist() { watchlistCache = nil }
+    func invalidateTravelWishlist() { wishlistCache = nil }
     func invalidateStories() {
         storiesActiveCache = nil
         storiesArchiveCache.removeAll()
@@ -437,6 +439,51 @@ final class NotionService: @unchecked Sendable {
         ]
         let id = try await createPageReturningID(body: body)
         activitiesCache = nil
+        return id
+    }
+
+    // MARK: - Travel Wishlist
+
+    func fetchTravelWishlist(force: Bool = false) async throws -> [TravelWishlistItem] {
+        if !force, let cached = wishlistCache, Date().timeIntervalSince(cached.at) < cacheTTL {
+            return cached.items
+        }
+        do {
+            let data = try await queryDatabase(
+                id: Constants.Travel.wishlistDBID,
+                sorts: [["property": "Destination", "direction": "ascending"]]
+            )
+            let items = parseTravelWishlist(from: data)
+            wishlistCache = (items, Date())
+            saveToDisk(data, name: "travelwishlist")
+            return items
+        } catch {
+            if let diskData = loadFromDisk(name: "travelwishlist") {
+                let items = parseTravelWishlist(from: diskData)
+                wishlistCache = (items, Date())
+                return items
+            }
+            throw error
+        }
+    }
+
+    /// A destination added from the phone carries only a name and a region.
+    /// The month grid is researched later by `/notion-travel-wishlist`, which is
+    /// the only thing allowed to write it — the app never guesses timing.
+    func createTravelWishlistDestination(name: String, region: String?) async throws -> String {
+        var props: [String: Any] = [
+            "Destination": titleProp(name),
+            "Been There":  ["checkbox": false]
+        ]
+        if let region, !region.isEmpty {
+            props["Region"] = ["select": ["name": region]]
+        }
+        let body: [String: Any] = [
+            "parent": ["database_id": Constants.Travel.wishlistDBID],
+            "properties": props
+        ]
+        let id = try await createPageReturningID(body: body)
+        wishlistCache = nil
         return id
     }
 
@@ -1031,6 +1078,30 @@ final class NotionService: @unchecked Sendable {
                 kind:     WatchlistItem.Kind(rawValue: kindStr) ?? .movie,
                 watched:  (props["Watched"] as? [String: Any])?["checkbox"] as? Bool ?? false,
                 locations: extractMultiSelect(from: props["Where"])
+            )
+        }
+    }
+
+    private func parseTravelWishlist(from data: Data) -> [TravelWishlistItem] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]] else { return [] }
+        return results.compactMap { page in
+            guard let id = page["id"] as? String,
+                  let props = page["properties"] as? [String: Any] else { return nil }
+            // An unset month stays nil rather than collapsing to a rating, so the
+            // UI can tell "not researched yet" from "researched and bad".
+            let months = TravelWishlistItem.monthNames.map { name in
+                extractSelect(from: props[name]).flatMap(TravelWishlistItem.MonthRating.init(rawValue:))
+            }
+            return TravelWishlistItem(
+                id:           id,
+                name:         extractTitle(from: props["Destination"]) ?? "Untitled",
+                region:       extractSelect(from: props["Region"]) ?? "",
+                season:       extractMultiSelect(from: props["Season"]),
+                beenThere:    (props["Been There"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                notes:        extractRichText(from: props["Notes"]) ?? "",
+                timingNotes:  extractRichText(from: props["Timing Notes"]) ?? "",
+                monthRatings: months
             )
         }
     }

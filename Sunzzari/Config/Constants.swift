@@ -31,6 +31,10 @@ enum Constants {
     enum Travel {
         static let tripsDBID = "72792a7e-eb9e-468a-a376-fd1e7284401c"
         static let itemsDBID = "9947ef07-3483-472b-b452-f2ebc23edabe"
+        /// Places we want to go, with a month-by-month timing grid.
+        /// Inline on the 🦕 Sunzzari page, so it inherits that page's
+        /// integration grant the same way the Sunzzari Lists DB does.
+        static let wishlistDBID = "304da039-5224-4a6b-b9ca-e385659556ac"
     }
 
     enum Boop {

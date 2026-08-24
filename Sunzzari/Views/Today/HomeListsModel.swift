@@ -26,6 +26,9 @@ final class HomeListsModel: ObservableObject {
     @Published var movies:      [ChecklistItem] = []
     @Published var shows:       [ChecklistItem] = []
     @Published var recipes:     [ChecklistItem] = []
+    /// Never rendered on Home — the travel card is an add button and a link, by
+    /// Elisa's instruction. Kept so `.travel` can reuse the shared add sheet.
+    @Published var travel:      [ChecklistItem] = []
     @Published var cycleEntries: [CycleEntry] = []
 
     /// Rows mid-write, so the circle can show progress and block a double tap.
@@ -113,7 +116,7 @@ final class HomeListsModel: ObservableObject {
                 allActivities[i].done = true
                 allActivities[i].thinkingAbout = false
             }
-        case .movies, .shows, .recipes:
+        case .movies, .shows, .recipes, .travel:
             break
         }
     }
@@ -136,6 +139,8 @@ final class HomeListsModel: ObservableObject {
                 id = try await NotionService.shared.createWatchlistItem(title: name, kind: .movie, locations: tags).id
             case .shows:
                 id = try await NotionService.shared.createWatchlistItem(title: name, kind: .show, locations: tags).id
+            case .travel:
+                id = try await NotionService.shared.createTravelWishlistDestination(name: name, region: tag)
             case .recipes:
                 id = try await NotionService.shared.createWatchlistItem(title: name, kind: .recipe, locations: tags).id
                 // Mirror into Elisa's long-standing Home Cooking PAGE (not a database).
@@ -164,7 +169,7 @@ final class HomeListsModel: ObservableObject {
 enum HomeList: CaseIterable, Identifiable {
     var id: String { title }
 
-    case restaurants, activities, movies, shows, recipes
+    case restaurants, activities, movies, shows, recipes, travel
 
     var title: String {
         switch self {
@@ -173,6 +178,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:      return "MOVIES TO WATCH"
         case .shows:       return "SHOWS TO WATCH"
         case .recipes:     return "HOME COOKING"
+        case .travel:      return "PLACES TO GO"
         }
     }
 
@@ -184,6 +190,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:      return "MOVIES"
         case .shows:       return "SHOWS"
         case .recipes:     return "HOME COOKING"
+        case .travel:      return "TRAVEL"
         }
     }
 
@@ -194,6 +201,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:      return "Movie title"
         case .shows:       return "Show title"
         case .recipes:     return "Recipe"
+        case .travel:      return "Destination"
         }
     }
 
@@ -204,6 +212,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:  return WatchlistItem.Kind.movie.whereOptions
         case .shows:   return WatchlistItem.Kind.show.whereOptions
         case .recipes: return ["Healthy", "Not Healthy", "Special", "Asian"]
+        case .travel:  return TravelWishlistItem.regionOptions
         default:       return []
         }
     }
@@ -218,6 +227,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:      return "Where"
         case .shows:       return "Streaming on"
         case .recipes:     return "Section"
+        case .travel:      return "Region"
         case .activities:  return nil
         }
     }
@@ -229,6 +239,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:      return "No movies queued"
         case .shows:       return "No shows queued"
         case .recipes:     return "Nothing to cook yet"
+        case .travel:      return "Nowhere on the list yet"
         }
     }
 
@@ -239,6 +250,9 @@ enum HomeList: CaseIterable, Identifiable {
         case .restaurants: return ["Been There?": true, "Thinking About": false]
         case .activities:  return ["Done?": true, "Thinking About": false]
         case .movies, .shows, .recipes: return ["Watched": true]
+        // Travel has no "Thinking About" shortlist flag: the whole wishlist is the
+        // shortlist, so checking a destination off only records that we went.
+        case .travel:      return ["Been There": true]
         }
     }
 
@@ -249,12 +263,13 @@ enum HomeList: CaseIterable, Identifiable {
         case .movies:      return \HomeListsModel.movies
         case .shows:       return \HomeListsModel.shows
         case .recipes:     return \HomeListsModel.recipes
+        case .travel:      return \HomeListsModel.travel
         }
     }
 
-    /// Only restaurants and activities have a back catalogue worth browsing.
+    /// Lists with a back catalogue worth its own screen.
     var supportsBrowse: Bool {
-        self == .restaurants || self == .activities
+        self == .restaurants || self == .activities || self == .travel
     }
 
     func invalidateCache() {
@@ -262,6 +277,7 @@ enum HomeList: CaseIterable, Identifiable {
         case .restaurants: NotionService.shared.invalidateRestaurants()
         case .activities:  NotionService.shared.invalidateActivities()
         case .movies, .shows, .recipes: NotionService.shared.invalidateWatchlist()
+        case .travel:      NotionService.shared.invalidateTravelWishlist()
         }
     }
 }

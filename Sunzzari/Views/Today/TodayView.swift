@@ -149,6 +149,14 @@ struct TodayView: View {
                                         alignment: .leading,
                                         spacing: 10
                                     ) {
+                                        // Travel is an add-and-link card, not a
+                                        // checklist, so it is placed rather than
+                                        // driven through the ForEach below.
+                                        HomeTravelCard(
+                                            onAdd:    { addTarget = .travel },
+                                            onBrowse: { browseTarget = .travel }
+                                        )
+
                                         ForEach([HomeList.activities, .movies, .shows, .recipes]) { list in
                                             checklistCard(list)
                                         }
@@ -194,6 +202,7 @@ struct TodayView: View {
             .navigationDestination(item: $browseTarget) { list in
                 switch list {
                 case .restaurants: RestaurantHubView()
+                case .travel:      TravelWishlistView()
                 default:           ActivitiesHubView()
                 }
             }

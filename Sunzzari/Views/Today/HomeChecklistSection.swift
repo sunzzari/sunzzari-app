@@ -392,3 +392,65 @@ struct HomeChecklistCard: View {
         )
     }
 }
+
+/// The travel wishlist entry point on Home.
+///
+/// Deliberately renders NO destinations. Elisa's instruction (2026-08-24) was
+/// "dont display all of the items. just add a place for me the input new ones
+/// and link to the overall list" — so this is an add button and a link, nothing
+/// more. It also means Home never fetches the wishlist, which keeps the tab's
+/// load cost unchanged.
+struct HomeTravelCard: View {
+    let onAdd: () -> Void
+    let onBrowse: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("TRAVEL")
+                    .font(.system(size: 10, weight: .bold, design: .serif))
+                    .tracking(0.9)
+                    .foregroundStyle(Color.sunSecondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.sunAccent)
+                        .frame(width: 22, height: 22)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // A Button, not a NavigationLink — same reason as HomeChecklistCard:
+            // a NavigationLink here hands its tap area to the whole List row.
+            Button(action: onBrowse) {
+                HStack(spacing: 4) {
+                    Image(systemName: "globe.europe.africa.fill")
+                        .font(.system(size: 11))
+                    Text("View wishlist")
+                        .font(.system(size: 13, design: .serif))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(Color.sunAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .padding(.vertical, 5)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.sunSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
