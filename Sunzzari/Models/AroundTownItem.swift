@@ -8,33 +8,142 @@ struct AroundTownItem: Identifiable {
     let id: String
     let name: String
     let kind: Kind
-    let region: Region?
+    var region: Region?        // refined from the geocoded coordinate when available
     let subtitle: String       // neighborhood (restaurant) or location text (activity)
+    let locationText: String   // raw Notion Location value
     var thinkingAbout: Bool
     var done: Bool             // beenThere for restaurants, done? for activities
     let markerColorHex: String
     let glyph: String          // SF Symbol name
+    let preferenceLabel: String?
+    let goodFor: [String]
+    let topDishes: String
+    let comments: String
     var coordinate: CLLocationCoordinate2D?
 
     // Stable geo cache key shared with the existing restaurant geo cache
     static func geoKey(for id: String) -> String { "sunzzari_around_geo_\(id)" }
+
+    /// One-line description shown inside the map callout bubble, mirroring the
+    /// travel map's title + subtitle callout. Kept short -- MapKit truncates.
+    var calloutSubtitle: String {
+        var parts: [String] = []
+        if let preferenceLabel, !preferenceLabel.isEmpty { parts.append(preferenceLabel) }
+        if !subtitle.isEmpty { parts.append(subtitle) }
+        if !goodFor.isEmpty { parts.append(goodFor.prefix(2).joined(separator: ", ")) }
+        if parts.isEmpty { parts.append(kind == .restaurant ? "Restaurant" : "Activity") }
+        if done { parts.append("Been there") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Geocoder inputs, in the venue + city shape the travel map's endpoint takes.
+    /// The city hint is what keeps a same-named place in another metro from winning.
+    var geoVenue: String { name }
+
+    /// Notion's Location select mapped to a real city. Using the coarse metro
+    /// instead sent every San Diego and Napa row to Los Angeles / San Francisco,
+    /// where the lookup found nothing and fell back to a city centroid.
+    private static let cityByLocation: [String: String] = [
+        "la": "Los Angeles, CA",
+        "sf": "San Francisco, CA",
+        "oc": "Orange County, CA",
+        "san diego": "San Diego, CA",
+        "napa": "Napa, CA",
+        "marin": "Marin County, CA",
+        "east bay": "Oakland, CA"
+    ]
+
+    /// Widest sensible area for the item, used as the last attempt.
+    var metroHint: String {
+        switch Region.from(location: locationText) {
+        case .sfBay: return "San Francisco Bay Area, CA"
+        case .la, nil: return "Los Angeles, CA"
+        }
+    }
+
+    private var locationCity: String {
+        let first = locationText
+            .split(separator: "/")
+            .first
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+        return Self.cityByLocation[first] ?? metroHint
+    }
+
+    /// First attempt. Restaurants get neighborhood plus city; activities carry
+    /// their own free-text location ("Malibu, CA", "Getty Center, Los Angeles").
+    var geoCity: String {
+        switch kind {
+        case .restaurant:
+            let city = locationCity
+            return (subtitle.isEmpty || subtitle == locationText) ? city : "\(subtitle), \(city)"
+        case .activity:
+            return locationText.isEmpty ? metroHint : locationText
+        }
+    }
+
+    /// Second attempt, without the neighborhood: the three "626" rows and a few
+    /// others only resolve once that text is dropped.
+    var geoCityFallback: String {
+        kind == .restaurant ? locationCity : metroHint
+    }
 }
 
-// MARK: - Region classification helpers
+// MARK: - Region classification
 
 extension AroundTownItem.Region {
+    /// Multi-word place names -- matched as substrings.
+    private static let laPhrases = [
+        "los angeles", "orange county", "san diego", "santa monica", "culver city",
+        "west hollywood", "los feliz", "echo park", "silver lake", "silverlake",
+        "highland park", "eagle rock", "little tokyo", "exposition park",
+        "universal city", "long beach", "manhattan beach", "hermosa beach",
+        "redondo beach", "beverly hills", "san gabriel", "monterey park",
+        "el segundo", "playa vista", "marina del rey", "san pedro",
+        "sherman oaks", "studio city", "thousand oaks", "santa clarita",
+        "newport beach", "laguna beach", "huntington beach", "costa mesa"
+    ]
+    private static let laWords = [
+        "la", "oc", "socal", "hollywood", "venice", "pasadena", "koreatown",
+        "chinatown", "brentwood", "westwood", "sawtelle", "malibu", "burbank",
+        "glendale", "arcadia", "alhambra", "torrance", "calabasas", "dtla",
+        "getty", "yamashiro", "larchmont", "anaheim", "irvine", "fullerton"
+    ]
+    private static let sfPhrases = [
+        "san francisco", "east bay", "mill valley", "walnut creek", "half moon bay",
+        "point reyes", "palo alto", "mountain view", "san mateo", "san jose",
+        "san rafael", "daly city", "santa cruz", "santa rosa", "russian hill",
+        "nob hill", "hayes valley", "north beach", "castro", "sunset district"
+    ]
+    private static let sfWords = [
+        "sf", "bay", "marin", "napa", "sonoma", "oakland", "berkeley", "sausalito",
+        "healdsburg", "petaluma", "novato", "tiburon", "alameda", "emeryville",
+        "richmond", "presidio", "soma", "mission", "peninsula", "sfo", "yountville",
+        "sebastopol", "larkspur", "corte", "burlingame", "menlo"
+    ]
+
+    /// Text classification. Short tokens are matched on word boundaries so a
+    /// foreign city ("Milan") can never match a two-letter token ("la").
     static func from(location: String) -> AroundTownItem.Region? {
         let loc = location.lowercased()
-        let laTokens  = ["la", "oc", "san diego", "los angeles", "orange county", "silverlake",
-                         "venice", "santa monica", "pasadena", "culver city", "west hollywood",
-                         "los feliz", "echo park", "koreatown"]
-        let sfTokens  = ["sf", "east bay", "marin", "napa", "san francisco", "oakland",
-                         "berkeley", "sausalito", "mill valley", "sonoma"]
-        let isLA = laTokens.contains { loc.contains($0) }
-        let isSF = sfTokens.contains { loc.contains($0) }
-        if isLA && isSF { return .la } // "LA / SF" → show in both, default to la region key
+        guard !loc.isEmpty else { return nil }
+        let words = Set(loc.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+
+        let isLA = laPhrases.contains { loc.contains($0) } || laWords.contains { words.contains($0) }
+        let isSF = sfPhrases.contains { loc.contains($0) } || sfWords.contains { words.contains($0) }
+
+        if isLA && isSF { return .la }  // "LA / SF" -- coordinate decides later
         if isLA { return .la }
         if isSF { return .sfBay }
+        return nil
+    }
+
+    /// Authoritative classification once a coordinate exists. Also used to reject
+    /// bad geocodes: a pin outside both boxes is not an Around Town place.
+    static func from(coordinate c: CLLocationCoordinate2D) -> AroundTownItem.Region? {
+        if c.latitude >= 32.5 && c.latitude <= 34.9 &&
+           c.longitude >= -119.5 && c.longitude <= -116.7 { return .la }
+        if c.latitude >= 36.8 && c.latitude <= 38.9 &&
+           c.longitude >= -123.3 && c.longitude <= -121.4 { return .sfBay }
         return nil
     }
 
@@ -47,45 +156,58 @@ extension AroundTownItem.Region {
 
 extension AroundTownItem {
     static func from(_ r: Restaurant) -> AroundTownItem? {
-        let region = Region.from(location: r.location)
-        // Include only home locations (LA / SF Bay region recognised)
-        guard region != nil || r.location.lowercased().contains("la / sf") else { return nil }
+        // Every LA / SF Bay restaurant is included -- tried or not.
+        guard let region = Region.from(location: r.location) else { return nil }
         let color: String
         switch r.preference {
         case .topChoice: color = "#54A0FF"
         case .great:     color = "#70C17C"
         case .good:      color = "#FBBF24"
         case .bad:       color = "#FF6B6B"
-        case nil:        color = "#8E8E93"
+        case nil:        color = "#54A0FF"
         }
         return AroundTownItem(
-            id:            r.id,
-            name:          r.name,
-            kind:          .restaurant,
-            region:        region,
-            subtitle:      r.neighborhood.isEmpty ? r.location : r.neighborhood,
-            thinkingAbout: r.thinkingAbout,
-            done:          r.beenThere,
+            id:             r.id,
+            name:           r.name,
+            kind:           .restaurant,
+            region:         region,
+            subtitle:       r.neighborhood.isEmpty ? r.location : r.neighborhood,
+            locationText:   r.location,
+            thinkingAbout:  r.thinkingAbout,
+            done:           r.beenThere,
             markerColorHex: color,
-            glyph:         "fork.knife",
-            coordinate:    nil
+            glyph:          "fork.knife",
+            preferenceLabel: r.preference?.rawValue,
+            goodFor:        r.goodFor,
+            topDishes:      r.topDishes,
+            comments:       r.comments,
+            coordinate:     nil
         )
     }
 
     static func from(_ a: Activity) -> AroundTownItem? {
-        guard a.home else { return nil }
+        // An activity earns a pin when its location places it in LA / SF Bay.
+        // Home activities with a blank location are still candidates -- the
+        // geocode is validated against the LA / SF Bay boxes before it is shown,
+        // so "Thatchers Brentwood" lands and "Groupon" is dropped.
         let region = Region.from(location: a.location)
+        guard region != nil || (a.location.isEmpty && a.home) else { return nil }
         return AroundTownItem(
-            id:            a.id,
-            name:          a.name,
-            kind:          .activity,
-            region:        region,
-            subtitle:      a.location,
-            thinkingAbout: a.thinkingAbout,
-            done:          a.done,
+            id:             a.id,
+            name:           a.name,
+            kind:           .activity,
+            region:         region,
+            subtitle:       a.location,
+            locationText:   a.location,
+            thinkingAbout:  a.thinkingAbout,
+            done:           a.done,
             markerColorHex: "#A78BFA",
-            glyph:         "figure.walk",
-            coordinate:    nil
+            glyph:          "figure.walk",
+            preferenceLabel: nil,
+            goodFor:        [],
+            topDishes:      "",
+            comments:       "",
+            coordinate:     nil
         )
     }
 }

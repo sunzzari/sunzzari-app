@@ -7,6 +7,7 @@ final class AroundTownAnnotation: NSObject, MKAnnotation {
     let item: AroundTownItem
     @objc dynamic var coordinate: CLLocationCoordinate2D
     var title: String? { item.name }
+    var subtitle: String? { item.calloutSubtitle }
 
     init(item: AroundTownItem, coordinate: CLLocationCoordinate2D) {
         self.item = item
@@ -18,12 +19,17 @@ final class AroundTownAnnotation: NSObject, MKAnnotation {
 
 struct AroundTownMKMap: UIViewRepresentable {
     let annotations: [AroundTownAnnotation]
-    let totalCount: Int
     let filterKey: String
     @Binding var selectedID: String?
     let bridge: MapBridge
 
-    func makeCoordinator() -> Coordinator { Coordinator(selectedID: $selectedID) }
+    /// Fired when the callout's (i) accessory is tapped -- opens the detail sheet.
+    /// Mirrors TripMKMap so both maps behave the same way.
+    var onOpenDetail: ((AroundTownItem) -> Void)?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail)
+    }
 
     static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
         coordinator.stopHeading()
@@ -34,6 +40,7 @@ struct AroundTownMKMap: UIViewRepresentable {
         map.delegate = context.coordinator
         map.showsUserLocation = true
         map.mapType = .standard
+        map.overrideUserInterfaceStyle = .dark
         map.setRegion(
             MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
@@ -57,7 +64,9 @@ struct AroundTownMKMap: UIViewRepresentable {
         coordinator.isUpdating = true
         defer { coordinator.isUpdating = false }
 
-        // Include intent state in key so pin color refreshes after toggle
+        coordinator.onOpenDetail = onOpenDetail
+
+        // Include intent state in the key so pin color refreshes after a toggle
         func key(for ann: AroundTownAnnotation) -> String {
             "\(ann.item.id)|\(ann.item.thinkingAbout)|\(ann.item.done)"
         }
@@ -72,18 +81,17 @@ struct AroundTownMKMap: UIViewRepresentable {
         if !toRemove.isEmpty { map.removeAnnotations(toRemove) }
 
         let toAdd = annotations.filter { !existing.contains(key(for: $0)) }
-        if !toAdd.isEmpty {
-            map.addAnnotations(toAdd)
-            let placed = map.annotations.filter { $0 is AroundTownAnnotation }.count
-            if !coordinator.didFitAll && totalCount > 0 && placed >= totalCount {
-                coordinator.didFitAll = true
-                coordinator.lastFilterKey = filterKey
-                let anns = map.annotations.filter { !($0 is MKUserLocation) }
-                DispatchQueue.main.async { map.showAnnotations(anns, animated: true) }
-            }
-        }
+        if !toAdd.isEmpty { map.addAnnotations(toAdd) }
 
-        if coordinator.didFitAll && filterKey != coordinator.lastFilterKey {
+        // Auto-fit on first load, on a filter change, and as background geocoding
+        // adds pins -- but never after the user has panned or zoomed by hand.
+        // The old gate required every item to be placed before fitting once, so a
+        // single un-geocodable row left the map parked on its default region.
+        let filterChanged = filterKey != coordinator.lastFilterKey
+        let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
+        let grew = annotations.count > coordinator.lastAnnotationCount
+        if firstLoad || filterChanged || (grew && !coordinator.userHasInteracted) {
+            coordinator.hasFittedInitially = true
             coordinator.lastFilterKey = filterKey
             DispatchQueue.main.async {
                 let anns = map.annotations.filter { !($0 is MKUserLocation) }
@@ -100,6 +108,7 @@ struct AroundTownMKMap: UIViewRepresentable {
                 }
             }
         }
+        coordinator.lastAnnotationCount = annotations.count
 
         if let id = selectedID {
             let alreadySelected = map.selectedAnnotations.contains {
@@ -110,7 +119,9 @@ struct AroundTownMKMap: UIViewRepresentable {
                 map.selectAnnotation(ann, animated: true)
             }
         } else {
-            map.selectedAnnotations.forEach { map.deselectAnnotation($0, animated: false) }
+            map.selectedAnnotations
+                .filter { !($0 is MKClusterAnnotation) }
+                .forEach { map.deselectAnnotation($0, animated: false) }
         }
     }
 
@@ -118,9 +129,12 @@ struct AroundTownMKMap: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate, CLLocationManagerDelegate {
         @Binding var selectedID: String?
+        var onOpenDetail: ((AroundTownItem) -> Void)?
         var isUpdating = false
-        var didFitAll = false
+        var hasFittedInitially = false
         var lastFilterKey: String = ""
+        var lastAnnotationCount = 0
+        var userHasInteracted = false
         private var didCenterOnUser = false
 
         private var headingManager: CLLocationManager?
@@ -129,7 +143,10 @@ struct AroundTownMKMap: UIViewRepresentable {
         private var lastDeviceHeading: CLLocationDirection = 0
         private var lastHeadingAccuracy: CLLocationDirection = 27.5
 
-        init(selectedID: Binding<String?>) { _selectedID = selectedID }
+        init(selectedID: Binding<String?>, onOpenDetail: ((AroundTownItem) -> Void)? = nil) {
+            _selectedID = selectedID
+            self.onOpenDetail = onOpenDetail
+        }
 
         func startHeading() {
             guard CLLocationManager.headingAvailable() else { return }
@@ -177,6 +194,7 @@ struct AroundTownMKMap: UIViewRepresentable {
                     ?? MKMarkerAnnotationView(annotation: cluster, reuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
                 v.markerTintColor = UIColor(red: 0.984, green: 0.749, blue: 0.141, alpha: 1)
                 v.glyphText = "\(cluster.memberAnnotations.count)"
+                v.canShowCallout = false
                 v.titleVisibility = .hidden
                 v.subtitleVisibility = .hidden
                 return v
@@ -188,34 +206,89 @@ struct AroundTownMKMap: UIViewRepresentable {
             ) as? MKMarkerAnnotationView
                 ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "aroundtown")
             v.clusteringIdentifier = "aroundtown"
-            v.canShowCallout = false
-            v.titleVisibility = .hidden
-            v.subtitleVisibility = .hidden
+
+            // Callout bubble on tap: name + one-line description, with an (i)
+            // accessory that opens the full sheet. Same as the travel map.
+            v.canShowCallout = true
+            v.titleVisibility = .adaptive
+            v.subtitleVisibility = .adaptive
+            let info = UIButton(type: .detailDisclosure)
+            info.tintColor = UIColor(Color.sunAccent)
+            v.rightCalloutAccessoryView = info
             v.glyphImage = UIImage(systemName: ann.item.glyph)
 
-            if ann.item.thinkingAbout {
+            // Every place stays legible: tried places go grey, untried keep their
+            // preference color. Nothing is faded out to near-invisible.
+            if ann.item.done {
+                v.markerTintColor = .systemGray
+                v.alpha = 0.9
+            } else {
                 v.markerTintColor = UIColor(Color(hex: ann.item.markerColorHex))
                 v.alpha = 1.0
-            } else if ann.item.done {
-                v.markerTintColor = .systemGray3
-                v.alpha = 0.65
-            } else {
-                v.markerTintColor = UIColor(Color(hex: ann.item.markerColorHex)).withAlphaComponent(0.45)
-                v.alpha = 0.8
             }
+            v.displayPriority = ann.item.thinkingAbout ? .required : .defaultHigh
             return v
+        }
+
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            if !animated && hasFittedInitially { userHasInteracted = true }
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) { updateCone() }
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) { updateCone() }
 
+        func mapView(_ mapView: MKMapView,
+                     annotationView view: MKAnnotationView,
+                     calloutAccessoryControlTapped control: UIControl) {
+            if let ann = view.annotation as? AroundTownAnnotation {
+                onOpenDetail?(ann.item)
+            }
+        }
+
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            // Numbered bubble tap -> zoom into the cluster's member bounds so it
+            // breaks apart. MapKit does nothing here by default, which is why
+            // tapping a numbered pin used to be a dead end.
+            if let cluster = view.annotation as? MKClusterAnnotation {
+                let coords = cluster.memberAnnotations.map(\.coordinate)
+                guard !coords.isEmpty else { return }
+                var rect = MKMapRect.null
+                for c in coords {
+                    let p = MKMapPoint(c)
+                    rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+                }
+                let padded: MKMapRect
+                if rect.size.width == 0 && rect.size.height == 0 {
+                    let point = MKMapPoint(coords[0])
+                    padded = MKMapRect(x: point.x - 500, y: point.y - 500, width: 1000, height: 1000)
+                } else {
+                    let dx = max(rect.size.width * 0.5, 200)
+                    let dy = max(rect.size.height * 0.5, 200)
+                    padded = rect.insetBy(dx: -dx, dy: -dy)
+                }
+                mapView.setVisibleMapRect(padded, animated: true)
+                mapView.deselectAnnotation(cluster, animated: false)
+                return
+            }
+
+            UIView.animate(withDuration: 0.18) {
+                view.transform = CGAffineTransform(scaleX: 1.18, y: 1.18)
+            }
+            view.layer.shadowColor = UIColor(Color.sunAccent).cgColor
+            view.layer.shadowRadius = 8
+            view.layer.shadowOpacity = 0.7
+            view.layer.shadowOffset = .zero
+
             guard !isUpdating else { return }
             if let ann = view.annotation as? AroundTownAnnotation { selectedID = ann.item.id }
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
+            UIView.animate(withDuration: 0.18) { view.transform = .identity }
+            view.layer.shadowOpacity = 0
+
             guard !isUpdating else { return }
+            if view.annotation is MKClusterAnnotation { return }
             selectedID = nil
         }
 
@@ -241,61 +314,59 @@ struct AroundTownMapView: View {
 
     @State private var pins: [String: CLLocationCoordinate2D] = [:]
     @State private var selectedID: String?
+    @State private var detailID: String?
     @State private var bridge = MapBridge()
+    @State private var geocodePassComplete = false
 
-    enum IntentFilter { case thinkingAbout, done }
+    /// The primary toggle: everything, or only the places we have not been to yet.
+    enum TriedFilter: String, CaseIterable {
+        case all = "Around Town"
+        case notTried = "Haven't Tried"
+    }
 
+    @State private var triedFilter: TriedFilter = .all
     @State private var filterRegion: AroundTownItem.Region? = nil
     @State private var filterKind: AroundTownItem.Kind? = nil
-    @State private var filterIntent: IntentFilter? = nil
+    @State private var wantToTryOnly = false
 
     private var hasActiveFilters: Bool {
-        filterRegion != nil || filterKind != nil || filterIntent != nil
+        filterRegion != nil || filterKind != nil || wantToTryOnly || triedFilter != .all
     }
 
     private var filtered: [AroundTownItem] {
         items.filter { item in
             let regionOK = filterRegion == nil || item.region == filterRegion
             let kindOK   = filterKind == nil || item.kind == filterKind
-            let intentOK: Bool
-            switch filterIntent {
-            case .thinkingAbout: intentOK = item.thinkingAbout
-            case .done:          intentOK = item.done
-            case nil:            intentOK = true
-            }
-            return regionOK && kindOK && intentOK
+            let triedOK  = triedFilter == .all || !item.done
+            let wantOK   = !wantToTryOnly || item.thinkingAbout
+            return regionOK && kindOK && triedOK && wantOK
         }
     }
 
     private var annotations: [AroundTownAnnotation] {
-        pins.compactMap { id, coord in
-            filtered.first { $0.id == id }.map { AroundTownAnnotation(item: $0, coordinate: coord) }
+        filtered.compactMap { item in
+            pins[item.id].map { AroundTownAnnotation(item: item, coordinate: $0) }
         }
     }
 
     private var filterKey: String {
-        let intentStr: String
-        switch filterIntent {
-        case .thinkingAbout: intentStr = "thinking"
-        case .done:          intentStr = "done"
-        case nil:            intentStr = "all"
-        }
-        return "\(filterRegion?.label ?? "all")|\(filterKind.map { "\($0)" } ?? "all")|\(intentStr)"
+        let kindStr = filterKind.map { $0 == .restaurant ? "rest" : "act" } ?? "all"
+        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(triedFilter.rawValue)|\(wantToTryOnly)"
     }
 
     var body: some View {
         ZStack {
             AroundTownMKMap(
                 annotations: annotations,
-                totalCount: filtered.count,
                 filterKey: filterKey,
                 selectedID: $selectedID,
-                bridge: bridge
+                bridge: bridge,
+                onOpenDetail: { detailID = $0.id }
             )
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                filterBar
+                controlBar
                 Spacer()
             }
 
@@ -315,78 +386,115 @@ struct AroundTownMapView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(
             isPresented: Binding(
-                get: { selectedID != nil },
-                set: { if !$0 { selectedID = nil } }
+                get: { detailID != nil },
+                set: { if !$0 { detailID = nil } }
             )
         ) {
-            if let id = selectedID, let idx = items.firstIndex(where: { $0.id == id }) {
+            if let id = detailID, let idx = items.firstIndex(where: { $0.id == id }) {
                 calloutSheet(binding: $items[idx])
-                    .presentationDetents([.fraction(0.42)])
+                    .presentationDetents([.fraction(0.55), .large])
                     .presentationDragIndicator(.visible)
             }
         }
-        .task { await geocodeAll() }
+        .task(id: items.count) { await geocodeAll() }
     }
 
-    // MARK: - Filter bar
+    // MARK: - Controls
 
-    private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+    private var controlBar: some View {
+        VStack(spacing: 8) {
             HStack(spacing: 8) {
-                filterChip(label: "LA", isActive: filterRegion == .la) {
-                    filterRegion = filterRegion == .la ? nil : .la
-                }
-                filterChip(label: "SF Bay", isActive: filterRegion == .sfBay) {
-                    filterRegion = filterRegion == .sfBay ? nil : .sfBay
-                }
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 1, height: 16)
-
-                filterChip(label: "Restaurants", icon: "fork.knife", isActive: filterKind == .restaurant) {
-                    filterKind = filterKind == .restaurant ? nil : .restaurant
-                }
-                filterChip(label: "Activities", icon: "figure.walk", isActive: filterKind == .activity) {
-                    filterKind = filterKind == .activity ? nil : .activity
-                }
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 1, height: 16)
-
-                filterChip(label: "Want to Try", icon: "bookmark", isActive: filterIntent == .thinkingAbout) {
-                    filterIntent = filterIntent == .thinkingAbout ? nil : .thinkingAbout
-                }
-                filterChip(label: "Done", icon: "checkmark.circle", isActive: filterIntent == .done) {
-                    filterIntent = filterIntent == .done ? nil : .done
-                }
-
-                if hasActiveFilters {
-                    Button {
-                        filterRegion = nil
-                        filterKind = nil
-                        filterIntent = nil
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold, design: .serif))
-                            Text("Clear")
-                                .font(.system(size: 12, design: .serif))
-                        }
-                        .foregroundStyle(Color.white.opacity(0.5))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                ForEach(TriedFilter.allCases, id: \.self) { option in
+                    Button { triedFilter = option } label: {
+                        Text(option.rawValue)
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
+                            .foregroundStyle(triedFilter == option ? Color.sunBackground : Color.white.opacity(0.75))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(triedFilter == option ? Color.sunAccent : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(
+                                triedFilter == option ? Color.sunAccent : Color.white.opacity(0.2),
+                                lineWidth: 1
+                            ))
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+
+            HStack(spacing: 6) {
+                Text("\(annotations.count) on the map")
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                if filtered.count > annotations.count {
+                    // Once the pass is done the remainder is not "still loading" --
+                    // those rows have no address the geocoder can place.
+                    Text(geocodePassComplete
+                         ? "· \(filtered.count - annotations.count) with no map location"
+                         : "· \(filtered.count - annotations.count) still locating")
+                        .font(.system(size: 11, design: .serif))
+                        .foregroundStyle(Color.white.opacity(0.3))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    filterChip(label: "LA", isActive: filterRegion == .la) {
+                        filterRegion = filterRegion == .la ? nil : .la
+                    }
+                    filterChip(label: "SF Bay", isActive: filterRegion == .sfBay) {
+                        filterRegion = filterRegion == .sfBay ? nil : .sfBay
+                    }
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 1, height: 16)
+
+                    filterChip(label: "Restaurants", icon: "fork.knife", isActive: filterKind == .restaurant) {
+                        filterKind = filterKind == .restaurant ? nil : .restaurant
+                    }
+                    filterChip(label: "Activities", icon: "figure.walk", isActive: filterKind == .activity) {
+                        filterKind = filterKind == .activity ? nil : .activity
+                    }
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 1, height: 16)
+
+                    filterChip(label: "Want to Try", icon: "bookmark", isActive: wantToTryOnly) {
+                        wantToTryOnly.toggle()
+                    }
+
+                    if hasActiveFilters {
+                        Button {
+                            filterRegion = nil
+                            filterKind = nil
+                            wantToTryOnly = false
+                            triedFilter = .all
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold, design: .serif))
+                                Text("Clear")
+                                    .font(.system(size: 12, design: .serif))
+                            }
+                            .foregroundStyle(Color.white.opacity(0.5))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.07))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
+        .padding(.vertical, 10)
         .background(.ultraThinMaterial)
         .background(Color.black.opacity(0.45))
     }
@@ -424,30 +532,9 @@ struct AroundTownMapView: View {
 
     private var kindLegend: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(Color(hex: "#54A0FF"))
-                    .frame(width: 10, height: 10)
-                Text("Restaurant")
-                    .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.white.opacity(0.75))
-            }
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(Color(hex: "#A78BFA"))
-                    .frame(width: 10, height: 10)
-                Text("Activity")
-                    .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.white.opacity(0.75))
-            }
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(Color.gray.opacity(0.4))
-                    .frame(width: 10, height: 10)
-                Text("Done")
-                    .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.white.opacity(0.45))
-            }
+            legendRow(color: Color(hex: "#54A0FF"), label: "Restaurant")
+            legendRow(color: Color(hex: "#A78BFA"), label: "Activity")
+            legendRow(color: Color.gray, label: "Been there")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -455,6 +542,17 @@ struct AroundTownMapView: View {
         .background(Color(hex: "#030712").opacity(0.75))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
+    }
+
+    private func legendRow(color: Color, label: String) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(label)
+                .font(.system(size: 12, weight: .medium, design: .serif))
+                .foregroundStyle(Color.white.opacity(0.75))
+        }
     }
 
     // MARK: - Locate Me
@@ -475,86 +573,118 @@ struct AroundTownMapView: View {
         }
     }
 
-    // MARK: - Callout sheet
+    // MARK: - Detail sheet
 
     @ViewBuilder
     private func calloutSheet(binding: Binding<AroundTownItem>) -> some View {
         let item = binding.wrappedValue
         ZStack {
             Color.sunBackground.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 14) {
-                // Kind + region badges
-                HStack(spacing: 6) {
-                    kindBadge(item.kind)
-                    if let region = item.region {
-                        Text(region.label)
-                            .font(.system(size: 11, weight: .medium, design: .serif))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 6) {
+                        kindBadge(item.kind)
+                        if let region = item.region {
+                            Text(region.label)
+                                .font(.system(size: 11, weight: .medium, design: .serif))
+                                .foregroundStyle(Color.sunSecondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                        }
+                        if let pref = item.preferenceLabel, !pref.isEmpty {
+                            Text(pref)
+                                .font(.system(size: 11, weight: .medium, design: .serif))
+                                .foregroundStyle(Color(hex: item.markerColorHex))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color(hex: item.markerColorHex).opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                        Spacer()
+                    }
+
+                    Text(item.name)
+                        .font(.system(size: 20, weight: .bold, design: .serif))
+                        .foregroundStyle(Color.sunText)
+
+                    if !item.subtitle.isEmpty {
+                        Text(item.subtitle)
+                            .font(.system(.subheadline, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
-                    }
-                    Spacer()
-                }
-
-                Text(item.name)
-                    .font(.system(size: 20, weight: .bold, design: .serif))
-                    .fontDesign(.serif)
-                    .foregroundStyle(Color.sunText)
-
-                if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
-                        .font(.system(.subheadline, design: .serif))
-                        .foregroundStyle(Color.sunSecondary)
-                }
-
-                Divider()
-                    .background(Color.white.opacity(0.1))
-
-                // Intent toggles
-                HStack(spacing: 12) {
-                    intentButton(
-                        label: "Want to Try",
-                        icon: item.thinkingAbout ? "bookmark.fill" : "bookmark",
-                        isActive: item.thinkingAbout,
-                        color: Color.sunAccent
-                    ) {
-                        let newVal = !binding.wrappedValue.thinkingAbout
-                        binding.wrappedValue.thinkingAbout = newVal
-                        let id = item.id
-                        Task { try? await NotionService.shared.updatePageCheckbox(
-                            pageID: id, property: "Thinking About", value: newVal
-                        )}
                     }
 
-                    intentButton(
-                        label: "Done",
-                        icon: item.done ? "checkmark.circle.fill" : "checkmark.circle",
-                        isActive: item.done,
-                        color: Color(hex: "#70C17C")
-                    ) {
-                        let newDone = !binding.wrappedValue.done
-                        binding.wrappedValue.done = newDone
-                        if newDone { binding.wrappedValue.thinkingAbout = false }
-                        let id = item.id
-                        let doneProperty = item.kind == .restaurant ? "Been There?" : "Done?"
-                        Task {
-                            try? await NotionService.shared.updatePageCheckbox(
-                                pageID: id, property: doneProperty, value: newDone
-                            )
-                            if newDone {
+                    if !item.goodFor.isEmpty {
+                        Text(item.goodFor.joined(separator: " · "))
+                            .font(.system(size: 13, design: .serif))
+                            .foregroundStyle(Color.sunSecondary.opacity(0.85))
+                    }
+
+                    if !item.topDishes.isEmpty {
+                        detailBlock(title: "Top dishes", body: item.topDishes)
+                    }
+                    if !item.comments.isEmpty {
+                        detailBlock(title: "Notes", body: item.comments)
+                    }
+
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+
+                    HStack(spacing: 12) {
+                        intentButton(
+                            label: "Want to Try",
+                            icon: item.thinkingAbout ? "bookmark.fill" : "bookmark",
+                            isActive: item.thinkingAbout,
+                            color: Color.sunAccent
+                        ) {
+                            let newVal = !binding.wrappedValue.thinkingAbout
+                            binding.wrappedValue.thinkingAbout = newVal
+                            let id = item.id
+                            Task { try? await NotionService.shared.updatePageCheckbox(
+                                pageID: id, property: "Thinking About", value: newVal
+                            )}
+                        }
+
+                        intentButton(
+                            label: "Been There",
+                            icon: item.done ? "checkmark.circle.fill" : "checkmark.circle",
+                            isActive: item.done,
+                            color: Color(hex: "#70C17C")
+                        ) {
+                            let newDone = !binding.wrappedValue.done
+                            binding.wrappedValue.done = newDone
+                            if newDone { binding.wrappedValue.thinkingAbout = false }
+                            let id = item.id
+                            let doneProperty = item.kind == .restaurant ? "Been There?" : "Done?"
+                            Task {
                                 try? await NotionService.shared.updatePageCheckbox(
-                                    pageID: id, property: "Thinking About", value: false
+                                    pageID: id, property: doneProperty, value: newDone
                                 )
+                                if newDone {
+                                    try? await NotionService.shared.updatePageCheckbox(
+                                        pageID: id, property: "Thinking About", value: false
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func detailBlock(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .serif))
+                .foregroundStyle(Color.sunSecondary.opacity(0.6))
+            Text(body)
+                .font(.system(size: 14, design: .serif))
+                .foregroundStyle(Color.sunText)
         }
     }
 
@@ -599,49 +729,111 @@ struct AroundTownMapView: View {
 
     // MARK: - Geocoding
 
+    /// Accepts a coordinate only if it lands in LA or the SF Bay Area, and uses it
+    /// to set the item's region -- the coordinate is a better region signal than
+    /// the Notion text, which says "LA / SF" for a few places.
+    private func accept(id: String, coord: CLLocationCoordinate2D) {
+        guard let region = AroundTownItem.Region.from(coordinate: coord) else { return }
+        pins[id] = coord
+        if let idx = items.firstIndex(where: { $0.id == id }) {
+            items[idx].region = region
+            items[idx].coordinate = coord
+        }
+    }
+
+    private static let failPrefix = "FAIL:"
+    private static let failRetryInterval: TimeInterval = 7 * 24 * 60 * 60
+
+    private static func cachedCoord(forKey key: String) -> CLLocationCoordinate2D? {
+        guard let cached = UserDefaults.standard.string(forKey: key),
+              !cached.hasPrefix(failPrefix) else { return nil }
+        let parts = cached.split(separator: ",")
+        guard parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    /// True when a lookup for this item failed recently, so it is not retried on
+    /// every single launch.
+    private static func failedRecently(_ id: String, now: TimeInterval) -> Bool {
+        guard let cached = UserDefaults.standard.string(forKey: AroundTownItem.geoKey(for: id)),
+              cached.hasPrefix(failPrefix),
+              let stamp = TimeInterval(cached.dropFirst(failPrefix.count)) else { return false }
+        return now - stamp < failRetryInterval
+    }
+
     private func geocodeAll() async {
+        defer { geocodePassComplete = true }
+        let now = Date().timeIntervalSince1970
         var uncached: [AroundTownItem] = []
         for item in items {
             if pins[item.id] != nil { continue }
-            if let cached = UserDefaults.standard.string(forKey: AroundTownItem.geoKey(for: item.id)) {
-                let parts = cached.split(separator: ",")
-                if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
-                    pins[item.id] = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-                    continue
-                }
+            // The Restaurants map's cache is a valid source: same Notion page IDs.
+            // A fresh lookup below writes both keys, so the two maps share work.
+            let coord = Self.cachedCoord(forKey: AroundTownItem.geoKey(for: item.id))
+                ?? (item.kind == .restaurant
+                    ? Self.cachedCoord(forKey: Restaurant.geoKey(for: item.id))
+                    : nil)
+            if let coord {
+                accept(id: item.id, coord: coord)
+                continue
             }
+            if Self.failedRecently(item.id, now: now) { continue }
             uncached.append(item)
         }
 
         guard !uncached.isEmpty else { return }
 
-        await withTaskGroup(of: (String, CLLocationCoordinate2D?).self) { group in
+        // A name the geocoder cannot place resolves to the bare metro centroid
+        // (an activity row like "Sushi making" is not a venue). Those centroids
+        // are looked up once and any match on one is rejected rather than dropped
+        // on the map as a pin at city hall.
+        var centroids: [CLLocationCoordinate2D] = []
+        for hint in Set(uncached.map(\.geoCityFallback)) {
+            if let c = await PlaceGeocoder.coordinate(venue: "", city: hint) { centroids.append(c) }
+        }
+        func isCentroid(_ c: CLLocationCoordinate2D) -> Bool {
+            let loc = CLLocation(latitude: c.latitude, longitude: c.longitude)
+            return centroids.contains {
+                loc.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) < 150
+            }
+        }
+
+        await withTaskGroup(of: (String, Bool, CLLocationCoordinate2D?).self) { group in
             var inFlight = 0
             var index = 0
 
             while index < uncached.count || inFlight > 0 {
-                while inFlight < 5 && index < uncached.count {
+                while inFlight < 8 && index < uncached.count {
                     let item = uncached[index]; index += 1; inFlight += 1
                     group.addTask {
-                        let query = [item.name, item.subtitle].filter { !$0.isEmpty }.joined(separator: " ")
-                        let req = MKLocalSearch.Request()
-                        req.naturalLanguageQuery = query
-                        if let result = try? await MKLocalSearch(request: req).start(),
-                           let coord = result.mapItems.first?.placemark.coordinate {
-                            return (item.id, coord)
+                        var coord = await PlaceGeocoder.coordinate(venue: item.geoVenue, city: item.geoCity)
+                        if coord == nil {
+                            coord = await PlaceGeocoder.coordinate(
+                                venue: item.geoVenue, city: item.geoCityFallback
+                            )
                         }
-                        return (item.id, nil)
+                        return (item.id, item.kind == .restaurant, coord)
                     }
                 }
 
-                if let (id, coord) = await group.next() {
+                if let (id, isRestaurant, coord) = await group.next() {
                     inFlight -= 1
-                    if let coord {
+                    let usable = coord.flatMap { c -> CLLocationCoordinate2D? in
+                        guard AroundTownItem.Region.from(coordinate: c) != nil, !isCentroid(c) else { return nil }
+                        return c
+                    }
+                    if let usable {
+                        let value = "\(usable.latitude),\(usable.longitude)"
+                        UserDefaults.standard.set(value, forKey: AroundTownItem.geoKey(for: id))
+                        if isRestaurant, UserDefaults.standard.string(forKey: Restaurant.geoKey(for: id)) == nil {
+                            UserDefaults.standard.set(value, forKey: Restaurant.geoKey(for: id))
+                        }
+                        await MainActor.run { accept(id: id, coord: usable) }
+                    } else {
                         UserDefaults.standard.set(
-                            "\(coord.latitude),\(coord.longitude)",
+                            "\(Self.failPrefix)\(now)",
                             forKey: AroundTownItem.geoKey(for: id)
                         )
-                        await MainActor.run { pins[id] = coord }
                     }
                 }
             }

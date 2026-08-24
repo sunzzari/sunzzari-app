@@ -657,51 +657,58 @@ struct RestaurantMapView: View {
 
     // MARK: - Geocoding
 
+    private static func cachedCoord(forKey key: String) -> CLLocationCoordinate2D? {
+        guard let cached = UserDefaults.standard.string(forKey: key) else { return nil }
+        let parts = cached.split(separator: ",")
+        guard parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
     private func geocodeAll() async {
-        // Pass 1: load all cached coords synchronously — instant, no network
+        // Pass 1: load all cached coords synchronously — instant, no network.
+        // Around Town's cache is a valid source here: same Notion page IDs.
         var uncached: [Restaurant] = []
         for r in restaurants {
             if pins[r.id] != nil { continue }
-            if let cached = UserDefaults.standard.string(forKey: Restaurant.geoKey(for: r.id)) {
-                let parts = cached.split(separator: ",")
-                if parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) {
-                    pins[r.id] = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-                    continue
-                }
+            if let coord = Self.cachedCoord(forKey: Restaurant.geoKey(for: r.id))
+                ?? Self.cachedCoord(forKey: AroundTownItem.geoKey(for: r.id)) {
+                pins[r.id] = coord
+                continue
             }
             uncached.append(r)
         }
 
         guard !uncached.isEmpty else { return }
 
-        // Pass 2: geocode uncached restaurants in parallel, max 5 concurrent
+        // Pass 2: geocode the rest through PlaceGeocoder (the same Google-backed
+        // endpoint the travel map uses). MKLocalSearch used to do this and could
+        // not -- it throttles long before 380 places are resolved.
         await withTaskGroup(of: (String, CLLocationCoordinate2D?).self) { group in
             var inFlight = 0
             var index = 0
 
             while index < uncached.count || inFlight > 0 {
-                while inFlight < 5 && index < uncached.count {
+                while inFlight < 8 && index < uncached.count {
                     let r = uncached[index]; index += 1; inFlight += 1
                     group.addTask {
-                        let query = [r.name, r.neighborhood, r.location]
-                            .filter { !$0.isEmpty }.joined(separator: " ")
-                        let req = MKLocalSearch.Request()
-                        req.naturalLanguageQuery = query
-                        if let result = try? await MKLocalSearch(request: req).start(),
-                           let coord = result.mapItems.first?.placemark.coordinate {
-                            return (r.id, coord)
+                        let city = [r.neighborhood, r.location]
+                            .filter { !$0.isEmpty }.joined(separator: ", ")
+                        var coord = await PlaceGeocoder.coordinate(venue: r.name, city: city)
+                        if coord == nil {
+                            coord = await PlaceGeocoder.coordinate(venue: r.name, city: r.location)
                         }
-                        return (r.id, nil)
+                        return (r.id, coord)
                     }
                 }
 
                 if let (id, coord) = await group.next() {
                     inFlight -= 1
                     if let coord {
-                        UserDefaults.standard.set(
-                            "\(coord.latitude),\(coord.longitude)",
-                            forKey: Restaurant.geoKey(for: id)
-                        )
+                        let value = "\(coord.latitude),\(coord.longitude)"
+                        UserDefaults.standard.set(value, forKey: Restaurant.geoKey(for: id))
+                        if UserDefaults.standard.string(forKey: AroundTownItem.geoKey(for: id)) == nil {
+                            UserDefaults.standard.set(value, forKey: AroundTownItem.geoKey(for: id))
+                        }
                         await MainActor.run { pins[id] = coord }
                     }
                 }
