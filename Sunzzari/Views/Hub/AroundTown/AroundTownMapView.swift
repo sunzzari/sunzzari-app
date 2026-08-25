@@ -27,8 +27,12 @@ struct AroundTownMKMap: UIViewRepresentable {
     /// Mirrors TripMKMap so both maps behave the same way.
     var onOpenDetail: ((AroundTownItem) -> Void)?
 
+    /// Fired when a numbered bubble holds places that sit on the same spot, so
+    /// zooming can never break it apart. The parent lists the members instead.
+    var onOpenCluster: (([AroundTownItem]) -> Void)?
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail)
+        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
 
     static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
@@ -65,6 +69,7 @@ struct AroundTownMKMap: UIViewRepresentable {
         defer { coordinator.isUpdating = false }
 
         coordinator.onOpenDetail = onOpenDetail
+        coordinator.onOpenCluster = onOpenCluster
 
         // Include intent state in the key so pin color refreshes after a toggle
         func key(for ann: AroundTownAnnotation) -> String {
@@ -130,6 +135,7 @@ struct AroundTownMKMap: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate, CLLocationManagerDelegate {
         @Binding var selectedID: String?
         var onOpenDetail: ((AroundTownItem) -> Void)?
+        var onOpenCluster: (([AroundTownItem]) -> Void)?
         var isUpdating = false
         var hasFittedInitially = false
         var lastFilterKey: String = ""
@@ -143,9 +149,14 @@ struct AroundTownMKMap: UIViewRepresentable {
         private var lastDeviceHeading: CLLocationDirection = 0
         private var lastHeadingAccuracy: CLLocationDirection = 27.5
 
-        init(selectedID: Binding<String?>, onOpenDetail: ((AroundTownItem) -> Void)? = nil) {
+        init(
+            selectedID: Binding<String?>,
+            onOpenDetail: ((AroundTownItem) -> Void)? = nil,
+            onOpenCluster: (([AroundTownItem]) -> Void)? = nil
+        ) {
             _selectedID = selectedID
             self.onOpenDetail = onOpenDetail
+            self.onOpenCluster = onOpenCluster
         }
 
         func startHeading() {
@@ -252,21 +263,31 @@ struct AroundTownMKMap: UIViewRepresentable {
             if let cluster = view.annotation as? MKClusterAnnotation {
                 let coords = cluster.memberAnnotations.map(\.coordinate)
                 guard !coords.isEmpty else { return }
+
+                // Places on the SAME spot can never be split by zooming, and 24
+                // sets of them exist in the real data (two rows for Camphor, the
+                // three ABSteak rows, Damian and Bread Lounge in one building).
+                // Zooming those forever was the original dead end in a new form,
+                // so the member list opens instead.
+                let anchor = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
+                let spread = coords.map {
+                    anchor.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
+                }.max() ?? 0
+                if spread < 30 {
+                    let items = cluster.memberAnnotations.compactMap { ($0 as? AroundTownAnnotation)?.item }
+                    mapView.deselectAnnotation(cluster, animated: false)
+                    if !items.isEmpty { onOpenCluster?(items) }
+                    return
+                }
+
                 var rect = MKMapRect.null
                 for c in coords {
                     let p = MKMapPoint(c)
                     rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
                 }
-                let padded: MKMapRect
-                if rect.size.width == 0 && rect.size.height == 0 {
-                    let point = MKMapPoint(coords[0])
-                    padded = MKMapRect(x: point.x - 500, y: point.y - 500, width: 1000, height: 1000)
-                } else {
-                    let dx = max(rect.size.width * 0.5, 200)
-                    let dy = max(rect.size.height * 0.5, 200)
-                    padded = rect.insetBy(dx: -dx, dy: -dy)
-                }
-                mapView.setVisibleMapRect(padded, animated: true)
+                let dx = max(rect.size.width * 0.5, 200)
+                let dy = max(rect.size.height * 0.5, 200)
+                mapView.setVisibleMapRect(rect.insetBy(dx: -dx, dy: -dy), animated: true)
                 mapView.deselectAnnotation(cluster, animated: false)
                 return
             }
@@ -314,7 +335,22 @@ struct AroundTownMapView: View {
 
     @State private var pins: [String: CLLocationCoordinate2D] = [:]
     @State private var selectedID: String?
-    @State private var detailID: String?
+    // ONE sheet, selected by case. Two separate .sheet modifiers on the same
+    // view silently conflict -- the cluster sheet never presented until these
+    // were merged.
+    private enum ActiveSheet: Identifiable {
+        case detail(String)
+        case cluster([AroundTownItem])
+
+        var id: String {
+            switch self {
+            case .detail(let itemID): return "detail-\(itemID)"
+            case .cluster(let members): return "cluster-" + members.map(\.id).joined(separator: "-")
+            }
+        }
+    }
+
+    @State private var activeSheet: ActiveSheet?
     @State private var bridge = MapBridge()
     @State private var geocodePassComplete = false
 
@@ -361,7 +397,8 @@ struct AroundTownMapView: View {
                 filterKey: filterKey,
                 selectedID: $selectedID,
                 bridge: bridge,
-                onOpenDetail: { detailID = $0.id }
+                onOpenDetail: { activeSheet = .detail($0.id) },
+                onOpenCluster: { activeSheet = .cluster($0) }
             )
             .ignoresSafeArea()
 
@@ -384,15 +421,17 @@ struct AroundTownMapView: View {
         }
         .navigationTitle("Around Town")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(
-            isPresented: Binding(
-                get: { detailID != nil },
-                set: { if !$0 { detailID = nil } }
-            )
-        ) {
-            if let id = detailID, let idx = items.firstIndex(where: { $0.id == id }) {
-                calloutSheet(binding: $items[idx])
-                    .presentationDetents([.fraction(0.55), .large])
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .detail(let id):
+                if let idx = items.firstIndex(where: { $0.id == id }) {
+                    calloutSheet(binding: $items[idx])
+                        .presentationDetents([.fraction(0.55), .large])
+                        .presentationDragIndicator(.visible)
+                }
+            case .cluster(let members):
+                clusterSheet(members)
+                    .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
             }
         }
@@ -531,9 +570,16 @@ struct AroundTownMapView: View {
     // MARK: - Kind legend (bottom-left)
 
     private var kindLegend: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            legendRow(color: Color(hex: "#54A0FF"), label: "Restaurant")
-            legendRow(color: Color(hex: "#A78BFA"), label: "Activity")
+        // The old legend claimed blue = Restaurant, but restaurant pins are
+        // coloured by Preference, so four of the five colours on screen were
+        // unexplained. This states what the colours actually mean.
+        VStack(alignment: .leading, spacing: 5) {
+            legendRow(color: Color(hex: "#54A0FF"), label: "Top Choice")
+            legendRow(color: Color(hex: "#70C17C"), label: "Great")
+            legendRow(color: Color(hex: "#FBBF24"), label: "Good")
+            legendRow(color: Color(hex: "#FF6B6B"), label: "Bad")
+            legendRow(color: Color(hex: AroundTownItem.notRatedHex), label: "Not rated")
+            legendRow(color: Color(hex: AroundTownItem.activityHex), label: "Activity")
             legendRow(color: Color.gray, label: "Been there")
         }
         .padding(.horizontal, 12)
@@ -550,7 +596,7 @@ struct AroundTownMapView: View {
                 .fill(color)
                 .frame(width: 10, height: 10)
             Text(label)
-                .font(.system(size: 12, weight: .medium, design: .serif))
+                .font(.system(size: 11, weight: .medium, design: .serif))
                 .foregroundStyle(Color.white.opacity(0.75))
         }
     }
@@ -570,6 +616,63 @@ struct AroundTownMapView: View {
                 .background(Color.sunSurface)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.5), radius: 8, y: 3)
+        }
+    }
+
+    // MARK: - Cluster member list
+
+    /// Shown when a numbered bubble holds places at the same address, where no
+    /// amount of zooming will separate them. Picking one opens its description.
+    @ViewBuilder
+    private func clusterSheet(_ members: [AroundTownItem]) -> some View {
+        ZStack {
+            Color.sunBackground.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(members.count) places here")
+                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 22)
+                    .padding(.bottom, 12)
+
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(members) { member in
+                            Button {
+                                activeSheet = .detail(member.id)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: member.glyph)
+                                        .font(.system(size: 13, design: .serif))
+                                        .foregroundStyle(member.done
+                                                         ? Color.gray
+                                                         : Color(hex: member.markerColorHex))
+                                        .frame(width: 22)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(member.name)
+                                            .font(.system(size: 15, weight: .medium, design: .serif))
+                                            .foregroundStyle(Color.sunText)
+                                        Text(member.calloutSubtitle)
+                                            .font(.system(size: 12, design: .serif))
+                                            .foregroundStyle(Color.sunSecondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, design: .serif))
+                                        .foregroundStyle(Color.sunSecondary.opacity(0.5))
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Divider().background(Color.white.opacity(0.07))
+                        }
+                    }
+                }
+            }
         }
     }
 

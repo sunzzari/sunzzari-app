@@ -24,6 +24,12 @@ struct AroundTownItem: Identifiable {
     // Stable geo cache key shared with the existing restaurant geo cache
     static func geoKey(for id: String) -> String { "sunzzari_around_geo_\(id)" }
 
+    /// A restaurant Elisa has not given a Preference to. Light enough to read as
+    /// "no rating yet" and distinct from both the tier colours and the grey used
+    /// for places we have already been.
+    static let notRatedHex = "#E2E8F0"
+    static let activityHex = "#A78BFA"
+
     /// One-line description shown inside the map callout bubble, mirroring the
     /// travel map's title + subtitle callout. Kept short -- MapKit truncates.
     var calloutSubtitle: String {
@@ -156,15 +162,22 @@ extension AroundTownItem.Region {
 
 extension AroundTownItem {
     static func from(_ r: Restaurant) -> AroundTownItem? {
-        // Every LA / SF Bay restaurant is included -- tried or not.
-        guard let region = Region.from(location: r.location) else { return nil }
+        // Every LA / SF Bay restaurant is included -- tried or not. A blank
+        // Location with a neighborhood is still a candidate ("Rokusho", blank
+        // Location, Neighborhood "Hollywood") -- the coordinate decides, so the
+        // row is placed or counted, never silently dropped. A row that resolves
+        // to another metro is out of area, which is not the same as unplaceable.
+        let region = Region.from(location: r.location)
+        guard region != nil || (r.location.isEmpty && !r.neighborhood.isEmpty) else { return nil }
+        // Not-rated is its OWN colour. It was briefly Top Choice blue, which put
+        // 142 unrated places in the same blue as the 57 actual top choices.
         let color: String
         switch r.preference {
         case .topChoice: color = "#54A0FF"
         case .great:     color = "#70C17C"
         case .good:      color = "#FBBF24"
         case .bad:       color = "#FF6B6B"
-        case nil:        color = "#54A0FF"
+        case nil:        color = AroundTownItem.notRatedHex
         }
         return AroundTownItem(
             id:             r.id,
@@ -187,11 +200,16 @@ extension AroundTownItem {
 
     static func from(_ a: Activity) -> AroundTownItem? {
         // An activity earns a pin when its location places it in LA / SF Bay.
-        // Home activities with a blank location are still candidates -- the
-        // geocode is validated against the LA / SF Bay boxes before it is shown,
-        // so "Thatchers Brentwood" lands and "Groupon" is dropped.
+        // A blank location is still a candidate -- the geocode is validated
+        // against the LA / SF Bay boxes and the metro centroids first, so
+        // "Thatchers Brentwood" lands and "Sushi making" is counted as having no
+        // map location instead of disappearing. Requiring `Home?` here was
+        // backwards: it is checked on 8 of 39 rows, and those 8 are the
+        // unmappable ones, while every real place (Getty, Griffith Park, Malibu,
+        // Nintendo World) had it unchecked. A row in another region -- Yosemite,
+        // Paso Robles -- is out of area and stays excluded, not counted.
         let region = Region.from(location: a.location)
-        guard region != nil || (a.location.isEmpty && a.home) else { return nil }
+        guard region != nil || a.location.isEmpty else { return nil }
         return AroundTownItem(
             id:             a.id,
             name:           a.name,
@@ -201,7 +219,7 @@ extension AroundTownItem {
             locationText:   a.location,
             thinkingAbout:  a.thinkingAbout,
             done:           a.done,
-            markerColorHex: "#A78BFA",
+            markerColorHex: AroundTownItem.activityHex,
             glyph:          "figure.walk",
             preferenceLabel: nil,
             goodFor:        [],
