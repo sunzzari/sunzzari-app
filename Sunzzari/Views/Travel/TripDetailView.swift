@@ -167,6 +167,12 @@ struct TripDetailView: View {
                         .foregroundStyle(Color.sunAccent)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink { TripTodayView(trip: trip) } label: {
+                    Image(systemName: "calendar.day.timeline.left")
+                        .foregroundStyle(Color.sunAccent)
+                }
+            }
         }
         .sheet(item: $detailItem) { item in
             ItemDetailSheet(item: item, userLocation: userLocation)

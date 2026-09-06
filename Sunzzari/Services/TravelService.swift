@@ -428,7 +428,12 @@ final class TravelService: @unchecked Sendable {
                 dateEnd:             extractDateEndString(from: props["Date"]),
                 assignedToDate:      extractDateString(from: props["Assigned to Date"]),
                 assignedToDateEnd:   extractDateEndString(from: props["Assigned to Date"]),
+                timeText:            extractRichText(from: props["Time"]) ?? "",
+                address:             extractRichText(from: props["Address"]) ?? "",
+                confirmationNumber:  extractRichText(from: props["Confirmation #"]) ?? "",
+                bookedVia:           extractRichText(from: props["Booked Via"]) ?? "",
                 reservationRequired: checkbox,
+                reservationMade:     (props["Reservation Made"] as? [String: Any])?["checkbox"] as? Bool ?? false,
                 tripRelationID:      linkedId
             )
         }

@@ -15,12 +15,24 @@ struct TripItem: Identifiable, Codable {
     var dateEnd: String?
     var assignedToDate: String?
     var assignedToDateEnd: String?
+    /// Notion `Time`: free text, a clock time or a rough word. See TripTime.
+    var timeText: String = ""
+    var address: String = ""
+    var confirmationNumber: String = ""
+    var bookedVia: String = ""
     var reservationRequired: Bool
+    var reservationMade: Bool = false
     var tripRelationID: String?
     var latitude: Double?
     var longitude: Double?
 
     var hasCoordinates: Bool { latitude != nil && longitude != nil }
+
+    /// What to show under the name once you are standing there.
+    var confirmationLine: String? {
+        let parts = [confirmationNumber, bookedVia].filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " - ")
+    }
 
     var displayDate: String? { assignedToDate ?? date }
     var displayDateEnd: String? { assignedToDateEnd ?? dateEnd }

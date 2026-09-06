@@ -18,6 +18,9 @@ struct TodayView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isNewYearsDay = false
+    /// The trip she is on right now, by date. Surfaced at the top of Home so
+    /// today's plan is zero taps away while travelling.
+    @State private var liveTrip: Trip?
 
     // Boop tile state
     @State private var sendingBoop: String? = nil
@@ -65,6 +68,19 @@ struct TodayView: View {
                         skeletonView
                     } else {
                         List {
+                            // ON A TRIP - pinned above everything. During a trip
+                            // this is the only thing she is opening the app for.
+                            if let trip = liveTrip {
+                                Section {
+                                    NavigationLink { TripTodayView(trip: trip) } label: {
+                                        tripBanner(trip)
+                                    }
+                                    .listRowBackground(Color.sunBackground)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
+                                }
+                            }
+
                             // NEW YEAR'S DAY banner (kept above boops so priority-1 Boop
                             // still works on Jan 1 — regression from Session 46 first pass)
                             if isNewYearsDay {
@@ -252,6 +268,7 @@ struct TodayView: View {
         }
         .task { await load() }
         .task { await lists.load() }
+        .task { await loadLiveTrip() }
         .onChange(of: lists.toast) { _, msg in
             guard let msg else { return }
             showToast(msg)
@@ -263,6 +280,33 @@ struct TodayView: View {
     }
 
     // MARK: - Boop grid (3 columns × 2 rows)
+
+    private func tripBanner(_ trip: Trip) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "suitcase.rolling.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.sunBackground)
+                .frame(width: 38, height: 38)
+                .background(Color.sunAccent)
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ON THIS TRIP NOW")
+                    .font(.system(size: 10, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.sunAccent)
+                Text(trip.name)
+                    .font(.system(size: 17, weight: .bold, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                Text("Open today's plan")
+                    .font(.system(.caption, design: .serif))
+                    .foregroundStyle(Color.sunSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.sunAccent.opacity(0.12))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.sunAccent.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
 
     private var boopGrid: some View {
         LazyVGrid(
@@ -481,6 +525,13 @@ struct TodayView: View {
     }
 
     // MARK: - Load
+
+    /// Deliberately independent of load(): a travel fetch that fails must not
+    /// take the rest of Home with it, and the banner is additive.
+    private func loadLiveTrip() async {
+        guard let trips = try? await TravelService.shared.fetchTrips().trips else { return }
+        liveTrip = trips.first { $0.isLiveToday }
+    }
 
     private func load(force: Bool = false) async {
         await DailySetupService.shared.runDailySetup()

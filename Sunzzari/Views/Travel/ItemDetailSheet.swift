@@ -75,7 +75,10 @@ struct ItemDetailSheet: View {
                             badge(priority.rawValue, color: priority.color)
                         }
                         if item.reservationRequired {
-                            badge("Reservation Required", color: Color(hex: "#F97316"))
+                            badge(
+                                item.reservationMade ? "Reservation Made" : "Reservation Required",
+                                color: Color(hex: item.reservationMade ? "#22C55E" : "#F97316")
+                            )
                         }
                     }
 
@@ -84,6 +87,39 @@ struct ItemDetailSheet: View {
                         Label(date, systemImage: "calendar")
                             .font(.system(.subheadline, design: .serif))
                             .foregroundStyle(Color.sunSecondary)
+                    }
+
+                    // Address
+                    if !item.address.isEmpty {
+                        Label(item.address, systemImage: "mappin.and.ellipse")
+                            .font(.system(.subheadline, design: .serif))
+                            .foregroundStyle(Color.sunText)
+                    }
+
+                    // Confirmation number + who it was booked through. These
+                    // live in Notion and were shown nowhere until 2026-09-06.
+                    if let line = item.confirmationLine {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Confirmation")
+                                .font(.system(.caption, design: .serif, weight: .semibold))
+                                .foregroundStyle(Color.sunSecondary)
+                            HStack {
+                                Text(line)
+                                    .font(.system(.subheadline, design: .serif, weight: .semibold))
+                                    .foregroundStyle(Color(hex: "#22C55E"))
+                                    .monospacedDigit()
+                                    .textSelection(.enabled)
+                                if !item.confirmationNumber.isEmpty {
+                                    Button {
+                                        UIPasteboard.general.string = item.confirmationNumber
+                                    } label: {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.system(.caption, design: .serif))
+                                            .foregroundStyle(Color.sunSecondary)
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Notes
@@ -102,7 +138,7 @@ struct ItemDetailSheet: View {
 
                     // Actions
                     HStack(spacing: 12) {
-                        if item.hasCoordinates {
+                        if item.hasCoordinates || !item.address.isEmpty || !item.venue.isEmpty {
                             Button {
                                 openInMaps()
                             } label: {
@@ -163,12 +199,20 @@ struct ItemDetailSheet: View {
     }
 
     private func openInMaps() {
-        guard let lat = item.latitude, let lon = item.longitude else { return }
-        let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-        let placemark = MKPlacemark(coordinate: coord)
-        let mapItem = MKMapItem(placemark: placemark)
-        mapItem.name = item.name
-        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+        if let lat = item.latitude, let lon = item.longitude {
+            let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coord))
+            mapItem.name = item.name
+            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+            return
+        }
+        // No geocode yet. An address or the venue name still gets her there,
+        // which beats a button that does nothing.
+        let target = !item.address.isEmpty ? item.address : (item.venue.isEmpty ? item.name : item.venue)
+        let query = [target, item.legCity].filter { !$0.isEmpty }.joined(separator: ", ")
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "http://maps.apple.com/?q=\(encoded)") else { return }
+        UIApplication.shared.open(url)
     }
 
     private func openInNotion() {

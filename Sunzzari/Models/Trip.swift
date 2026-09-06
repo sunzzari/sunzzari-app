@@ -16,6 +16,7 @@ struct Trip: Identifiable, Codable {
         case booked     = "Booked"
         case inProgress = "In Progress"
         case completed  = "Completed"
+        case cancelled  = "Cancelled"
 
         var sortOrder: Int {
             switch self {
@@ -23,6 +24,7 @@ struct Trip: Identifiable, Codable {
             case .planning:   return 1
             case .booked:     return 2
             case .completed:  return 3
+            case .cancelled:  return 4
             }
         }
 
@@ -32,12 +34,13 @@ struct Trip: Identifiable, Codable {
             case .booked:     return "#F59E0B"
             case .inProgress: return "#22C55E"
             case .completed:  return "#6B7280"
+            case .cancelled:  return "#EF4444"
             }
         }
     }
 
     var sortKey: Int {
-        status?.sortOrder ?? 4
+        status?.sortOrder ?? 5
     }
 
     var departureDateParsed: Date? {

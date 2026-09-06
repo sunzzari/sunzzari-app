@@ -52,6 +52,20 @@ struct TripListView: View {
                             offlineBanner
                         }
 
+                        // The trip she is on (or about to be on) goes above the
+                        // grid. Hunting for it among cards is the problem this
+                        // whole screen family is fixing.
+                        if let featured = trips.first(where: { $0.isLiveToday })
+                            ?? trips.filter({ $0.hasNotStarted })
+                                .sorted(by: { ($0.departureDate ?? "") < ($1.departureDate ?? "") }).first {
+                            NavigationLink { TripTodayView(trip: featured) } label: {
+                                featuredCard(featured)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+                        }
+
                         LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(visibleTrips) { trip in
                                 NavigationLink(destination: TripDetailView(trip: trip)) {
@@ -72,6 +86,37 @@ struct TripListView: View {
         .task {
             await loadTrips()
         }
+    }
+
+    private func featuredCard(_ trip: Trip) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: trip.isLiveToday ? "suitcase.rolling.fill" : "calendar")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.sunBackground)
+                .frame(width: 38, height: 38)
+                .background(Color.sunAccent)
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(trip.isLiveToday ? "ON THIS TRIP NOW" : "UP NEXT")
+                    .font(.system(size: 10, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.sunAccent)
+                Text(trip.name)
+                    .font(.system(size: 17, weight: .bold, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                    .multilineTextAlignment(.leading)
+                Text(trip.isLiveToday ? "Open today's plan" : "Open the day-by-day plan")
+                    .font(.system(.caption, design: .serif))
+                    .foregroundStyle(Color.sunSecondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.sunAccent)
+        }
+        .padding(12)
+        .background(Color.sunAccent.opacity(0.12))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.sunAccent.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var offlineBanner: some View {
