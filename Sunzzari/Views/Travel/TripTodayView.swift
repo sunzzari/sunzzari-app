@@ -25,6 +25,13 @@ struct TripTodayView: View {
     /// "Confirmed only" on the map. Elisa, 2026-09-06: "let me toggle
     /// 'confirmed only' so i can see everything thats close to me."
     @State private var confirmedOnly = false
+
+    // Ported from TripDetailView before it was retired: this is the one map
+    // now, so everything that lived only there has to live here.
+    @State private var searchQuery = ""
+    @State private var activeLegs: Set<String> = []
+    @State private var nearMe = false
+    @State private var isFullscreen = false
     @State private var mapSelectedID: String?
     @State private var mapBridge = TripMapBridge()
     @State private var showQuickAdd = false
@@ -46,6 +53,28 @@ struct TripTodayView: View {
     /// Resolved in the TRIP's timezone, never the phone's.
     private var tripToday: String { TripDayPlanner.today(in: trip.timeZoneID) }
     private var isToday: Bool { day?.dateString == tripToday }
+
+    private var legs: [String] {
+        Array(Set(items.map(\.legCity).filter { !$0.isEmpty })).sorted()
+    }
+
+    /// One predicate for the map and the lists, so a toggle can never filter
+    /// one and not the other.
+    private func matches(_ item: TripItem) -> Bool {
+        let q = searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        if !activeTypes.isEmpty, !(item.type.map { activeTypes.contains($0) } ?? false) { return false }
+        if !activeLegs.isEmpty, !activeLegs.contains(item.legCity) { return false }
+        if confirmedOnly, item.status != .confirmed { return false }
+        if !q.isEmpty,
+           !item.name.lowercased().contains(q),
+           !item.venue.lowercased().contains(q),
+           !item.notes.lowercased().contains(q) { return false }
+        if nearMe {
+            guard let loc = userLocation, let lat = item.latitude, let lon = item.longitude,
+                  loc.distance(from: CLLocation(latitude: lat, longitude: lon)) <= 5000 else { return false }
+        }
+        return true
+    }
 
     private var itineraryURLString: String {
         if let u = trip.itineraryURL, !u.isEmpty { return u }
@@ -82,11 +111,6 @@ struct TripTodayView: View {
                     Image(systemName: "plus").foregroundStyle(Color.sunAccent)
                 }
                 .disabled(day == nil)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { TripDetailView(trip: trip) } label: {
-                    Image(systemName: "map").foregroundStyle(Color.sunAccent)
-                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -161,6 +185,7 @@ struct TripTodayView: View {
 
     private var content: some View {
         VStack(spacing: 0) {
+            filterBar
             dayStrip
 
             ScrollView {
@@ -196,12 +221,71 @@ struct TripTodayView: View {
         }
     }
 
+    /// Search and Near me. Both came from the trip map, which no longer exists.
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sunSecondary)
+                TextField("Search this trip", text: $searchQuery)
+                    .font(.system(size: 13, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                    .autocorrectionDisabled()
+                if !searchQuery.isEmpty {
+                    Button { searchQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sunSecondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.sunSurface)
+            .clipShape(Capsule())
+
+            Button {
+                nearMe.toggle()
+                if nearMe && userLocation == nil { LocationService.shared.requestLocationForNearMe() }
+                mapSelectedID = nil
+            } label: {
+                Text(nearMe ? "Near me" : "Near me")
+                    .font(.system(size: 12, weight: .semibold, design: .serif))
+                    .foregroundStyle(nearMe ? Color.sunBackground : Color.sunSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(nearMe ? Color(hex: "#3B82F6") : Color.sunSurface)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
     // MARK: - Day strip
 
     private var dayStrip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
+                    if let todayIndex = plans.firstIndex(where: { $0.dateString == tripToday }) {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.15)) { selectedIndex = todayIndex }
+                        } label: {
+                            Text("Today")
+                                .font(.system(size: 13, weight: .semibold, design: .serif))
+                                .foregroundStyle(selectedIndex == todayIndex ? Color.sunBackground : Color.sunAccent)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .background(selectedIndex == todayIndex ? Color.sunAccent : Color.sunAccent.opacity(0.18))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                    }
                     ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
                         let selected = index == selectedIndex
                         let today = plan.dateString == tripToday
@@ -368,7 +452,7 @@ struct TripTodayView: View {
     /// What is actually settled today. Confirmed only, by her instruction.
     @ViewBuilder
     private func confirmedSection(_ day: TripDayPlanner.DayPlan) -> some View {
-        let confirmed = day.scheduled.filter { $0.item.status == .confirmed }
+        let confirmed = day.scheduled.filter { $0.item.status == .confirmed && matches($0.item) }
         let showsTime = confirmed.contains { $0.time.label != nil }
         let dayDone = day.dateString < tripToday
 
@@ -387,8 +471,8 @@ struct TripTodayView: View {
     /// candidates. Lives BELOW the map.
     @ViewBuilder
     private func candidatesSection(_ day: TripDayPlanner.DayPlan) -> some View {
-        let rest = day.scheduled.filter { $0.item.status != .confirmed }
-        let others = day.options
+        let rest = day.scheduled.filter { $0.item.status != .confirmed && matches($0.item) }
+        let others = day.options.filter(matches)
         let showsTime = rest.contains { $0.time.label != nil }
 
         if !rest.isEmpty || !others.isEmpty {
@@ -525,9 +609,7 @@ struct TripTodayView: View {
     @ViewBuilder
     private func mapSection(_ day: TripDayPlanner.DayPlan) -> some View {
         let pool = day.scheduled.map(\.item) + day.options
-        let shown = pool
-            .filter { activeTypes.isEmpty || ($0.type.map { activeTypes.contains($0) } ?? false) }
-            .filter { !confirmedOnly || $0.status == .confirmed }
+        let shown = pool.filter(matches)
         let annotations = shown.compactMap { item -> TripItemAnnotation? in
             guard let lat = item.latitude, let lon = item.longitude else { return nil }
             return TripItemAnnotation(item: item, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
@@ -567,7 +649,7 @@ struct TripTodayView: View {
                 ZStack(alignment: .topTrailing) {
                     TripMKMap(
                         annotations: annotations,
-                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(confirmedOnly)",
+                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(activeLegs.sorted().joined(separator: ","))|\(confirmedOnly)|\(nearMe)|\(searchQuery)",
                         selectedID: $mapSelectedID,
                         bridge: mapBridge,
                         onOpenDetail: { detailItem = $0 },
@@ -607,6 +689,22 @@ struct TripTodayView: View {
         }
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                ForEach(legs, id: \.self) { leg in
+                    let on = activeLegs.contains(leg)
+                    Button {
+                        if on { activeLegs.remove(leg) } else { activeLegs.insert(leg) }
+                        mapSelectedID = nil
+                    } label: {
+                        Text(leg)
+                            .font(.system(size: 12, weight: .medium, design: .serif))
+                            .foregroundStyle(on ? Color.sunBackground : Color(hex: "#818CF8"))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(on ? Color(hex: "#6366F1") : Color.sunSurface)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
                 ForEach(present, id: \.self) { type in
                     let on = activeTypes.contains(type)
                     Button {

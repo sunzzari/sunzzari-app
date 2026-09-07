@@ -68,7 +68,7 @@ struct TripListView: View {
 
                         LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(visibleTrips) { trip in
-                                NavigationLink(destination: TripDetailView(trip: trip)) {
+                                NavigationLink(destination: TripTodayView(trip: trip)) {
                                     TripCard(trip: trip, gradient: gradients[stableGradientIndex(trip.id)])
                                 }
                                 .buttonStyle(.plain)
