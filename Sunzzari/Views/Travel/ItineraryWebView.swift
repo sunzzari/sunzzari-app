@@ -17,15 +17,33 @@ struct ItineraryWebView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var loading = true
+    @State private var failed = false
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                if let url = URL(string: urlString) {
-                    ItineraryWebRepresentable(url: url, isLoading: $loading)
+                if let url = URL(string: urlString), !failed {
+                    ItineraryWebRepresentable(url: url, isLoading: $loading, didFail: $failed)
                         .ignoresSafeArea(edges: .bottom)
+                } else if failed {
+                    // Dropping the old offline message when this became a live
+                    // URL left a blank screen with no explanation. Say what is
+                    // wrong and point at the screen that does work offline.
+                    VStack(spacing: 10) {
+                        Image(systemName: "wifi.slash")
+                            .font(.title)
+                            .foregroundStyle(Color.sunSecondary)
+                        Text("The full itinerary needs a connection")
+                            .font(.system(.subheadline, design: .serif))
+                            .foregroundStyle(Color.sunText)
+                        Text("It is a live map, so it cannot be cached. Today's plan works offline - go back and use the day view.")
+                            .font(.system(.caption, design: .serif))
+                            .foregroundStyle(Color.sunSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
                 } else {
                     Text("That itinerary link is not a valid URL.")
                         .font(.system(.subheadline, design: .serif))
@@ -53,8 +71,11 @@ struct ItineraryWebView: View {
 private struct ItineraryWebRepresentable: UIViewRepresentable {
     let url: URL
     @Binding var isLoading: Bool
+    @Binding var didFail: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator(isLoading: $isLoading, host: url.host) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isLoading: $isLoading, didFail: $didFail, host: url.host)
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
@@ -72,10 +93,12 @@ private struct ItineraryWebRepresentable: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         @Binding var isLoading: Bool
+        @Binding var didFail: Bool
         private let host: String?
 
-        init(isLoading: Binding<Bool>, host: String?) {
+        init(isLoading: Binding<Bool>, didFail: Binding<Bool>, host: String?) {
             _isLoading = isLoading
+            _didFail = didFail
             self.host = host
         }
 
@@ -85,10 +108,12 @@ private struct ItineraryWebRepresentable: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             isLoading = false
+            didFail = true
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             isLoading = false
+            didFail = true
         }
 
         func webView(_ webView: WKWebView,

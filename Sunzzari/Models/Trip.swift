@@ -10,6 +10,9 @@ struct Trip: Identifiable, Codable {
     var status: TripStatus?
     var coverImageURL: String?
     var itineraryURL: String?
+    /// IANA zone for the trip, e.g. "America/Denver". Blank falls back to the
+    /// device zone. See TripDayPlanner.today(in:).
+    var timeZoneID: String = ""
 
     enum TripStatus: String, Codable, CaseIterable {
         case planning   = "Planning"

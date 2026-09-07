@@ -150,11 +150,37 @@ enum TripDayPlanner {
 
     // MARK: - Which day to open on
 
-    /// Today as yyyy-MM-dd in the DEVICE's timezone, which is where she is.
-    static var todayString: String {
+    /// Today as yyyy-MM-dd in the DEVICE's timezone.
+    static var todayString: String { today(in: nil) }
+
+    /// Today as yyyy-MM-dd in the TRIP's timezone.
+    ///
+    /// Elisa, 2026-09-06: "the dimming should always happen at the timezone of
+    /// the trip". The device is not a safe proxy - checking the plan from LA
+    /// the night before a flight, or on a phone that has not switched over
+    /// yet, both give the wrong day and would dim a day that has not happened.
+    ///
+    /// A blank or unrecognised zone falls back to the device, which is the old
+    /// behaviour and correct for a trip with no zone recorded.
+    static func today(in timeZoneID: String?) -> String {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        if let id = timeZoneID, !id.isEmpty, let tz = TimeZone(identifier: id) {
+            fmt.timeZone = tz
+        }
         return fmt.string(from: Date())
+    }
+
+    /// Is this day finished, in the trip's timezone?
+    ///
+    /// Only a Confirmed item on a finished day counts as done - Elisa,
+    /// 2026-09-06: "only dim what we have certainly already done (confirmed)".
+    /// Assigned and Shortlisted are intentions, and a plan is not evidence it
+    /// happened. Multi-night hotels are expanded per night, so last night dims
+    /// while tonight does not, with no special case.
+    static func isDone(dayString: String, status: TripItem.ItemStatus?, today: String) -> Bool {
+        status == .confirmed && dayString < today
     }
 
     /// The day to open on: today if the trip covers it, else the next day of
@@ -163,9 +189,9 @@ enum TripDayPlanner {
     /// DATE-BASED ON PURPOSE. Trip Status is not usable for this: on
     /// 2026-09-06, mid-way through Park City (Sep 4-7), that trip's Notion
     /// Trip Status still read "Planning". Nothing flips it to "In Progress".
-    static func openingIndex(in plans: [DayPlan]) -> Int {
+    static func openingIndex(in plans: [DayPlan], timeZoneID: String? = nil) -> Int {
         guard !plans.isEmpty else { return 0 }
-        let today = todayString
+        let today = today(in: timeZoneID)
         if let exact = plans.firstIndex(where: { $0.dateString == today }) { return exact }
         if let upcoming = plans.firstIndex(where: { $0.dateString > today }) { return upcoming }
         return plans.count - 1
@@ -177,12 +203,14 @@ extension Trip {
     /// this cannot key off `status`.
     var isLiveToday: Bool {
         guard status != .completed, status != .cancelled, let start = departureDate else { return false }
-        let today = TripDayPlanner.todayString
+        // Judged in the TRIP's zone: "am I on this trip today" is a question
+        // about where the trip is, not where the phone is.
+        let today = TripDayPlanner.today(in: timeZoneID)
         return start <= today && (returnDate ?? start) >= today
     }
 
     var hasNotStarted: Bool {
         guard status != .completed, status != .cancelled, let start = departureDate else { return false }
-        return start > TripDayPlanner.todayString
+        return start > TripDayPlanner.today(in: timeZoneID)
     }
 }

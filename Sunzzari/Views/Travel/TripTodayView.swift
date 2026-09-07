@@ -31,7 +31,9 @@ struct TripTodayView: View {
         plans.indices.contains(selectedIndex) ? plans[selectedIndex] : nil
     }
 
-    private var isToday: Bool { day?.dateString == TripDayPlanner.todayString }
+    /// Resolved in the TRIP's timezone, never the phone's.
+    private var tripToday: String { TripDayPlanner.today(in: trip.timeZoneID) }
+    private var isToday: Bool { day?.dateString == tripToday }
 
     private var itineraryURLString: String {
         if let u = trip.itineraryURL, !u.isEmpty { return u }
@@ -157,7 +159,8 @@ struct TripTodayView: View {
                 HStack(spacing: 6) {
                     ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
                         let selected = index == selectedIndex
-                        let today = plan.dateString == TripDayPlanner.todayString
+                        let today = plan.dateString == tripToday
+                        let past = plan.dateString < tripToday
                         Button {
                             withAnimation(.easeOut(duration: 0.15)) { selectedIndex = index }
                         } label: {
@@ -169,7 +172,7 @@ struct TripTodayView: View {
                                 Text(shortDate(plan.dateString))
                                     .font(.system(size: 14, weight: .semibold, design: .serif))
                             }
-                            .foregroundStyle(selected ? Color.sunBackground : Color.sunText.opacity(0.7))
+                            .foregroundStyle(selected ? Color.sunBackground : Color.sunText.opacity(past ? 0.35 : 0.7))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(selected ? Color.sunAccent : Color.sunSurface)
@@ -280,10 +283,12 @@ struct TripTodayView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    private var isPastDay: Bool { (day?.dateString ?? "") < tripToday }
+
     private func sleepingCard(_ hotel: TripItem) -> some View {
         Button { detailItem = hotel } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Sleeping tonight")
+                Text(isPastDay ? "Stayed here" : "Sleeping tonight")
                     .font(.system(size: 10, weight: .semibold, design: .serif))
                     .textCase(.uppercase)
                     .foregroundStyle(Color(hex: "#3B82F6"))
@@ -310,6 +315,7 @@ struct TripTodayView: View {
             .background(Color(hex: "#3B82F6").opacity(0.10))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#3B82F6").opacity(0.3), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .opacity(isPastDay ? 0.5 : 1)
         }
         .buttonStyle(.plain)
     }
@@ -326,8 +332,12 @@ struct TripTodayView: View {
             // most days currently have no times at all.
             let showsTime = day.scheduled.contains { $0.time.label != nil }
 
+            // Dimmed ONLY when Confirmed and the day is finished in the trip's
+            // timezone. A plan is not evidence that it happened.
+            let dayDone = day.dateString < tripToday
+
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(day.timeline) { itemRow($0, showsTime: showsTime) }
+                ForEach(day.timeline) { itemRow($0, showsTime: showsTime, dayDone: dayDone) }
 
                 // Only worth a heading when there is a timeline to distinguish
                 // it from. With no times entered, everything lands here and the
@@ -340,13 +350,14 @@ struct TripTodayView: View {
                         .padding(.top, 14)
                         .padding(.bottom, 4)
                 }
-                ForEach(day.anytime) { itemRow($0, showsTime: showsTime) }
+                ForEach(day.anytime) { itemRow($0, showsTime: showsTime, dayDone: dayDone) }
             }
         }
     }
 
-    private func itemRow(_ planned: TripDayPlanner.PlannedItem, showsTime: Bool) -> some View {
+    private func itemRow(_ planned: TripDayPlanner.PlannedItem, showsTime: Bool, dayDone: Bool) -> some View {
         let item = planned.item
+        let done = dayDone && item.status == .confirmed
         return Button { detailItem = item } label: {
             HStack(alignment: .top, spacing: 8) {
                 if showsTime {
@@ -368,6 +379,7 @@ struct TripTodayView: View {
                     Text(item.name)
                         .font(.system(size: 15, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.sunText)
+                        .strikethrough(done, color: Color.sunSecondary)
                         .multilineTextAlignment(.leading)
                     if let line = locationLine(item) {
                         Text(line)
@@ -391,6 +403,7 @@ struct TripTodayView: View {
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 8)
+            .opacity(done ? 0.4 : 1)
         }
         .buttonStyle(.plain)
     }
@@ -705,7 +718,7 @@ struct TripTodayView: View {
         if let previousDate, let index = plans.firstIndex(where: { $0.dateString == previousDate }) {
             selectedIndex = index
         } else {
-            selectedIndex = TripDayPlanner.openingIndex(in: plans)
+            selectedIndex = TripDayPlanner.openingIndex(in: plans, timeZoneID: trip.timeZoneID)
         }
     }
 }

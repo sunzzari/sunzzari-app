@@ -521,7 +521,8 @@ final class TravelService: @unchecked Sendable {
                 returnDate:     extractDateString(from: props["Return Date"]),
                 status:         statusStr.flatMap { Trip.TripStatus(rawValue: $0) },
                 coverImageURL:  coverURL,
-                itineraryURL:   extractURL(from: props["Itinerary URL"])
+                itineraryURL:   extractURL(from: props["Itinerary URL"]),
+                timeZoneID:     extractRichText(from: props["Time Zone"]) ?? ""
             )
         }.sorted { a, b in
             let today = Date()
