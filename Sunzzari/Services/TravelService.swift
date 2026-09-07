@@ -251,6 +251,13 @@ final class TravelService: @unchecked Sendable {
     // name as fallback for items without a Provider/Venue. Returns nil only
     // when every query exhausted; caller caches success or failure.
     private static func geocodeItem(_ item: TripItem) async -> (Double, Double)? {
+        // Most specific source first. An Address is exact; a venue is usually
+        // right; the item's own name is the last resort but still far better
+        // than the city, which is never an item's location.
+        if !item.address.isEmpty,
+           let coords = await geocodeViaVercel(query: item.address, city: "") {
+            return coords
+        }
         if !item.venue.isEmpty,
            let coords = await geocodeViaVercel(query: item.venue, city: item.legCity) {
             return coords
