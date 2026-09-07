@@ -37,6 +37,8 @@ struct TripDetailView: View {
 
     // Detail sheet
     @State private var detailItem: TripItem?
+    // Pins sharing one coordinate: zooming cannot split them, so pick from a list.
+    @State private var clusterItems: ClusterSelection?
 
     // AI assistant
     @State private var showAssistant = false
@@ -176,6 +178,12 @@ struct TripDetailView: View {
         }
         .sheet(item: $detailItem) { item in
             ItemDetailSheet(item: item, userLocation: userLocation)
+        }
+        .sheet(item: $clusterItems) { selection in
+            ClusterPickerSheet(items: selection.items) { item in
+                clusterItems = nil
+                detailItem = item
+            }
         }
         .sheet(isPresented: $showAssistant) {
             TripAssistantSheet(
@@ -346,6 +354,7 @@ struct TripDetailView: View {
                 bridge: bridge,
                 fitIncludesUser: nearMeActive,
                 onOpenDetail: { item in detailItem = item },
+                onOpenCluster: { clusterItems = ClusterSelection(items: $0) },
                 highlightedItemIds: highlightedItemIds
             )
             .ignoresSafeArea(edges: .bottom)

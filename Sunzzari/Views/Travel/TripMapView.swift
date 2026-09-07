@@ -90,11 +90,15 @@ struct TripMKMap: UIViewRepresentable {
     // to open ItemDetailSheet, mirroring the second-tap behavior on rows.
     var onOpenDetail: ((TripItem) -> Void)?
 
+    // Fired when a tapped cluster CANNOT be split by zooming, because its
+    // members sit on the same coordinate. Parent shows a picker instead.
+    var onOpenCluster: (([TripItem]) -> Void)?
+
     // Item IDs returned by the AI assistant — rendered in a distinct blue tint.
     var highlightedItemIds: Set<String> = []
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail)
+        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
 
     static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
@@ -212,6 +216,7 @@ struct TripMKMap: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate, CLLocationManagerDelegate {
         @Binding var selectedID: String?
         var onOpenDetail: ((TripItem) -> Void)?
+        var onOpenCluster: (([TripItem]) -> Void)?
         var isUpdating = false
         var hasFittedInitially = false
         var lastFilterKey: String = ""
@@ -225,10 +230,19 @@ struct TripMKMap: UIViewRepresentable {
         private var lastDeviceHeading: CLLocationDirection = 0
         private var lastHeadingAccuracy: CLLocationDirection = 27.5
 
-        init(selectedID: Binding<String?>, onOpenDetail: ((TripItem) -> Void)? = nil) {
+        init(
+            selectedID: Binding<String?>,
+            onOpenDetail: ((TripItem) -> Void)? = nil,
+            onOpenCluster: (([TripItem]) -> Void)? = nil
+        ) {
             _selectedID = selectedID
             self.onOpenDetail = onOpenDetail
+            self.onOpenCluster = onOpenCluster
         }
+
+        /// Members closer together than this can never be visually separated,
+        /// so MapKit re-clusters them at every zoom level.
+        private static let coincidentThresholdMeters: CLLocationDistance = 30
 
         func startHeading() {
             guard CLLocationManager.headingAvailable() else { return }
@@ -347,6 +361,20 @@ struct TripMKMap: UIViewRepresentable {
             return v
         }
 
+        /// Greatest distance between any two members, in meters.
+        private func spreadMeters(_ coords: [CLLocationCoordinate2D]) -> CLLocationDistance {
+            guard coords.count > 1 else { return 0 }
+            var maxDistance: CLLocationDistance = 0
+            for i in 0..<coords.count {
+                for j in (i + 1)..<coords.count {
+                    let a = CLLocation(latitude: coords[i].latitude, longitude: coords[i].longitude)
+                    let b = CLLocation(latitude: coords[j].latitude, longitude: coords[j].longitude)
+                    maxDistance = max(maxDistance, a.distance(from: b))
+                }
+            }
+            return maxDistance
+        }
+
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
             // Cluster tap → zoom into the cluster's member bounds. MapKit's
             // default behavior on a cluster annotation tap is to do nothing,
@@ -355,6 +383,22 @@ struct TripMKMap: UIViewRepresentable {
             if let cluster = view.annotation as? MKClusterAnnotation {
                 let coords = cluster.memberAnnotations.map(\.coordinate)
                 guard !coords.isEmpty else { return }
+
+                // Coincident members can NEVER be split by zooming - MapKit
+                // re-clusters them at every level, so the old zoom was a dead
+                // end you could not escape. This is the common case, not an
+                // edge case: six Park City items share the "Montage Deer
+                // Valley" geocode and three share "Main Street". Hand them to
+                // the parent as a list instead.
+                if let onOpenCluster, spreadMeters(coords) < Self.coincidentThresholdMeters {
+                    let items = cluster.memberAnnotations.compactMap { ($0 as? TripItemAnnotation)?.item }
+                    if !items.isEmpty {
+                        mapView.deselectAnnotation(cluster, animated: false)
+                        onOpenCluster(items)
+                        return
+                    }
+                }
+
                 var rect = MKMapRect.null
                 for c in coords {
                     let p = MKMapPoint(c)

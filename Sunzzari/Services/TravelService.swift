@@ -71,40 +71,10 @@ final class TravelService: @unchecked Sendable {
 
     // MARK: - Itinerary HTML cache (live route, cached for offline)
 
-    // SHA-256, NOT String.hashValue: hashValue is seed-randomized per process
-    // launch, so a hashValue-derived filename written in one session can never
-    // be found in the next — which silently broke offline itinerary caching.
-    private func itineraryCacheName(_ urlString: String) -> String {
-        let digest = SHA256.hash(data: Data(urlString.utf8))
-        let hex = digest.prefix(12).map { String(format: "%02x", $0) }.joined()
-        return "itinerary_\(hex)"
-    }
-
-    func itineraryDiskCacheHTML(urlString: String) -> String? {
-        let url = diskCacheDir.appendingPathComponent("sunzzari_travel_\(itineraryCacheName(urlString)).html")
-        return try? String(contentsOf: url, encoding: .utf8)
-    }
-
-    /// Fetch the live itinerary HTML, cache to disk on success, fall back to the
-    /// cached copy when offline. Returns nil only when neither network nor cache
-    /// has anything to show.
-    func fetchItineraryHTML(urlString: String) async -> String? {
-        guard let url = URL(string: urlString) else { return nil }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8 // fail fast to the disk cache when offline
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let html = String(data: data, encoding: .utf8) else {
-                return itineraryDiskCacheHTML(urlString: urlString)
-            }
-            let cacheURL = diskCacheDir.appendingPathComponent("sunzzari_travel_\(itineraryCacheName(urlString)).html")
-            try? html.write(to: cacheURL, atomically: true, encoding: .utf8)
-            return html
-        } catch {
-            return itineraryDiskCacheHTML(urlString: urlString)
-        }
-    }
+    // The itinerary HTML disk cache was REMOVED 2026-09-06. That page became a
+    // filterable map that needs its JavaScript, so a saved HTML string re-rendered
+    // with loadHTMLString would show a dead page. ItineraryWebView now loads the
+    // live URL, and offline is TripTodayView's job: native, disk-cached, own map.
 
     // MARK: - Headers
 
@@ -316,6 +286,178 @@ final class TravelService: @unchecked Sendable {
         } catch {
             return nil
         }
+    }
+
+    // MARK: - Create a trip item (the only write path in this service)
+
+    enum TripItemWriteError: LocalizedError {
+        case offline
+        case http(Int)
+        case readBackFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .offline:
+                return "No connection. Nothing was saved - your text is still here, try again when you have signal."
+            case .http(let code):
+                return "Notion rejected the write (HTTP \(code)). Nothing was saved."
+            case .readBackFailed(let detail):
+                return "Saved, but it did not read back correctly: \(detail). Check it in Notion."
+            }
+        }
+    }
+
+    /// Where a quick-added item lands. These two are the only options the app
+    /// offers: `Confirmed` is deliberately absent, because a trip item is never
+    /// upgraded to Confirmed without explicit approval and a phone form cannot
+    /// carry that decision.
+    enum QuickAddPlacement {
+        /// Planned for a specific day. Status `Assigned` REQUIRES `Assigned to Date`.
+        case onDay(String)
+        /// Captured, no date yet. Status `Shortlisted`, no date.
+        case saveForLater
+
+        var status: TripItem.ItemStatus {
+            switch self {
+            case .onDay:        return .assigned
+            case .saveForLater: return .shortlisted
+            }
+        }
+
+        var date: String? {
+            switch self {
+            case .onDay(let d): return d
+            case .saveForLater: return nil
+            }
+        }
+    }
+
+    /// Creates a Trip Item in Notion and reads it back before reporting success.
+    ///
+    /// The read-back is not belt-and-braces: a 200 from Notion says the request
+    /// was accepted, not that Status and `Assigned to Date` ended up consistent,
+    /// and an Assigned item with no date silently vanishes from the By Day view,
+    /// the itinerary and this screen.
+    func createTripItem(
+        tripId: String,
+        name: String,
+        type: TripItem.ItemType,
+        placement: QuickAddPlacement,
+        legCity: String,
+        timeText: String,
+        notes: String
+    ) async throws -> TripItem {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { throw TripItemWriteError.readBackFailed("empty name") }
+
+        var properties: [String: Any] = [
+            "Name": ["title": [["text": ["content": trimmedName]]]],
+            "Type": ["select": ["name": type.rawValue]],
+            "Status": ["select": ["name": placement.status.rawValue]],
+            "Priority": ["select": ["name": TripItem.ItemPriority.high.rawValue]],
+            "Trip": ["relation": [["id": tripId]]],
+        ]
+        if let date = placement.date {
+            properties["Assigned to Date"] = ["date": ["start": date]]
+        }
+        if !legCity.isEmpty {
+            properties["Leg / City"] = ["rich_text": [["text": ["content": legCity]]]]
+        }
+        let trimmedTime = timeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedTime.isEmpty {
+            properties["Time"] = ["rich_text": [["text": ["content": trimmedTime]]]]
+        }
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedNotes.isEmpty {
+            properties["Notes"] = ["rich_text": [["text": ["content": trimmedNotes]]]]
+        }
+        // Link the leg ONLY on an exact match against a leg that already exists.
+        // Legs are a fixed universe set at trip start; blank beats a wrong link.
+        if let legID = await matchingLegID(tripId: tripId, legCity: legCity) {
+            properties["Leg"] = ["relation": [["id": legID]]]
+        }
+
+        let body: [String: Any] = [
+            "parent": ["database_id": Constants.Travel.itemsDBID],
+            "properties": properties,
+        ]
+
+        let url = URL(string: "\(baseURL)/pages")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            // Fail loud. Never queue silently: a write she believes happened and
+            // cannot find later is worse than one that plainly refused.
+            throw TripItemWriteError.offline
+        }
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw TripItemWriteError.http((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let newID = json["id"] as? String else {
+            throw TripItemWriteError.readBackFailed("no page id came back")
+        }
+
+        // Read-back gate.
+        let created = try await fetchSingleItem(pageID: newID, tripId: tripId)
+        guard let created else { throw TripItemWriteError.readBackFailed("could not re-read the new item") }
+        guard created.status == placement.status else {
+            throw TripItemWriteError.readBackFailed("status is \(created.status?.rawValue ?? "blank")")
+        }
+        if placement.date != nil, created.displayDate == nil {
+            throw TripItemWriteError.readBackFailed("no date landed on an Assigned item")
+        }
+
+        invalidateItems(tripId: tripId)
+        return created
+    }
+
+    /// Exact-match a leg by name for the given trip. Returns nil rather than
+    /// guessing, and NEVER creates a leg.
+    private func matchingLegID(tripId: String, legCity: String) async -> String? {
+        let needle = legCity.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return nil }
+        let filter: [String: Any] = ["property": "Trip", "relation": ["contains": tripId]]
+        guard let data = try? await queryDatabase(
+            id: Constants.Travel.legsDBID,
+            sorts: [["property": "Leg Order", "direction": "ascending"]],
+            filter: filter
+        ),
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let results = json["results"] as? [[String: Any]] else { return nil }
+
+        for page in results {
+            guard let id = page["id"] as? String,
+                  let props = page["properties"] as? [String: Any] else { continue }
+            let candidates = [
+                extractTitle(from: props["Leg Name"]),
+                extractRichText(from: props["City / Region"]),
+            ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            if candidates.contains(needle) { return id }
+        }
+        return nil
+    }
+
+    /// Re-reads one page and parses it with the same parser as a list fetch, so
+    /// the read-back tests the real code path rather than a special case.
+    private func fetchSingleItem(pageID: String, tripId: String) async throws -> TripItem? {
+        let url = URL(string: "\(baseURL)/pages/\(pageID)")!
+        var request = URLRequest(url: url)
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw TripItemWriteError.http((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let page = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        let wrapped = try JSONSerialization.data(withJSONObject: ["results": [page]])
+        return parseItems(from: wrapped, tripId: tripId).first
     }
 
     // MARK: - Notion API

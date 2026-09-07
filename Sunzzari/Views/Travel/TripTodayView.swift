@@ -21,6 +21,11 @@ struct TripTodayView: View {
     @State private var detailItem: TripItem?
     @State private var showItinerary = false
     @State private var userLocation: CLLocation?
+    @State private var activeTypes: Set<TripItem.ItemType> = []
+    @State private var mapSelectedID: String?
+    @State private var mapBridge = TripMapBridge()
+    @State private var showQuickAdd = false
+    @State private var clusterItems: ClusterSelection?
 
     private var day: TripDayPlanner.DayPlan? {
         plans.indices.contains(selectedIndex) ? plans[selectedIndex] : nil
@@ -53,6 +58,12 @@ struct TripTodayView: View {
         .toolbarBackground(Color.sunSurface, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button { showQuickAdd = true } label: {
+                    Image(systemName: "plus").foregroundStyle(Color.sunAccent)
+                }
+                .disabled(day == nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { TripDetailView(trip: trip) } label: {
                     Image(systemName: "map").foregroundStyle(Color.sunAccent)
                 }
@@ -75,7 +86,28 @@ struct TripTodayView: View {
             }
         }
         .sheet(item: $detailItem) { ItemDetailSheet(item: $0, userLocation: userLocation) }
+        .sheet(item: $clusterItems) { selection in
+            ClusterPickerSheet(items: selection.items) { item in
+                clusterItems = nil
+                detailItem = item
+            }
+        }
         .sheet(isPresented: $showItinerary) { ItineraryWebView(urlString: itineraryURLString) }
+        .sheet(isPresented: $showQuickAdd) {
+            if let day {
+                QuickAddItemSheet(
+                    trip: trip,
+                    dayString: day.dateString,
+                    legCity: day.legCity,
+                    onCreated: { _ in
+                        // Re-read from Notion rather than splicing the returned
+                        // item in: the day it lands on depends on the planner,
+                        // not on what the form thinks it sent.
+                        Task { await load(force: true) }
+                    }
+                )
+            }
+        }
         .task { await load() }
         .onAppear {
             userLocation = LocationService.shared.lastKnownCoordinate.map {
@@ -103,7 +135,7 @@ struct TripTodayView: View {
                         if let hotel = day.hotel { sleepingCard(hotel) }
                         scheduleSection(day)
                         nearbySection(day)
-                        if !day.options.isEmpty { optionsSection(day.options) }
+                        mapSection(day)
                         tomorrowSection()
                     }
 
@@ -412,13 +444,107 @@ struct TripTodayView: View {
             .map { $0 }
     }
 
-    private func optionsSection(_ options: [TripItem]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("If you have time")
-                .font(.system(size: 10, weight: .semibold, design: .serif))
-                .textCase(.uppercase)
-                .foregroundStyle(Color.sunSecondary)
-            FlowChips(items: options) { detailItem = $0 }
+    /// Everything on this day, on a map, filterable by type.
+    ///
+    /// Replaces the old "if you have time" chip wall, which rendered Park City's
+    /// 20 undated candidates as an undifferentiated block of pills. "What else
+    /// is around" is a spatial question and the app already has a good map.
+    ///
+    /// Undated candidates already fan out across every day of their leg in
+    /// TripDayPlanner, so the day's pins are effectively the leg's pins - which
+    /// is what "around the areas where I'll be going" means.
+    @ViewBuilder
+    private func mapSection(_ day: TripDayPlanner.DayPlan) -> some View {
+        let pool = day.scheduled.map(\.item) + day.options
+        let shown = pool.filter { activeTypes.isEmpty || ($0.type.map { activeTypes.contains($0) } ?? false) }
+        let annotations = shown.compactMap { item -> TripItemAnnotation? in
+            guard let lat = item.latitude, let lon = item.longitude else { return nil }
+            return TripItemAnnotation(item: item, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        }
+        let unmapped = shown.count - annotations.count
+
+        if !pool.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Around you")
+                        .font(.system(size: 10, weight: .semibold, design: .serif))
+                        .textCase(.uppercase)
+                        .foregroundStyle(Color.sunSecondary)
+                    Spacer()
+                    if !activeTypes.isEmpty {
+                        Button("Clear") { activeTypes.removeAll() }
+                            .font(.system(size: 11, design: .serif))
+                            .foregroundStyle(Color.sunAccent)
+                    }
+                }
+
+                typeToggles(in: pool)
+
+                ZStack(alignment: .topTrailing) {
+                    TripMKMap(
+                        annotations: annotations,
+                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))",
+                        selectedID: $mapSelectedID,
+                        bridge: mapBridge,
+                        onOpenDetail: { detailItem = $0 },
+                        onOpenCluster: { clusterItems = ClusterSelection(items: $0) }
+                    )
+                    .frame(height: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                    Button { mapBridge.fitAll() } label: {
+                        Image(systemName: "scope")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.sunAccent)
+                            .frame(width: 32, height: 32)
+                            .background(Color.sunSurface.opacity(0.9))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
+                }
+
+                // Never silently drop pins. An item with no coordinate is not on
+                // the map, and she should know how many rather than wonder.
+                if unmapped > 0 {
+                    Text("\(unmapped) not on the map yet (no location found)")
+                        .font(.system(size: 11, design: .serif))
+                        .foregroundStyle(Color.sunSecondary)
+                }
+            }
+        }
+    }
+
+    /// Only the types actually present on this day get a chip - a Ferry toggle
+    /// on a Utah ski weekend is noise.
+    private func typeToggles(in pool: [TripItem]) -> some View {
+        let present = TripItem.ItemType.allCases.filter { type in
+            pool.contains { $0.type == type }
+        }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(present, id: \.self) { type in
+                    let on = activeTypes.contains(type)
+                    Button {
+                        if on { activeTypes.remove(type) } else { activeTypes.insert(type) }
+                        mapSelectedID = nil
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: type.sfSymbol)
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(type.rawValue)
+                                .font(.system(size: 12, weight: .medium, design: .serif))
+                        }
+                        .foregroundStyle(on ? Color.sunBackground : type.color)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(on ? type.color : Color.sunSurface)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 1)
         }
     }
 
@@ -584,62 +710,62 @@ struct TripTodayView: View {
     }
 }
 
-/// Wrapping chip row for the "if you have time" pool.
-private struct FlowChips: View {
+/// Wrapper so a plain array can drive `.sheet(item:)`.
+struct ClusterSelection: Identifiable {
+    let id = UUID()
     let items: [TripItem]
-    let onTap: (TripItem) -> Void
-
-    var body: some View {
-        FlowLayout(spacing: 6) {
-            ForEach(items) { item in
-                Button { onTap(item) } label: {
-                    Text(item.name)
-                        .font(.system(size: 13, design: .serif))
-                        .foregroundStyle(Color.sunAccent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.sunSurface)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
 }
 
-/// Minimal wrapping layout. SwiftUI has no built-in flow container, and a
-/// LazyVGrid cannot size columns to the text.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
+/// Shown when several pins sit on the same coordinate and zooming can never
+/// separate them. Six Park City items share the "Montage Deer Valley" geocode,
+/// so without this those items are simply unreachable on the map.
+struct ClusterPickerSheet: View {
+    let items: [TripItem]
+    let onSelect: (TripItem) -> Void
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: maxWidth == .infinity ? x : maxWidth, height: y + rowHeight)
-    }
+    @Environment(\.dismiss) private var dismiss
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
+    var body: some View {
+        NavigationStack {
+            List(items) { item in
+                Button { onSelect(item) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: item.type?.sfSymbol ?? "mappin")
+                            .font(.system(size: 13))
+                            .foregroundStyle(item.type?.color ?? Color.sunSecondary)
+                            .frame(width: 22)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name)
+                                .font(.system(.subheadline, design: .serif))
+                                .foregroundStyle(Color.sunText)
+                                .multilineTextAlignment(.leading)
+                            if let status = item.status {
+                                Text(status.rawValue)
+                                    .font(.system(.caption2, design: .serif))
+                                    .foregroundStyle(status.color)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sunSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.sunSurface)
             }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+            .scrollContentBackground(.hidden)
+            .background(Color.sunBackground)
+            .navigationTitle("\(items.count) in the same spot")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(Color.sunSurface, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }.foregroundStyle(Color.sunAccent)
+                }
+            }
         }
+        .presentationDetents([.medium])
     }
 }

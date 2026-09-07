@@ -31,6 +31,10 @@ enum Constants {
     enum Travel {
         static let tripsDBID = "72792a7e-eb9e-468a-a376-fd1e7284401c"
         static let itemsDBID = "9947ef07-3483-472b-b452-f2ebc23edabe"
+        /// Trip Legs. Read ONLY, to link a quick-added item to a leg that
+        /// already exists. Legs are a fixed universe set at trip start and are
+        /// never created ad-hoc from the app (~/.claude/rules/notion-critical.md).
+        static let legsDBID  = "fee283c0-9ee7-46ff-8758-fbc58fba496d"
         /// Places we want to go, with a month-by-month timing grid.
         /// Inline on the 🦕 Sunzzari page, so it inherits that page's
         /// integration grant the same way the Sunzzari Lists DB does.

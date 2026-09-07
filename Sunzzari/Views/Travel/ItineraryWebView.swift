@@ -1,14 +1,21 @@
 import SwiftUI
 import WebKit
 
-/// Full-screen viewer for a trip's live itinerary page (served from
-/// elisa-travel-map). Fetches the HTML, caches it to disk for offline viewing,
-/// and renders it in a WKWebView. Map links (Google Maps) open externally.
+/// Full-screen viewer for a trip's itinerary page (served from
+/// elisa-travel-map).
+///
+/// Loads the live URL rather than a cached HTML string. That page became a
+/// filterable map on 2026-09-06, so it needs its JavaScript; re-rendering a
+/// saved copy with `loadHTMLString` would show a dead page with no map and no
+/// working filters. The old "open it once and it is cached here" promise went
+/// with it, and saying it would now be a lie.
+///
+/// Offline is `TripTodayView`'s job: it is native, it caches the trip to disk,
+/// and it has its own map.
 struct ItineraryWebView: View {
     let urlString: String
 
     @Environment(\.dismiss) private var dismiss
-    @State private var html: String?
     @State private var loading = true
 
     var body: some View {
@@ -16,25 +23,17 @@ struct ItineraryWebView: View {
             ZStack {
                 Color.sunBackground.ignoresSafeArea()
 
-                if let html {
-                    ItineraryWebRepresentable(html: html, baseURL: URL(string: urlString))
+                if let url = URL(string: urlString) {
+                    ItineraryWebRepresentable(url: url, isLoading: $loading)
                         .ignoresSafeArea(edges: .bottom)
-                } else if loading {
-                    ProgressView().tint(Color.sunAccent)
                 } else {
-                    VStack(spacing: 10) {
-                        Image(systemName: "wifi.slash")
-                            .font(.title)
-                            .foregroundStyle(Color.sunSecondary)
-                        Text("Itinerary unavailable offline")
-                            .font(.system(.subheadline, design: .serif))
-                            .foregroundStyle(Color.sunSecondary)
-                        Text("Open it once with a connection and it will be cached here.")
-                            .font(.system(.caption, design: .serif))
-                            .foregroundStyle(Color.sunSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
+                    Text("That itinerary link is not a valid URL.")
+                        .font(.system(.subheadline, design: .serif))
+                        .foregroundStyle(Color.sunSecondary)
+                }
+
+                if loading {
+                    ProgressView().tint(Color.sunAccent)
                 }
             }
             .navigationTitle("Itinerary")
@@ -48,18 +47,14 @@ struct ItineraryWebView: View {
                 }
             }
         }
-        .task {
-            html = await TravelService.shared.fetchItineraryHTML(urlString: urlString)
-            loading = false
-        }
     }
 }
 
 private struct ItineraryWebRepresentable: UIViewRepresentable {
-    let html: String
-    let baseURL: URL?
+    let url: URL
+    @Binding var isLoading: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(isLoading: $isLoading, host: url.host) }
 
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
@@ -67,23 +62,45 @@ private struct ItineraryWebRepresentable: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
-        webView.loadHTMLString(html, baseURL: baseURL)
+        webView.load(URLRequest(url: url))
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Content is loaded once in makeUIView; nothing to refresh here.
+        // Loaded once in makeUIView; the page revalidates itself server-side.
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
+        @Binding var isLoading: Bool
+        private let host: String?
+
+        init(isLoading: Binding<Bool>, host: String?) {
+            _isLoading = isLoading
+            self.host = host
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            isLoading = false
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            isLoading = false
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            isLoading = false
+        }
+
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            // The initial loadHTMLString is .other; let it through. Any tapped
-            // link (map pins -> Google Maps) opens in the system browser/Maps.
+            // Keep in-app navigation inside the page (day and type filters are
+            // client-side, so they never navigate). Send anything that leaves
+            // our own host - Google Maps directions links - to the system.
             if navigationAction.navigationType == .linkActivated,
-               let url = navigationAction.request.url {
-                UIApplication.shared.open(url)
+               let target = navigationAction.request.url,
+               target.host != host {
+                UIApplication.shared.open(target)
                 decisionHandler(.cancel)
                 return
             }
