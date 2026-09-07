@@ -71,10 +71,10 @@ final class TravelService: @unchecked Sendable {
 
     // MARK: - Itinerary HTML cache (live route, cached for offline)
 
-    // The itinerary HTML disk cache was REMOVED 2026-09-06. That page became a
-    // filterable map that needs its JavaScript, so a saved HTML string re-rendered
-    // with loadHTMLString would show a dead page. ItineraryWebView now loads the
-    // live URL, and offline is TripTodayView's job: native, disk-cached, own map.
+    // The itinerary HTML disk cache was removed 2026-09-06 and the webview that
+    // used it went on 2026-09-07: the web itinerary became the same filterable
+    // day map this app renders natively, so opening it in a webview was a fourth
+    // copy of the one screen. Offline is TripTodayView's job.
 
     // MARK: - Headers
 

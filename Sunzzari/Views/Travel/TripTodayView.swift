@@ -19,7 +19,6 @@ struct TripTodayView: View {
     @State private var isOffline = false
     @State private var loadErrorMessage: String?
     @State private var detailItem: TripItem?
-    @State private var showItinerary = false
     @State private var userLocation: CLLocation?
     @State private var activeTypes: Set<TripItem.ItemType> = []
     /// "Confirmed only" on the map. Elisa, 2026-09-06: "let me toggle
@@ -76,10 +75,6 @@ struct TripTodayView: View {
         return true
     }
 
-    private var itineraryURLString: String {
-        if let u = trip.itineraryURL, !u.isEmpty { return u }
-        return "https://elisa-travel-map.vercel.app/\(trip.id.replacingOccurrences(of: "-", with: ""))/itinerary"
-    }
 
     // MARK: - Body
 
@@ -153,7 +148,6 @@ struct TripTodayView: View {
                 detailItem = item
             }
         }
-        .sheet(isPresented: $showItinerary) { ItineraryWebView(urlString: itineraryURLString) }
         .sheet(isPresented: $showQuickAdd) {
             if let day {
                 QuickAddItemSheet(
@@ -207,11 +201,9 @@ struct TripTodayView: View {
                         // BELOW the map: candidates. The top of the screen is
                         // the plan, the bottom is options.
                         candidatesSection(day)
-                        nearbySection(day)
                         tomorrowSection()
                     }
 
-                    footer
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -548,55 +540,6 @@ struct TripTodayView: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private func nearbySection(_ day: TripDayPlanner.DayPlan) -> some View {
-        let nearby = nearbyItems(day)
-        if !nearby.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Near you now")
-                    .font(.system(size: 10, weight: .semibold, design: .serif))
-                    .textCase(.uppercase)
-                    .foregroundStyle(Color.sunSecondary)
-                ForEach(nearby, id: \.0.id) { item, meters in
-                    Button { detailItem = item } label: {
-                        HStack {
-                            Text(item.name)
-                                .font(.system(.subheadline, design: .serif))
-                                .foregroundStyle(Color.sunText)
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 8)
-                            Text(distanceLabel(meters))
-                                .font(.system(.caption, design: .serif))
-                                .foregroundStyle(Color.sunAccent)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Color.sunSurface.opacity(0.6))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    /// Candidates within walking-and-a-bit distance, closest first. Only shown
-    /// when a location fix already exists - this screen never prompts.
-    private func nearbyItems(_ day: TripDayPlanner.DayPlan) -> [(TripItem, CLLocationDistance)] {
-        guard let loc = userLocation else { return [] }
-        let scheduledIDs = Set(day.scheduled.map(\.id))
-        return day.options
-            .filter { !scheduledIDs.contains($0.id) }
-            .compactMap { item -> (TripItem, CLLocationDistance)? in
-                guard let lat = item.latitude, let lon = item.longitude else { return nil }
-                let d = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
-                return d <= 5000 ? (item, d) : nil
-            }
-            .sorted { $0.1 < $1.1 }
-            .prefix(5)
-            .map { $0 }
-    }
-
     /// Everything on this day, on a map, filterable by type.
     ///
     /// Replaces the old "if you have time" chip wall, which rendered Park City's
@@ -637,6 +580,11 @@ struct TripTodayView: View {
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    if assistantResponse != nil {
+                        Button("Clear ask") { assistantResponse = nil }
+                            .font(.system(size: 11, design: .serif))
+                            .foregroundStyle(Color.sunAccent)
+                    }
                     if !activeTypes.isEmpty {
                         Button("Clear") { activeTypes.removeAll() }
                             .font(.system(size: 11, design: .serif))
@@ -649,11 +597,15 @@ struct TripTodayView: View {
                 ZStack(alignment: .topTrailing) {
                     TripMKMap(
                         annotations: annotations,
-                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(activeLegs.sorted().joined(separator: ","))|\(confirmedOnly)|\(nearMe)|\(searchQuery)",
+                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(activeLegs.sorted().joined(separator: ","))|\(confirmedOnly)|\(nearMe)|\(searchQuery)|\((assistantResponse?.matchedItemIds ?? []).joined(separator: ","))",
                         selectedID: $mapSelectedID,
                         bridge: mapBridge,
                         onOpenDetail: { detailItem = $0 },
-                        onOpenCluster: { clusterItems = ClusterSelection(items: $0) }
+                        onOpenCluster: { clusterItems = ClusterSelection(items: $0) },
+                        // The assistant's matches used to light up on the trip
+                        // map. That map is gone; the capability lives in
+                        // TripMKMap and just needed wiring here.
+                        highlightedItemIds: Set(assistantResponse?.matchedItemIds ?? [])
                     )
                     .frame(height: 300)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -754,19 +706,6 @@ struct TripTodayView: View {
         }
     }
 
-    private var footer: some View {
-        Button { showItinerary = true } label: {
-            Text("Open the full itinerary")
-                .font(.system(.caption, design: .serif))
-                .foregroundStyle(Color.sunAccent)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Color.sunSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 8)
-    }
 
     private var offlineBanner: some View {
         HStack(spacing: 8) {
@@ -857,10 +796,6 @@ struct TripTodayView: View {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "http://maps.apple.com/?q=\(encoded)") else { return }
         UIApplication.shared.open(url)
-    }
-
-    private func distanceLabel(_ meters: CLLocationDistance) -> String {
-        meters < 1000 ? "\(Int(meters))m" : String(format: "%.1fkm", meters / 1000)
     }
 
     private func weekday(_ dateString: String) -> String { formatted(dateString, "EEE") }
