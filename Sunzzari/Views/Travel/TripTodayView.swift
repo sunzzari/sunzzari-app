@@ -22,6 +22,9 @@ struct TripTodayView: View {
     @State private var showItinerary = false
     @State private var userLocation: CLLocation?
     @State private var activeTypes: Set<TripItem.ItemType> = []
+    /// "Confirmed only" on the map. Elisa, 2026-09-06: "let me toggle
+    /// 'confirmed only' so i can see everything thats close to me."
+    @State private var confirmedOnly = false
     @State private var mapSelectedID: String?
     @State private var mapBridge = TripMapBridge()
     @State private var showQuickAdd = false
@@ -169,9 +172,17 @@ struct TripTodayView: View {
                         if isToday, let next = upNext(in: day) { upNextCard(next) }
                         if !day.needsBooking.isEmpty { needsBookingCard(day.needsBooking) }
                         if let hotel = day.hotel { sleepingCard(hotel) }
-                        scheduleSection(day)
-                        nearbySection(day)
+
+                        // ABOVE the map: only what is settled. Elisa, 2026-09-06:
+                        // "only list confirmed things above the map."
+                        confirmedSection(day)
+
                         mapSection(day)
+
+                        // BELOW the map: candidates. The top of the screen is
+                        // the plan, the bottom is options.
+                        candidatesSection(day)
+                        nearbySection(day)
                         tomorrowSection()
                     }
 
@@ -354,37 +365,48 @@ struct TripTodayView: View {
         .buttonStyle(.plain)
     }
 
+    /// What is actually settled today. Confirmed only, by her instruction.
     @ViewBuilder
-    private func scheduleSection(_ day: TripDayPlanner.DayPlan) -> some View {
-        if day.isEmpty {
-            Text("Nothing scheduled. Anything below is fair game.")
+    private func confirmedSection(_ day: TripDayPlanner.DayPlan) -> some View {
+        let confirmed = day.scheduled.filter { $0.item.status == .confirmed }
+        let showsTime = confirmed.contains { $0.time.label != nil }
+        let dayDone = day.dateString < tripToday
+
+        if confirmed.isEmpty {
+            Text("Nothing confirmed today.")
                 .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
         } else {
-            // Drop the time gutter entirely when nothing on this day has a
-            // time. An empty 62pt column on every row is just dead space, and
-            // most days currently have no times at all.
-            let showsTime = day.scheduled.contains { $0.time.label != nil }
-
-            // Dimmed ONLY when Confirmed and the day is finished in the trip's
-            // timezone. A plan is not evidence that it happened.
-            let dayDone = day.dateString < tripToday
-
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(day.timeline) { itemRow($0, showsTime: showsTime, dayDone: dayDone) }
+                ForEach(confirmed) { itemRow($0, showsTime: showsTime, dayDone: dayDone) }
+            }
+        }
+    }
 
-                // Only worth a heading when there is a timeline to distinguish
-                // it from. With no times entered, everything lands here and the
-                // label would just sit above the whole day saying nothing.
-                if !day.anytime.isEmpty && !day.timeline.isEmpty {
-                    Text("Anytime today")
-                        .font(.system(size: 10, weight: .semibold, design: .serif))
-                        .textCase(.uppercase)
-                        .foregroundStyle(Color.sunSecondary)
-                        .padding(.top, 14)
-                        .padding(.bottom, 4)
+    /// Everything else on the day: planned but unconfirmed, plus the leg's
+    /// candidates. Lives BELOW the map.
+    @ViewBuilder
+    private func candidatesSection(_ day: TripDayPlanner.DayPlan) -> some View {
+        let rest = day.scheduled.filter { $0.item.status != .confirmed }
+        let others = day.options
+        let showsTime = rest.contains { $0.time.label != nil }
+
+        if !rest.isEmpty || !others.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(rest.isEmpty ? "Nearby, not scheduled" : "Not confirmed")
+                    .font(.system(size: 10, weight: .semibold, design: .serif))
+                    .textCase(.uppercase)
+                    .foregroundStyle(Color.sunSecondary)
+                    .padding(.bottom, 2)
+
+                ForEach(rest) { itemRow($0, showsTime: showsTime, dayDone: false) }
+                ForEach(others) { item in
+                    itemRow(
+                        TripDayPlanner.PlannedItem(item: item, time: TripTime.empty),
+                        showsTime: false,
+                        dayDone: false
+                    )
                 }
-                ForEach(day.anytime) { itemRow($0, showsTime: showsTime, dayDone: dayDone) }
             }
         }
     }
@@ -415,17 +437,17 @@ struct TripTodayView: View {
                         .foregroundStyle(Color.sunText)
                         .strikethrough(done, color: Color.sunSecondary)
                         .multilineTextAlignment(.leading)
-                    if let line = locationLine(item) {
-                        Text(line)
+                    // One short fragment, never the whole note. Elisa,
+                    // 2026-09-06: "try to keep each item description to 1 short
+                    // sentence fragment or less." The full note is one tap away
+                    // in the detail sheet, so nothing is lost, it is just not
+                    // in the way when she is scanning the day.
+                    if let fragment = terseNote(item) {
+                        Text(fragment)
                             .font(.system(size: 12, design: .serif))
-                            .foregroundStyle(Color.sunSecondary)
-                            .multilineTextAlignment(.leading)
-                    }
-                    if !item.notes.isEmpty {
-                        Text(item.notes)
-                            .font(.system(size: 12, design: .serif))
-                            .foregroundStyle(Color.sunText.opacity(0.65))
-                            .multilineTextAlignment(.leading)
+                            .foregroundStyle(Color.sunText.opacity(0.6))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                     if let line = item.confirmationLine {
                         Text(line)
@@ -503,7 +525,9 @@ struct TripTodayView: View {
     @ViewBuilder
     private func mapSection(_ day: TripDayPlanner.DayPlan) -> some View {
         let pool = day.scheduled.map(\.item) + day.options
-        let shown = pool.filter { activeTypes.isEmpty || ($0.type.map { activeTypes.contains($0) } ?? false) }
+        let shown = pool
+            .filter { activeTypes.isEmpty || ($0.type.map { activeTypes.contains($0) } ?? false) }
+            .filter { !confirmedOnly || $0.status == .confirmed }
         let annotations = shown.compactMap { item -> TripItemAnnotation? in
             guard let lat = item.latitude, let lon = item.longitude else { return nil }
             return TripItemAnnotation(item: item, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
@@ -518,6 +542,19 @@ struct TripTodayView: View {
                         .textCase(.uppercase)
                         .foregroundStyle(Color.sunSecondary)
                     Spacer()
+                    Button {
+                        confirmedOnly.toggle()
+                        mapSelectedID = nil
+                    } label: {
+                        Text("Confirmed only")
+                            .font(.system(size: 11, weight: .semibold, design: .serif))
+                            .foregroundStyle(confirmedOnly ? Color.sunBackground : Color.sunSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(confirmedOnly ? Color(hex: "#22C55E") : Color.sunSurface)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                     if !activeTypes.isEmpty {
                         Button("Clear") { activeTypes.removeAll() }
                             .font(.system(size: 11, design: .serif))
@@ -530,13 +567,13 @@ struct TripTodayView: View {
                 ZStack(alignment: .topTrailing) {
                     TripMKMap(
                         annotations: annotations,
-                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))",
+                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(confirmedOnly)",
                         selectedID: $mapSelectedID,
                         bridge: mapBridge,
                         onOpenDetail: { detailItem = $0 },
                         onOpenCluster: { clusterItems = ClusterSelection(items: $0) }
                     )
-                    .frame(height: 260)
+                    .frame(height: 300)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
                     Button { mapBridge.fitAll() } label: {
@@ -664,6 +701,27 @@ struct TripTodayView: View {
     }
 
     // MARK: - Shared bits
+
+    /// The first clause of a note, capped hard. Cuts at the first sentence end
+    /// or the first separator, so it reads as a fragment rather than a
+    /// truncated sentence.
+    private func terseNote(_ item: TripItem) -> String? {
+        let note = item.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !note.isEmpty else {
+            // No note: fall back to the venue, which is often the useful bit.
+            let venue = item.venue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return venue.isEmpty || venue == item.name ? nil : venue
+        }
+        var fragment = note
+        if let cut = fragment.rangeOfCharacter(from: CharacterSet(charactersIn: ".;\n")) {
+            fragment = String(fragment[fragment.startIndex..<cut.lowerBound])
+        }
+        fragment = fragment.trimmingCharacters(in: .whitespaces)
+        if fragment.count > 62 {
+            fragment = String(fragment.prefix(62)).trimmingCharacters(in: .whitespaces) + "..."
+        }
+        return fragment.isEmpty ? nil : fragment
+    }
 
     private func locationLine(_ item: TripItem) -> String? {
         if !item.address.isEmpty { return item.address }
