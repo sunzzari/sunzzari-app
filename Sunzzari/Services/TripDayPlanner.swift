@@ -142,10 +142,23 @@ enum TripDayPlanner {
         }
     }
 
+    /// Does this still need booking?
+    ///
+    /// ONLY `.reservationPending`. That is the single status meaning "she has
+    /// said she wants this and it is not booked yet".
+    ///
+    /// The old rule also counted `reservationRequired && !reservationMade`,
+    /// which was the bug Elisa hit on 2026-09-06: `Reservation Required` is
+    /// INFERRED by the add-to-trip skill from the item type, so every
+    /// restaurant Claude had ever suggested appeared under "Still needs
+    /// booking". Her words: "you tell me 'still needs booking' for many things
+    /// that i never say im going to book. you just recommend them but i never
+    /// actually say i will do it. it makes everything so messy."
+    ///
+    /// A recommendation is not a commitment. Nothing Claude inferred may put
+    /// an item in this list.
     static func needsBooking(_ item: TripItem) -> Bool {
-        guard item.status != .cancelled else { return false }
-        if item.status == .reservationPending { return true }
-        return item.reservationRequired && !item.reservationMade
+        item.status == .reservationPending
     }
 
     // MARK: - Which day to open on

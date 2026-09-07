@@ -1,6 +1,6 @@
 import Foundation
 
-struct Trip: Identifiable, Codable {
+struct Trip: Identifiable, Codable, Hashable {
     let id: String
     let url: String
     var name: String

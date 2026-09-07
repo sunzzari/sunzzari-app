@@ -27,6 +27,15 @@ struct TripTodayView: View {
     @State private var showQuickAdd = false
     @State private var clusterItems: ClusterSelection?
 
+    // Ask-about-this-trip. Reuses TripAssistantSheet rather than building a
+    // second one: it already answers "where should I eat near here" against the
+    // trip's own items, which is exactly what she asked for on this screen.
+    @State private var showAssistant = false
+    @State private var assistantQuery = ""
+    @State private var assistantResponse: TripAssistantResponse?
+    @State private var assistantError: String?
+    @State private var assistantSelectedItemID: String?
+
     private var day: TripDayPlanner.DayPlan? {
         plans.indices.contains(selectedIndex) ? plans[selectedIndex] : nil
     }
@@ -60,6 +69,12 @@ struct TripTodayView: View {
         .toolbarBackground(Color.sunSurface, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button { showAssistant = true } label: {
+                    Image(systemName: "sparkles").foregroundStyle(Color.sunAccent)
+                }
+                .disabled(items.isEmpty)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { showQuickAdd = true } label: {
                     Image(systemName: "plus").foregroundStyle(Color.sunAccent)
                 }
@@ -88,6 +103,23 @@ struct TripTodayView: View {
             }
         }
         .sheet(item: $detailItem) { ItemDetailSheet(item: $0, userLocation: userLocation) }
+        .sheet(isPresented: $showAssistant) {
+            TripAssistantSheet(
+                items: items,
+                trip: trip,
+                userLocation: userLocation,
+                onSelectItem: { item in
+                    showAssistant = false
+                    detailItem = item
+                },
+                query: $assistantQuery,
+                response: $assistantResponse,
+                errorMessage: $assistantError,
+                selectedItemID: $assistantSelectedItemID
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(item: $clusterItems) { selection in
             ClusterPickerSheet(items: selection.items) { item in
                 clusterItems = nil
@@ -112,6 +144,8 @@ struct TripTodayView: View {
         }
         .task { await load() }
         .onAppear {
+            // Remember this screen so the next launch comes straight back here.
+            TravelResume.remember(tripID: trip.id)
             userLocation = LocationService.shared.lastKnownCoordinate.map {
                 CLLocation(latitude: $0.latitude, longitude: $0.longitude)
             }

@@ -2,6 +2,14 @@ import SwiftUI
 
 struct HubView: View {
 
+    /// Set by ContentView at launch to reopen the trip Elisa was last on.
+    /// Bound rather than local so clearing it (she taps Back) sticks.
+    @Binding var resumeTrip: Trip?
+
+    init(resumeTrip: Binding<Trip?> = .constant(nil)) {
+        _resumeTrip = resumeTrip
+    }
+
     // Six fixed cards laid out NON-lazily.
     //
     // This was a LazyVGrid. With only six always-visible cards there is nothing to
@@ -55,6 +63,9 @@ struct HubView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $resumeTrip) { trip in
+                TripTodayView(trip: trip)
+            }
         }
     }
 

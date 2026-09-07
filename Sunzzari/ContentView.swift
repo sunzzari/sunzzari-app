@@ -2,7 +2,11 @@ import SwiftUI
 import UserNotifications
 
 struct ContentView: View {
-    @State private var selectedTab = 0
+    // Persisted so the app reopens where she left it. Elisa, 2026-09-06:
+    // "before it was always taking me to the home page. but when im traveling i
+    // want to go directly to the travel page i was on."
+    @AppStorage("sunzzari_last_tab") private var selectedTab = 0
+    @State private var resumeTrip: Trip?
     @State private var showIdentitySetup = false
     @State private var showWeeklyBestOf = false
     @State private var showInbox = false
@@ -29,7 +33,7 @@ struct ContentView: View {
                     }
                     .tag(2)
 
-                HubView()
+                HubView(resumeTrip: $resumeTrip)
                     .tabItem {
                         Label("Hub", systemImage: "square.grid.2x2.fill")
                     }
@@ -115,6 +119,20 @@ struct ContentView: View {
             await syncWeeklyBestOfFromDelivered()
             await syncStoriesIntoInbox()
             await syncBadgeFromInbox()
+        }
+        .task {
+            // Reopen the trip screen she was last on. Reads the on-disk trip
+            // cache, so this works with no signal, and does nothing at all if
+            // there is no resumable trip.
+            if let trip = TravelResume.tripToResume(from: TravelResume.cachedTrips()) {
+                selectedTab = 3          // Hub owns the travel navigation stack
+                resumeTrip = trip
+            }
+        }
+        .onChange(of: resumeTrip) { previous, current in
+            // She popped back out of the resumed screen: stop reopening it, so
+            // backing out and quitting does not trap her in travel next launch.
+            if previous != nil && current == nil { TravelResume.forget() }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
