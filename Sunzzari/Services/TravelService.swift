@@ -8,7 +8,7 @@ final class TravelService: @unchecked Sendable {
 
     // Bump this when geocoding logic changes to clear stale caches
     // v7: cache values carry a text hash so edited venues re-geocode
-    private static let geocodeVersion = 7
+    private static let geocodeVersion = 8
     private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
 
     // Vercel-side Google Maps geocoder. The web app gets ~100% coverage from
@@ -226,7 +226,7 @@ final class TravelService: @unchecked Sendable {
             await withTaskGroup(of: (Int, (Double, Double)?).self) { group in
                 for (index, item) in batch {
                     group.addTask {
-                        let coords = await Self.geocodeItem(item)
+                        let coords = await Self.geocodeItem(item, region: tripLocation)
                         return (index, coords)
                     }
                 }
@@ -250,31 +250,39 @@ final class TravelService: @unchecked Sendable {
     // Geocode a single item via the Vercel endpoint. Tries venue first, then
     // name as fallback for items without a Provider/Venue. Returns nil only
     // when every query exhausted; caller caches success or failure.
-    private static func geocodeItem(_ item: TripItem) async -> (Double, Double)? {
+    ///
+    /// `region` is the trip's own location, used when the item has no leg. A
+    /// venue name with no geography behind it is looked up against the whole
+    /// planet: "Baroque Hall - St. Peter restaurant" on the Vienna trip has a
+    /// blank leg and Google placed it in Adelaide, South Australia, which
+    /// stretched the map until Austria was a dot. The server rejects a result
+    /// in the wrong country; this is what tells it which country to expect.
+    private static func geocodeItem(_ item: TripItem, region: String) async -> (Double, Double)? {
         // Most specific source first. An Address is exact; a venue is usually
         // right; the item's own name is the last resort but still far better
         // than the city, which is never an item's location.
         if !item.address.isEmpty,
-           let coords = await geocodeViaVercel(query: item.address, city: "") {
+           let coords = await geocodeViaVercel(query: item.address, city: "", region: region) {
             return coords
         }
         if !item.venue.isEmpty,
-           let coords = await geocodeViaVercel(query: item.venue, city: item.legCity) {
+           let coords = await geocodeViaVercel(query: item.venue, city: item.legCity, region: region) {
             return coords
         }
         if !item.name.isEmpty && item.name != item.venue,
-           let coords = await geocodeViaVercel(query: item.name, city: item.legCity) {
+           let coords = await geocodeViaVercel(query: item.name, city: item.legCity, region: region) {
             return coords
         }
         return nil
     }
 
-    private static func geocodeViaVercel(query: String, city: String) async -> (Double, Double)? {
+    private static func geocodeViaVercel(query: String, city: String, region: String) async -> (Double, Double)? {
         guard !query.isEmpty || !city.isEmpty else { return nil }
         guard var components = URLComponents(string: Self.geocoderEndpoint) else { return nil }
         components.queryItems = [
             URLQueryItem(name: "venue", value: query),
-            URLQueryItem(name: "city", value: city)
+            URLQueryItem(name: "city", value: city),
+            URLQueryItem(name: "region", value: region)
         ]
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
