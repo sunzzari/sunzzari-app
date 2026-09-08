@@ -8,12 +8,22 @@ import MapKit
 /// and on a Thursday morning in Park City the question is "what is happening
 /// today". Everything here is ordered for a ten-second skim, and everything it
 /// needs is on disk, so it works with no signal.
+/// What the day strip is filtering to.
+///
+/// `.all` is the default. The map is the screen; a day is something she opts
+/// into. Elisa, 2026-09-08: "open the app to a very functional map 100% of the
+/// time... and then ALSO to toggle today view which filters the map".
+enum DaySelection: Equatable {
+    case all
+    case day(Int)
+}
+
 struct TripTodayView: View {
     let trip: Trip
 
     @State private var items: [TripItem] = []
     @State private var plans: [TripDayPlanner.DayPlan] = []
-    @State private var selectedIndex: Int = 0
+    @State private var selection: DaySelection = .all
     @State private var isLoading = true
     @State private var isRefreshing = false
     @State private var isOffline = false
@@ -45,8 +55,30 @@ struct TripTodayView: View {
     @State private var assistantError: String?
     @State private var assistantSelectedItemID: String?
 
+    /// The day she has opened, or nil while the strip is on All.
     private var day: TripDayPlanner.DayPlan? {
-        plans.indices.contains(selectedIndex) ? plans[selectedIndex] : nil
+        guard let index = selectedDayIndex, plans.indices.contains(index) else { return nil }
+        return plans[index]
+    }
+
+    private var selectedDayIndex: Int? {
+        if case .day(let index) = selection { return index }
+        return nil
+    }
+
+    /// Every item still in play, dated or not. This is the map's pool on All,
+    /// and it is what makes a trip with nothing scheduled show its places
+    /// instead of an empty screen.
+    private var liveItems: [TripItem] {
+        items.filter { $0.status != nil && $0.status != .cancelled }
+    }
+
+    /// Quick add has to attach to a day. On All that is the day the trip would
+    /// have opened on, so the + never goes dead just because no day is picked.
+    private var quickAddDay: TripDayPlanner.DayPlan? {
+        if let day { return day }
+        let index = TripDayPlanner.openingIndex(in: plans, timeZoneID: trip.timeZoneID)
+        return plans.indices.contains(index) ? plans[index] : nil
     }
 
     /// Resolved in the TRIP's timezone, never the phone's.
@@ -84,7 +116,7 @@ struct TripTodayView: View {
 
             if isLoading && items.isEmpty {
                 ProgressView().tint(Color.sunAccent)
-            } else if plans.isEmpty {
+            } else if items.isEmpty {
                 emptyState
             } else {
                 content
@@ -105,7 +137,7 @@ struct TripTodayView: View {
                 Button { showQuickAdd = true } label: {
                     Image(systemName: "plus").foregroundStyle(Color.sunAccent)
                 }
-                .disabled(day == nil)
+                .disabled(quickAddDay == nil)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -149,7 +181,7 @@ struct TripTodayView: View {
             }
         }
         .sheet(isPresented: $showQuickAdd) {
-            if let day {
+            if let day = quickAddDay {
                 QuickAddItemSheet(
                     trip: trip,
                     dayString: day.dateString,
@@ -180,7 +212,7 @@ struct TripTodayView: View {
     private var content: some View {
         VStack(spacing: 0) {
             filterBar
-            dayStrip
+            if !plans.isEmpty { dayStrip }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -196,12 +228,29 @@ struct TripTodayView: View {
                         // "only list confirmed things above the map."
                         confirmedSection(day)
 
-                        mapSection(day)
+                        mapSection(
+                            pool: day.scheduled.map(\.item) + day.options,
+                            scopeKey: day.dateString,
+                            title: "Around you"
+                        )
 
                         // BELOW the map: candidates. The top of the screen is
                         // the plan, the bottom is options.
                         candidatesSection(day)
                         tomorrowSection()
+                    } else {
+                        // All: the map IS the screen, and it shows everything
+                        // that is still in play. No day narrative here - that
+                        // is what tapping a day is for.
+                        mapSection(
+                            pool: liveItems,
+                            scopeKey: "all",
+                            title: "Everywhere on this trip",
+                            // The list right below names them, so the count
+                            // would be saying it twice.
+                            countsUnmapped: false
+                        )
+                        unmappedSection
                     }
 
                 }
@@ -264,26 +313,39 @@ struct TripTodayView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { selection = .all }
+                    } label: {
+                        Text("All")
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
+                            .foregroundStyle(selection == .all ? Color.sunBackground : Color.sunText.opacity(0.7))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(selection == .all ? Color.sunAccent : Color.sunSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+
                     if let todayIndex = plans.firstIndex(where: { $0.dateString == tripToday }) {
                         Button {
-                            withAnimation(.easeOut(duration: 0.15)) { selectedIndex = todayIndex }
+                            withAnimation(.easeOut(duration: 0.15)) { selection = .day(todayIndex) }
                         } label: {
                             Text("Today")
                                 .font(.system(size: 13, weight: .semibold, design: .serif))
-                                .foregroundStyle(selectedIndex == todayIndex ? Color.sunBackground : Color.sunAccent)
+                                .foregroundStyle(selectedDayIndex == todayIndex ? Color.sunBackground : Color.sunAccent)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 9)
-                                .background(selectedIndex == todayIndex ? Color.sunAccent : Color.sunAccent.opacity(0.18))
+                                .background(selectedDayIndex == todayIndex ? Color.sunAccent : Color.sunAccent.opacity(0.18))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
                     }
                     ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
-                        let selected = index == selectedIndex
+                        let selected = index == selectedDayIndex
                         let today = plan.dateString == tripToday
                         let past = plan.dateString < tripToday
                         Button {
-                            withAnimation(.easeOut(duration: 0.15)) { selectedIndex = index }
+                            withAnimation(.easeOut(duration: 0.15)) { selection = .day(index) }
                         } label: {
                             VStack(spacing: 1) {
                                 Text(weekday(plan.dateString))
@@ -312,7 +374,8 @@ struct TripTodayView: View {
             }
             .background(Color.sunSurface.opacity(0.5))
             .onChange(of: plans.count) { _, _ in
-                proxy.scrollTo(selectedIndex, anchor: .center)
+                guard let index = selectedDayIndex else { return }
+                proxy.scrollTo(index, anchor: .center)
             }
         }
     }
@@ -540,18 +603,17 @@ struct TripTodayView: View {
         .buttonStyle(.plain)
     }
 
-    /// Everything on this day, on a map, filterable by type.
+    /// The trip on a map, filterable by type, leg, status, search and Near me.
     ///
-    /// Replaces the old "if you have time" chip wall, which rendered Park City's
-    /// 20 undated candidates as an undifferentiated block of pills. "What else
-    /// is around" is a spatial question and the app already has a good map.
+    /// This is the screen, not a section of the day. It renders on All, on a
+    /// day, and on a day with nothing on it. Elisa, 2026-09-08: "the whole map
+    /// should be visible no matter if things are or not assigned."
     ///
     /// Undated candidates already fan out across every day of their leg in
-    /// TripDayPlanner, so the day's pins are effectively the leg's pins - which
+    /// TripDayPlanner, so a day's pins are effectively the leg's pins - which
     /// is what "around the areas where I'll be going" means.
     @ViewBuilder
-    private func mapSection(_ day: TripDayPlanner.DayPlan) -> some View {
-        let pool = day.scheduled.map(\.item) + day.options
+    private func mapSection(pool: [TripItem], scopeKey: String, title: String, countsUnmapped: Bool = true) -> some View {
         let shown = pool.filter(matches)
         let annotations = shown.compactMap { item -> TripItemAnnotation? in
             guard let lat = item.latitude, let lon = item.longitude else { return nil }
@@ -559,75 +621,96 @@ struct TripTodayView: View {
         }
         let unmapped = shown.count - annotations.count
 
-        if !pool.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Around you")
-                        .font(.system(size: 10, weight: .semibold, design: .serif))
-                        .textCase(.uppercase)
-                        .foregroundStyle(Color.sunSecondary)
-                    Spacer()
-                    Button {
-                        confirmedOnly.toggle()
-                        mapSelectedID = nil
-                    } label: {
-                        Text("Confirmed only")
-                            .font(.system(size: 11, weight: .semibold, design: .serif))
-                            .foregroundStyle(confirmedOnly ? Color.sunBackground : Color.sunSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(confirmedOnly ? Color(hex: "#22C55E") : Color.sunSurface)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    if assistantResponse != nil {
-                        Button("Clear ask") { assistantResponse = nil }
-                            .font(.system(size: 11, design: .serif))
-                            .foregroundStyle(Color.sunAccent)
-                    }
-                    if !activeTypes.isEmpty {
-                        Button("Clear") { activeTypes.removeAll() }
-                            .font(.system(size: 11, design: .serif))
-                            .foregroundStyle(Color.sunAccent)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold, design: .serif))
+                    .textCase(.uppercase)
+                    .foregroundStyle(Color.sunSecondary)
+                Spacer()
+                Button {
+                    confirmedOnly.toggle()
+                    mapSelectedID = nil
+                } label: {
+                    Text("Confirmed only")
+                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                        .foregroundStyle(confirmedOnly ? Color.sunBackground : Color.sunSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(confirmedOnly ? Color(hex: "#22C55E") : Color.sunSurface)
+                        .clipShape(Capsule())
                 }
-
-                typeToggles(in: pool)
-
-                ZStack(alignment: .topTrailing) {
-                    TripMKMap(
-                        annotations: annotations,
-                        filterKey: "\(day.dateString)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(activeLegs.sorted().joined(separator: ","))|\(confirmedOnly)|\(nearMe)|\(searchQuery)|\((assistantResponse?.matchedItemIds ?? []).joined(separator: ","))",
-                        selectedID: $mapSelectedID,
-                        bridge: mapBridge,
-                        onOpenDetail: { detailItem = $0 },
-                        onOpenCluster: { clusterItems = ClusterSelection(items: $0) },
-                        // The assistant's matches used to light up on the trip
-                        // map. That map is gone; the capability lives in
-                        // TripMKMap and just needed wiring here.
-                        highlightedItemIds: Set(assistantResponse?.matchedItemIds ?? [])
-                    )
-                    .frame(height: 300)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                    Button { mapBridge.fitAll() } label: {
-                        Image(systemName: "scope")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.sunAccent)
-                            .frame(width: 32, height: 32)
-                            .background(Color.sunSurface.opacity(0.9))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(8)
-                }
-
-                // Never silently drop pins. An item with no coordinate is not on
-                // the map, and she should know how many rather than wonder.
-                if unmapped > 0 {
-                    Text("\(unmapped) not on the map yet (no location found)")
+                .buttonStyle(.plain)
+                if assistantResponse != nil {
+                    Button("Clear ask") { assistantResponse = nil }
                         .font(.system(size: 11, design: .serif))
-                        .foregroundStyle(Color.sunSecondary)
+                        .foregroundStyle(Color.sunAccent)
+                }
+                if !activeTypes.isEmpty {
+                    Button("Clear") { activeTypes.removeAll() }
+                        .font(.system(size: 11, design: .serif))
+                        .foregroundStyle(Color.sunAccent)
+                }
+            }
+
+            typeToggles(in: pool)
+
+            ZStack(alignment: .topTrailing) {
+                TripMKMap(
+                    annotations: annotations,
+                    filterKey: "\(scopeKey)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(activeLegs.sorted().joined(separator: ","))|\(confirmedOnly)|\(nearMe)|\(searchQuery)|\((assistantResponse?.matchedItemIds ?? []).joined(separator: ","))",
+                    selectedID: $mapSelectedID,
+                    bridge: mapBridge,
+                    onOpenDetail: { detailItem = $0 },
+                    onOpenCluster: { clusterItems = ClusterSelection(items: $0) },
+                    // The assistant's matches used to light up on the trip
+                    // map. That map is gone; the capability lives in
+                    // TripMKMap and just needed wiring here.
+                    highlightedItemIds: Set(assistantResponse?.matchedItemIds ?? [])
+                )
+                .frame(height: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                Button { mapBridge.fitAll() } label: {
+                    Image(systemName: "scope")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sunAccent)
+                        .frame(width: 32, height: 32)
+                        .background(Color.sunSurface.opacity(0.9))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+            }
+
+            // Never silently drop pins. An item with no coordinate is not on
+            // the map, and she should know how many rather than wonder.
+            if unmapped > 0, countsUnmapped {
+                Text("\(unmapped) not on the map yet (no location found)")
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Color.sunSecondary)
+            }
+        }
+    }
+
+    /// On All, the items the map cannot place. Without this a place with no
+    /// geocode is counted and then unreachable.
+    @ViewBuilder
+    private var unmappedSection: some View {
+        let missing = liveItems.filter(matches).filter { $0.latitude == nil || $0.longitude == nil }
+        if !missing.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Not on the map")
+                    .font(.system(size: 10, weight: .semibold, design: .serif))
+                    .textCase(.uppercase)
+                    .foregroundStyle(Color.sunSecondary)
+                    .padding(.bottom, 2)
+                ForEach(missing) { item in
+                    itemRow(
+                        TripDayPlanner.PlannedItem(item: item, time: TripTime.empty),
+                        showsTime: false,
+                        dayDone: false
+                    )
                 }
             }
         }
@@ -641,22 +724,9 @@ struct TripTodayView: View {
         }
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(legs, id: \.self) { leg in
-                    let on = activeLegs.contains(leg)
-                    Button {
-                        if on { activeLegs.remove(leg) } else { activeLegs.insert(leg) }
-                        mapSelectedID = nil
-                    } label: {
-                        Text(leg)
-                            .font(.system(size: 12, weight: .medium, design: .serif))
-                            .foregroundStyle(on ? Color.sunBackground : Color(hex: "#818CF8"))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(on ? Color(hex: "#6366F1") : Color.sunSurface)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
+                // Types first. Legs used to lead, and on a four-leg trip they
+                // filled the row and pushed Restaurant / Hotel / Activity off
+                // the right edge - the toggle she actually reaches for.
                 ForEach(present, id: \.self) { type in
                     let on = activeTypes.contains(type)
                     Button {
@@ -677,6 +747,22 @@ struct TripTodayView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                ForEach(legs, id: \.self) { leg in
+                    let on = activeLegs.contains(leg)
+                    Button {
+                        if on { activeLegs.remove(leg) } else { activeLegs.insert(leg) }
+                        mapSelectedID = nil
+                    } label: {
+                        Text(leg)
+                            .font(.system(size: 12, weight: .medium, design: .serif))
+                            .foregroundStyle(on ? Color.sunBackground : Color(hex: "#818CF8"))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(on ? Color(hex: "#6366F1") : Color.sunSurface)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 1)
         }
@@ -684,10 +770,10 @@ struct TripTodayView: View {
 
     @ViewBuilder
     private func tomorrowSection() -> some View {
-        if selectedIndex + 1 < plans.count {
-            let next = plans[selectedIndex + 1]
+        if let index = selectedDayIndex, index + 1 < plans.count {
+            let next = plans[index + 1]
             let names = next.scheduled.prefix(3).map(\.item.name).joined(separator: ", ")
-            Button { withAnimation(.easeOut(duration: 0.15)) { selectedIndex += 1 } } label: {
+            Button { withAnimation(.easeOut(duration: 0.15)) { selection = .day(index + 1) } } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Next day")
                         .font(.system(size: 10, weight: .semibold, design: .serif))
@@ -726,10 +812,10 @@ struct TripTodayView: View {
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.title)
                 .foregroundStyle(Color.sunSecondary)
-            Text(loadErrorMessage ?? "No scheduled days yet")
+            Text(loadErrorMessage ?? "Nothing on this trip yet")
                 .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(Color.sunText)
-            Text("Items need a date and a status of Confirmed, Assigned or Reservation Pending to show up here.")
+            Text("Add a hotel, restaurant or activity in Notion and it shows up here, with or without a date.")
                 .font(.system(.caption, design: .serif))
                 .foregroundStyle(Color.sunSecondary)
                 .multilineTextAlignment(.center)
@@ -838,12 +924,12 @@ struct TripTodayView: View {
         items = newItems
         plans = TripDayPlanner.plans(for: newItems)
         isOffline = offline
-        // Keep whatever day she was looking at across a refresh; only choose
-        // one on the first load.
-        if let previousDate, let index = plans.firstIndex(where: { $0.dateString == previousDate }) {
-            selectedIndex = index
-        } else {
-            selectedIndex = TripDayPlanner.openingIndex(in: plans, timeZoneID: trip.timeZoneID)
+        // Keep whatever she was looking at across a refresh. All stays All: it
+        // is the default and nothing here may quietly move her off it. A day
+        // that no longer exists falls back to All, never to a day she did not
+        // pick.
+        if let previousDate {
+            selection = plans.firstIndex(where: { $0.dateString == previousDate }).map { .day($0) } ?? .all
         }
     }
 }

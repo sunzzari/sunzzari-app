@@ -169,15 +169,30 @@ struct TripMKMap: UIViewRepresentable {
         let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
         let annotationsGrew = annotations.count > coordinator.lastAnnotationCount
         if firstLoad || filterChanged || (annotationsGrew && !coordinator.userHasInteracted) {
-            coordinator.hasFittedInitially = true
             coordinator.lastFilterKey = filterKey
             let includeUser = fitIncludesUser
-            DispatchQueue.main.async {
+
+            // The fit has to wait for the map to have a size. showAnnotations on
+            // a zero-bounds view computes nothing usable, and the map is then
+            // stuck on the world region seeded in makeUIView with no second
+            // chance: `hasFittedInitially` would already be true and, when every
+            // pin came from the geocode cache, no later growth ever triggers a
+            // refit. Vienna 2026 opened that way - 99 Austrian pins, one cluster,
+            // zoomed to all of Europe. So the flag is only set once a fit has
+            // actually run, and until then we retry.
+            func fit(_ attempt: Int) {
                 let itemAnns = map.annotations.filter { !($0 is MKUserLocation) }
                 guard !itemAnns.isEmpty else { return }
+                guard map.bounds.width > 1, map.bounds.height > 1 else {
+                    guard attempt < 20 else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { fit(attempt + 1) }
+                    return
+                }
+                coordinator.hasFittedInitially = true
                 let anns: [MKAnnotation] = includeUser ? map.annotations : itemAnns
                 map.showAnnotations(anns, animated: true)
             }
+            DispatchQueue.main.async { fit(0) }
         }
         coordinator.lastAnnotationCount = annotations.count
 
