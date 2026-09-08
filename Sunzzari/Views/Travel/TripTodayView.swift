@@ -89,6 +89,31 @@ struct TripTodayView: View {
         Array(Set(items.map(\.legCity).filter { !$0.isEmpty })).sorted()
     }
 
+    /// A tap on an event points at the map. Elisa, 2026-09-08: "instead of the
+    /// event details coming up when you click on an event, i want it to be
+    /// highlighted on the map. if i want to see the details i can click see
+    /// more details off of the tile on the map."
+    ///
+    /// The details are still one tap away, on the (i) in the pin's callout.
+    /// An item with no coordinate has no pin to point at, so for that one case
+    /// the sheet is still the only way in - otherwise the tap would do nothing.
+    private func select(_ item: TripItem) {
+        guard let lat = item.latitude, let lon = item.longitude else {
+            detailItem = item
+            return
+        }
+        mapSelectedID = item.id
+        mapBridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        mapBridge.selectPin(id: item.id)
+        // Pointing at a pin she cannot see is not pointing at anything: in day
+        // mode the map sits below the confirmed list.
+        withAnimation(.easeOut(duration: 0.25)) { scrollToMap?() }
+    }
+
+    /// Set by the content ScrollViewReader. Optional so `select` stays callable
+    /// from anywhere without threading a proxy through every row.
+    @State private var scrollToMap: (() -> Void)?
+
     /// One predicate for the map and the lists, so a toggle can never filter
     /// one and not the other.
     private func matches(_ item: TripItem) -> Bool {
@@ -214,6 +239,7 @@ struct TripTodayView: View {
             filterBar
             if !plans.isEmpty { dayStrip }
 
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if isOffline { offlineBanner }
@@ -233,6 +259,7 @@ struct TripTodayView: View {
                             scopeKey: day.dateString,
                             title: "Around you"
                         )
+                        .id(Self.mapAnchor)
 
                         // BELOW the map: candidates. The top of the screen is
                         // the plan, the bottom is options.
@@ -250,6 +277,7 @@ struct TripTodayView: View {
                             // would be saying it twice.
                             countsUnmapped: false
                         )
+                        .id(Self.mapAnchor)
                         unmappedSection
                     }
 
@@ -259,8 +287,16 @@ struct TripTodayView: View {
                 .padding(.bottom, 40)
             }
             .refreshable { await load(force: true) }
+            .onAppear {
+                scrollToMap = { proxy.scrollTo(Self.mapAnchor, anchor: .top) }
+            }
+            }
         }
     }
+
+    /// Scroll target for `select`, so tapping a row brings the map to her.
+    private static let mapAnchor = "trip-map"
+
 
     /// Search and Near me. Both came from the trip map, which no longer exists.
     private var filterBar: some View {
@@ -406,7 +442,7 @@ struct TripTodayView: View {
     }
 
     private func upNextCard(_ planned: TripDayPlanner.PlannedItem) -> some View {
-        Button { detailItem = planned.item } label: {
+        Button { select(planned.item) } label: {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Up next")
                     .font(.system(size: 10, weight: .semibold, design: .serif))
@@ -447,7 +483,7 @@ struct TripTodayView: View {
                 .textCase(.uppercase)
                 .foregroundStyle(Color(hex: "#F97316"))
             ForEach(pending) { item in
-                Button { detailItem = item } label: {
+                Button { select(item) } label: {
                     HStack(alignment: .top, spacing: 6) {
                         Text("-").foregroundStyle(Color.sunSecondary)
                         Text(item.name)
@@ -470,7 +506,7 @@ struct TripTodayView: View {
     private var isPastDay: Bool { (day?.dateString ?? "") < tripToday }
 
     private func sleepingCard(_ hotel: TripItem) -> some View {
-        Button { detailItem = hotel } label: {
+        Button { select(hotel) } label: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(isPastDay ? "Stayed here" : "Sleeping tonight")
                     .font(.system(size: 10, weight: .semibold, design: .serif))
@@ -553,7 +589,7 @@ struct TripTodayView: View {
     private func itemRow(_ planned: TripDayPlanner.PlannedItem, showsTime: Bool, dayDone: Bool) -> some View {
         let item = planned.item
         let done = dayDone && item.status == .confirmed
-        return Button { detailItem = item } label: {
+        return Button { select(item) } label: {
             HStack(alignment: .top, spacing: 8) {
                 if showsTime {
                     // A rough word renders as the word, in a dimmer style. It
