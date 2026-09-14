@@ -1,6 +1,18 @@
 import SwiftUI
 import MapKit
 
+// MARK: - Pin styling
+
+/// How one pin is drawn. Trip items colour by status; Around Town rides on this
+/// same map and colours by how much Elisa liked the place, so the rule is a
+/// closure the caller supplies rather than a branch inside the map.
+struct MapPinStyle {
+    let color: Color
+    let glyph: String
+    /// Been-there places read as done without going invisible.
+    var alpha: CGFloat = 1.0
+}
+
 // MARK: - Bridge (SwiftUI -> UIKit imperative calls)
 
 final class TripMapBridge {
@@ -97,6 +109,15 @@ struct TripMKMap: UIViewRepresentable {
     // Item IDs returned by the AI assistant — rendered in a distinct blue tint.
     var highlightedItemIds: Set<String> = []
 
+    // Overrides pin colour and glyph. Nil keeps the trip rule: colour by status,
+    // glyph by type. Around Town passes its preference tiers through here.
+    var styleFor: ((TripItem) -> MapPinStyle)?
+
+    // Where the map sits before any pin has loaded. A trip can be anywhere, so
+    // it starts on the world and fits as pins arrive; Around Town is always LA
+    // or the Bay and should not flash Europe on the way there.
+    var initialRegion: MKCoordinateRegion?
+
     func makeCoordinator() -> Coordinator {
         Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
@@ -118,7 +139,7 @@ struct TripMKMap: UIViewRepresentable {
         map.isUserInteractionEnabled = interactive
         // Default to world view, will fit to pins when they load
         map.setRegion(
-            MKCoordinateRegion(
+            initialRegion ?? MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 40, longitude: 10),
                 latitudinalMeters: 5_000_000, longitudinalMeters: 5_000_000
             ),
@@ -143,6 +164,7 @@ struct TripMKMap: UIViewRepresentable {
         // Refresh callout-accessory callback so it always points to the
         // latest closure captured by the SwiftUI body.
         coordinator.onOpenDetail = onOpenDetail
+        coordinator.styleFor = styleFor
 
         // Sync annotations
         let existing = Set(map.annotations.compactMap { ($0 as? TripItemAnnotation)?.item.id })
@@ -207,6 +229,10 @@ struct TripMKMap: UIViewRepresentable {
             view.displayPriority = isSelected ? .required : .defaultHigh
             if highlightedItemIds.contains(ta.item.id) {
                 view.markerTintColor = UIColor(red: 0.231, green: 0.510, blue: 0.965, alpha: 1)
+                view.alpha = 1
+            } else if let style = styleFor?(ta.item) {
+                view.markerTintColor = UIColor(style.color)
+                view.alpha = style.alpha
             } else {
                 let status = ta.item.status ?? .researching
                 view.markerTintColor = UIColor(Color(hex: status.colorHex))
@@ -232,6 +258,7 @@ struct TripMKMap: UIViewRepresentable {
         @Binding var selectedID: String?
         var onOpenDetail: ((TripItem) -> Void)?
         var onOpenCluster: (([TripItem]) -> Void)?
+        var styleFor: ((TripItem) -> MapPinStyle)?
         var isUpdating = false
         var hasFittedInitially = false
         var lastFilterKey: String = ""
@@ -358,16 +385,23 @@ struct TripMKMap: UIViewRepresentable {
             info.tintColor = UIColor(Color.sunAccent)
             v.rightCalloutAccessoryView = info
 
-            // Color = AI-highlighted (blue) > STATUS color. Glyph = TYPE.
+            // Color = AI-highlighted (blue) > caller's style > STATUS color.
+            // Glyph = caller's style, else TYPE.
+            let style = self.styleFor?(ta.item)
             if self.highlightedItemIds.contains(ta.item.id) {
                 v.markerTintColor = UIColor(red: 0.231, green: 0.510, blue: 0.965, alpha: 1)
+                v.alpha = 1
+            } else if let style {
+                v.markerTintColor = UIColor(style.color)
+                v.alpha = style.alpha
             } else {
                 let status = ta.item.status ?? .researching
                 v.markerTintColor = UIColor(Color(hex: status.colorHex))
+                v.alpha = 1
             }
 
             let type = ta.item.type ?? .other
-            v.glyphImage = UIImage(systemName: type.sfSymbol)
+            v.glyphImage = UIImage(systemName: style?.glyph ?? type.sfSymbol)
 
             // Selected state: larger display priority
             let isSelected = ta.item.id == selectedID
@@ -429,8 +463,36 @@ struct TripMKMap: UIViewRepresentable {
                     let dy = max(rect.size.height * 0.5, 200)
                     padded = rect.insetBy(dx: -dx, dy: -dy)
                 }
+                let memberIDs = Set(
+                    cluster.memberAnnotations.compactMap { ($0 as? TripItemAnnotation)?.item.id }
+                )
                 mapView.setVisibleMapRect(padded, animated: true)
                 mapView.deselectAnnotation(cluster, animated: false)
+
+                // The zoom is not always enough. MapKit clusters on how much the
+                // marker VIEWS overlap on screen, so members a little further
+                // apart than the coincident threshold can still come back as one
+                // bubble at the new zoom - and then tapping it zooms again and
+                // nothing changes. If the same members are still grouped after
+                // the animation settles, hand over the list instead of leaving a
+                // bubble that does nothing.
+                if let onOpenCluster, !memberIDs.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak mapView] in
+                        guard let mv = mapView else { return }
+                        let survivor = mv.annotations
+                            .compactMap { $0 as? MKClusterAnnotation }
+                            .first { c in
+                                Set(c.memberAnnotations.compactMap {
+                                    ($0 as? TripItemAnnotation)?.item.id
+                                }) == memberIDs
+                            }
+                        guard let survivor else { return }
+                        let items = survivor.memberAnnotations.compactMap {
+                            ($0 as? TripItemAnnotation)?.item
+                        }
+                        if !items.isEmpty { onOpenCluster(items) }
+                    }
+                }
                 return
             }
 

@@ -1,6 +1,11 @@
 import SwiftUI
 
 struct AroundTownView: View {
+    /// Opens the map pre-filtered. My Restaurants' map button arrives here on
+    /// `.restaurant`: this is the one LA / SF Bay map now, so a caller that only
+    /// cares about restaurants says so instead of getting its own map.
+    var initialKind: AroundTownItem.Kind? = nil
+
     @State private var items: [AroundTownItem] = []
     @State private var isLoading = false
 
@@ -16,7 +21,7 @@ struct AroundTownView: View {
                         .foregroundStyle(Color.sunSecondary)
                 }
             } else {
-                AroundTownMapView(items: $items)
+                AroundTownMapView(items: $items, initialKind: initialKind)
             }
         }
         .task { await load() }

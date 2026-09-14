@@ -1,337 +1,24 @@
 import SwiftUI
 import MapKit
 
-// MARK: - Annotation
-
-final class AroundTownAnnotation: NSObject, MKAnnotation {
-    let item: AroundTownItem
-    @objc dynamic var coordinate: CLLocationCoordinate2D
-    var title: String? { item.name }
-    var subtitle: String? { item.calloutSubtitle }
-
-    init(item: AroundTownItem, coordinate: CLLocationCoordinate2D) {
-        self.item = item
-        self.coordinate = coordinate
-    }
-}
-
-// MARK: - UIViewRepresentable
-
-struct AroundTownMKMap: UIViewRepresentable {
-    let annotations: [AroundTownAnnotation]
-    let filterKey: String
-    @Binding var selectedID: String?
-    let bridge: MapBridge
-
-    /// Fired when the callout's (i) accessory is tapped -- opens the detail sheet.
-    /// Mirrors TripMKMap so both maps behave the same way.
-    var onOpenDetail: ((AroundTownItem) -> Void)?
-
-    /// Fired when a numbered bubble holds places that sit on the same spot, so
-    /// zooming can never break it apart. The parent lists the members instead.
-    var onOpenCluster: (([AroundTownItem]) -> Void)?
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
-    }
-
-    static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
-        coordinator.stopHeading()
-    }
-
-    func makeUIView(context: Context) -> MKMapView {
-        let map = MKMapView()
-        map.delegate = context.coordinator
-        map.showsUserLocation = true
-        map.mapType = .standard
-        map.overrideUserInterfaceStyle = .dark
-        map.setRegion(
-            MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
-                latitudinalMeters: 60_000, longitudinalMeters: 60_000
-            ),
-            animated: false
-        )
-        map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: "aroundtown")
-        map.register(
-            MKMarkerAnnotationView.self,
-            forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier
-        )
-        bridge.mapView = map
-        context.coordinator.mapView = map
-        context.coordinator.startHeading()
-        return map
-    }
-
-    func updateUIView(_ map: MKMapView, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.isUpdating = true
-        defer { coordinator.isUpdating = false }
-
-        coordinator.onOpenDetail = onOpenDetail
-        coordinator.onOpenCluster = onOpenCluster
-
-        // Include intent state in the key so pin color refreshes after a toggle
-        func key(for ann: AroundTownAnnotation) -> String {
-            "\(ann.item.id)|\(ann.item.thinkingAbout)|\(ann.item.done)"
-        }
-
-        let existing = Set(map.annotations.compactMap { ($0 as? AroundTownAnnotation).map(key) })
-        let desired  = Set(annotations.map(key))
-
-        let toRemove = map.annotations.filter {
-            guard let a = $0 as? AroundTownAnnotation else { return false }
-            return !desired.contains(key(for: a))
-        }
-        if !toRemove.isEmpty { map.removeAnnotations(toRemove) }
-
-        let toAdd = annotations.filter { !existing.contains(key(for: $0)) }
-        if !toAdd.isEmpty { map.addAnnotations(toAdd) }
-
-        // Auto-fit on first load, on a filter change, and as background geocoding
-        // adds pins -- but never after the user has panned or zoomed by hand.
-        // The old gate required every item to be placed before fitting once, so a
-        // single un-geocodable row left the map parked on its default region.
-        let filterChanged = filterKey != coordinator.lastFilterKey
-        let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
-        let grew = annotations.count > coordinator.lastAnnotationCount
-        if firstLoad || filterChanged || (grew && !coordinator.userHasInteracted) {
-            coordinator.hasFittedInitially = true
-            coordinator.lastFilterKey = filterKey
-            DispatchQueue.main.async {
-                let anns = map.annotations.filter { !($0 is MKUserLocation) }
-                if !anns.isEmpty {
-                    map.showAnnotations(anns, animated: true)
-                } else {
-                    map.setRegion(
-                        MKCoordinateRegion(
-                            center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
-                            latitudinalMeters: 60_000, longitudinalMeters: 60_000
-                        ),
-                        animated: true
-                    )
-                }
-            }
-        }
-        coordinator.lastAnnotationCount = annotations.count
-
-        if let id = selectedID {
-            let alreadySelected = map.selectedAnnotations.contains {
-                ($0 as? AroundTownAnnotation)?.item.id == id
-            }
-            if !alreadySelected,
-               let ann = map.annotations.first(where: { ($0 as? AroundTownAnnotation)?.item.id == id }) {
-                map.selectAnnotation(ann, animated: true)
-            }
-        } else {
-            map.selectedAnnotations
-                .filter { !($0 is MKClusterAnnotation) }
-                .forEach { map.deselectAnnotation($0, animated: false) }
-        }
-    }
-
-    // MARK: - Coordinator
-
-    final class Coordinator: NSObject, MKMapViewDelegate, CLLocationManagerDelegate {
-        @Binding var selectedID: String?
-        var onOpenDetail: ((AroundTownItem) -> Void)?
-        var onOpenCluster: (([AroundTownItem]) -> Void)?
-        var isUpdating = false
-        var hasFittedInitially = false
-        var lastFilterKey: String = ""
-        var lastAnnotationCount = 0
-        var userHasInteracted = false
-        private var didCenterOnUser = false
-
-        private var headingManager: CLLocationManager?
-        weak var userLocView: UserLocationAnnotationView?
-        weak var mapView: MKMapView?
-        private var lastDeviceHeading: CLLocationDirection = 0
-        private var lastHeadingAccuracy: CLLocationDirection = 27.5
-
-        init(
-            selectedID: Binding<String?>,
-            onOpenDetail: ((AroundTownItem) -> Void)? = nil,
-            onOpenCluster: (([AroundTownItem]) -> Void)? = nil
-        ) {
-            _selectedID = selectedID
-            self.onOpenDetail = onOpenDetail
-            self.onOpenCluster = onOpenCluster
-        }
-
-        func startHeading() {
-            guard CLLocationManager.headingAvailable() else { return }
-            let mgr = CLLocationManager()
-            mgr.delegate = self
-            mgr.headingFilter = 3
-            mgr.startUpdatingHeading()
-            headingManager = mgr
-        }
-
-        func stopHeading() {
-            headingManager?.stopUpdatingHeading()
-            headingManager = nil
-        }
-
-        private func updateCone() {
-            let mapRotation = mapView?.camera.heading ?? 0
-            userLocView?.setHeading(lastDeviceHeading - mapRotation, accuracy: lastHeadingAccuracy)
-        }
-
-        func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-            guard newHeading.headingAccuracy >= 0 else { return }
-            lastDeviceHeading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
-            lastHeadingAccuracy = newHeading.headingAccuracy
-            updateCone()
-        }
-
-        func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool { true }
-
-        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            if annotation is MKUserLocation {
-                let v = UserLocationAnnotationView(
-                    annotation: annotation,
-                    reuseIdentifier: UserLocationAnnotationView.reuseID
-                )
-                userLocView = v
-                return v
-            }
-
-            if let cluster = annotation as? MKClusterAnnotation {
-                let v = mapView.dequeueReusableAnnotationView(
-                    withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier,
-                    for: cluster
-                ) as? MKMarkerAnnotationView
-                    ?? MKMarkerAnnotationView(annotation: cluster, reuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
-                v.markerTintColor = UIColor(red: 0.984, green: 0.749, blue: 0.141, alpha: 1)
-                v.glyphText = "\(cluster.memberAnnotations.count)"
-                v.canShowCallout = false
-                v.titleVisibility = .hidden
-                v.subtitleVisibility = .hidden
-                return v
-            }
-
-            guard let ann = annotation as? AroundTownAnnotation else { return nil }
-            let v = mapView.dequeueReusableAnnotationView(
-                withIdentifier: "aroundtown", for: annotation
-            ) as? MKMarkerAnnotationView
-                ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "aroundtown")
-            v.clusteringIdentifier = "aroundtown"
-
-            // Callout bubble on tap: name + one-line description, with an (i)
-            // accessory that opens the full sheet. Same as the travel map.
-            v.canShowCallout = true
-            v.titleVisibility = .adaptive
-            v.subtitleVisibility = .adaptive
-            let info = UIButton(type: .detailDisclosure)
-            info.tintColor = UIColor(Color.sunAccent)
-            v.rightCalloutAccessoryView = info
-            v.glyphImage = UIImage(systemName: ann.item.glyph)
-
-            // Every place stays legible: tried places go grey, untried keep their
-            // preference color. Nothing is faded out to near-invisible.
-            if ann.item.done {
-                v.markerTintColor = .systemGray
-                v.alpha = 0.9
-            } else {
-                v.markerTintColor = UIColor(Color(hex: ann.item.markerColorHex))
-                v.alpha = 1.0
-            }
-            v.displayPriority = ann.item.thinkingAbout ? .required : .defaultHigh
-            return v
-        }
-
-        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
-            if !animated && hasFittedInitially { userHasInteracted = true }
-        }
-
-        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) { updateCone() }
-        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) { updateCone() }
-
-        func mapView(_ mapView: MKMapView,
-                     annotationView view: MKAnnotationView,
-                     calloutAccessoryControlTapped control: UIControl) {
-            if let ann = view.annotation as? AroundTownAnnotation {
-                onOpenDetail?(ann.item)
-            }
-        }
-
-        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-            // Numbered bubble tap -> zoom into the cluster's member bounds so it
-            // breaks apart. MapKit does nothing here by default, which is why
-            // tapping a numbered pin used to be a dead end.
-            if let cluster = view.annotation as? MKClusterAnnotation {
-                let coords = cluster.memberAnnotations.map(\.coordinate)
-                guard !coords.isEmpty else { return }
-
-                // Places on the SAME spot can never be split by zooming, and 24
-                // sets of them exist in the real data (two rows for Camphor, the
-                // three ABSteak rows, Damian and Bread Lounge in one building).
-                // Zooming those forever was the original dead end in a new form,
-                // so the member list opens instead.
-                let anchor = CLLocation(latitude: coords[0].latitude, longitude: coords[0].longitude)
-                let spread = coords.map {
-                    anchor.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
-                }.max() ?? 0
-                if spread < 30 {
-                    let items = cluster.memberAnnotations.compactMap { ($0 as? AroundTownAnnotation)?.item }
-                    mapView.deselectAnnotation(cluster, animated: false)
-                    if !items.isEmpty { onOpenCluster?(items) }
-                    return
-                }
-
-                var rect = MKMapRect.null
-                for c in coords {
-                    let p = MKMapPoint(c)
-                    rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
-                }
-                let dx = max(rect.size.width * 0.5, 200)
-                let dy = max(rect.size.height * 0.5, 200)
-                mapView.setVisibleMapRect(rect.insetBy(dx: -dx, dy: -dy), animated: true)
-                mapView.deselectAnnotation(cluster, animated: false)
-                return
-            }
-
-            UIView.animate(withDuration: 0.18) {
-                view.transform = CGAffineTransform(scaleX: 1.18, y: 1.18)
-            }
-            view.layer.shadowColor = UIColor(Color.sunAccent).cgColor
-            view.layer.shadowRadius = 8
-            view.layer.shadowOpacity = 0.7
-            view.layer.shadowOffset = .zero
-
-            guard !isUpdating else { return }
-            if let ann = view.annotation as? AroundTownAnnotation { selectedID = ann.item.id }
-        }
-
-        func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
-            UIView.animate(withDuration: 0.18) { view.transform = .identity }
-            view.layer.shadowOpacity = 0
-
-            guard !isUpdating else { return }
-            if view.annotation is MKClusterAnnotation { return }
-            selectedID = nil
-        }
-
-        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
-            guard !didCenterOnUser else { return }
-            guard !mapView.annotations.contains(where: { $0 is AroundTownAnnotation }) else { return }
-            didCenterOnUser = true
-            mapView.setRegion(
-                MKCoordinateRegion(
-                    center: userLocation.coordinate,
-                    latitudinalMeters: 8_000, longitudinalMeters: 8_000
-                ),
-                animated: true
-            )
-        }
-    }
-}
+// The map itself is the travel map's `TripMKMap`. There is no Around Town map
+// class any more, and that is the point: a numbered bubble here behaves the way
+// it behaves on a trip because it is the same code, not because someone
+// remembered to copy the fix across. `AroundTownItem.asTripItem` is the whole
+// adapter. This file owns the Around Town-specific parts -- the filter bar, the
+// preference legend, the intent toggles, and the LA / SF Bay geocoder.
 
 // MARK: - AroundTownMapView
 
 struct AroundTownMapView: View {
     @Binding var items: [AroundTownItem]
+
+    /// Opens pre-filtered. My Restaurants' map button lands here on
+    /// `.restaurant` now that the separate restaurant map is gone.
+    init(items: Binding<[AroundTownItem]>, initialKind: AroundTownItem.Kind? = nil) {
+        self._items = items
+        self._filterKind = State(initialValue: initialKind)
+    }
 
     @State private var pins: [String: CLLocationCoordinate2D] = [:]
     @State private var selectedID: String?
@@ -341,17 +28,19 @@ struct AroundTownMapView: View {
     private enum ActiveSheet: Identifiable {
         case detail(String)
         case cluster([AroundTownItem])
+        case unmapped
 
         var id: String {
             switch self {
             case .detail(let itemID): return "detail-\(itemID)"
             case .cluster(let members): return "cluster-" + members.map(\.id).joined(separator: "-")
+            case .unmapped: return "unmapped"
             }
         }
     }
 
     @State private var activeSheet: ActiveSheet?
-    @State private var bridge = MapBridge()
+    @State private var bridge = TripMapBridge()
     @State private var geocodePassComplete = false
 
     /// The primary toggle: everything, or only the places we have not been to yet.
@@ -379,10 +68,21 @@ struct AroundTownMapView: View {
         }
     }
 
-    private var annotations: [AroundTownAnnotation] {
+    private var annotations: [TripItemAnnotation] {
         filtered.compactMap { item in
-            pins[item.id].map { AroundTownAnnotation(item: item, coordinate: $0) }
+            pins[item.id].map { item.annotation(at: $0) }
         }
+    }
+
+    /// The places the geocoder could not put anywhere. Counted in the control
+    /// bar and reachable from it -- a row she cannot open is a row she cannot
+    /// use, which is what the count alone amounted to.
+    private var unmappedPlaces: [AroundTownItem] {
+        filtered.filter { pins[$0.id] == nil }
+    }
+
+    private func item(withID id: String) -> AroundTownItem? {
+        items.first { $0.id == id }
     }
 
     private var filterKey: String {
@@ -392,13 +92,25 @@ struct AroundTownMapView: View {
 
     var body: some View {
         ZStack {
-            AroundTownMKMap(
+            // The travel map, with Around Town data and Around Town pin colours.
+            TripMKMap(
                 annotations: annotations,
                 filterKey: filterKey,
                 selectedID: $selectedID,
                 bridge: bridge,
                 onOpenDetail: { activeSheet = .detail($0.id) },
-                onOpenCluster: { activeSheet = .cluster($0) }
+                onOpenCluster: { trip in
+                    let members = trip.compactMap { item(withID: $0.id) }
+                    if !members.isEmpty { activeSheet = .cluster(members) }
+                },
+                styleFor: { trip in
+                    item(withID: trip.id)?.pinStyle
+                        ?? MapPinStyle(color: Color(hex: AroundTownItem.notRatedHex), glyph: "mappin")
+                },
+                initialRegion: MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
+                    latitudinalMeters: 60_000, longitudinalMeters: 60_000
+                )
             )
             .ignoresSafeArea()
 
@@ -413,8 +125,11 @@ struct AroundTownMapView: View {
                     kindLegend
                         .padding(.leading, 16)
                     Spacer()
-                    locateMeButton
-                        .padding(.trailing, 16)
+                    VStack(spacing: 10) {
+                        fitAllButton
+                        locateMeButton
+                    }
+                    .padding(.trailing, 16)
                 }
                 .padding(.bottom, 32)
             }
@@ -430,9 +145,17 @@ struct AroundTownMapView: View {
                         .presentationDragIndicator(.visible)
                 }
             case .cluster(let members):
-                clusterSheet(members)
+                placeListSheet(title: "\(members.count) places here", members: members)
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
+            case .unmapped:
+                placeListSheet(
+                    title: "\(unmappedPlaces.count) with no map location",
+                    members: unmappedPlaces,
+                    note: "No address the geocoder could place. Open one to read it, or look it up in Maps."
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
         }
         .task(id: items.count) { await geocodeAll() }
@@ -468,12 +191,26 @@ struct AroundTownMapView: View {
                     .foregroundStyle(Color.white.opacity(0.45))
                 if filtered.count > annotations.count {
                     // Once the pass is done the remainder is not "still loading" --
-                    // those rows have no address the geocoder can place.
-                    Text(geocodePassComplete
-                         ? "· \(filtered.count - annotations.count) with no map location"
-                         : "· \(filtered.count - annotations.count) still locating")
+                    // those rows have no address the geocoder can place. Tapping
+                    // opens them: unmapped is fine, invisible is not.
+                    Button {
+                        guard geocodePassComplete else { return }
+                        activeSheet = .unmapped
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(geocodePassComplete
+                                 ? "· \(filtered.count - annotations.count) with no map location"
+                                 : "· \(filtered.count - annotations.count) still locating")
+                            if geocodePassComplete {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 8, weight: .bold, design: .serif))
+                            }
+                        }
                         .font(.system(size: 11, design: .serif))
-                        .foregroundStyle(Color.white.opacity(0.3))
+                        .foregroundStyle(Color.white.opacity(geocodePassComplete ? 0.55 : 0.3))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!geocodePassComplete)
                 }
                 Spacer()
             }
@@ -605,9 +342,7 @@ struct AroundTownMapView: View {
 
     private var locateMeButton: some View {
         Button {
-            if let mv = bridge.mapView, mv.userLocation.location != nil {
-                bridge.center(on: mv.userLocation.coordinate)
-            }
+            bridge.centerOnUser()
         } label: {
             Image(systemName: "location.fill")
                 .font(.system(size: 16, design: .serif))
@@ -619,27 +354,68 @@ struct AroundTownMapView: View {
         }
     }
 
-    // MARK: - Cluster member list
+    /// Back to every pin on screen, same control the trip map carries.
+    private var fitAllButton: some View {
+        Button {
+            selectedID = nil
+            bridge.fitAll()
+        } label: {
+            Image(systemName: "scope")
+                .font(.system(size: 16, design: .serif))
+                .foregroundStyle(Color.sunAccent)
+                .padding(13)
+                .background(Color.sunSurface)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.5), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+    }
 
-    /// Shown when a numbered bubble holds places at the same address, where no
-    /// amount of zooming will separate them. Picking one opens its description.
+    // MARK: - Place list (cluster members, and places with no pin)
+
+    /// One list, two jobs: the members of a numbered bubble that no amount of
+    /// zooming will separate, and the places the geocoder could not place at all.
+    /// A row for a place that HAS a pin points the map at it, the way tapping a
+    /// trip row does; a row with no pin opens its description.
     @ViewBuilder
-    private func clusterSheet(_ members: [AroundTownItem]) -> some View {
+    private func placeListSheet(
+        title: String,
+        members: [AroundTownItem],
+        note: String? = nil
+    ) -> some View {
         ZStack {
             Color.sunBackground.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
-                Text("\(members.count) places here")
+                Text(title)
                     .font(.system(size: 18, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunText)
                     .padding(.horizontal, 20)
                     .padding(.top, 22)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, note == nil ? 12 : 4)
+
+                if let note {
+                    Text(note)
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(Color.sunSecondary)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+                }
 
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(members) { member in
                             Button {
-                                activeSheet = .detail(member.id)
+                                if let coord = pins[member.id] {
+                                    // Same behaviour as a tapped trip row: point
+                                    // the map at it rather than covering the map
+                                    // with a sheet.
+                                    activeSheet = nil
+                                    selectedID = member.id
+                                    bridge.panTo(coord)
+                                    bridge.selectPin(id: member.id)
+                                } else {
+                                    activeSheet = .detail(member.id)
+                                }
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: member.glyph)
@@ -658,7 +434,9 @@ struct AroundTownMapView: View {
                                             .lineLimit(1)
                                     }
                                     Spacer()
-                                    Image(systemName: "chevron.right")
+                                    Image(systemName: pins[member.id] == nil
+                                          ? "chevron.right"
+                                          : "mappin.and.ellipse")
                                         .font(.system(size: 11, design: .serif))
                                         .foregroundStyle(Color.sunSecondary.opacity(0.5))
                                 }
@@ -730,6 +508,35 @@ struct AroundTownMapView: View {
                     }
                     if !item.comments.isEmpty {
                         detailBlock(title: "Notes", body: item.comments)
+                    }
+
+                    if pins[item.id] == nil {
+                        // Nothing to point at on the map, so give her the one
+                        // action that still works on an unplaceable row.
+                        Button {
+                            let query = [item.name, item.locationText]
+                                .filter { !$0.isEmpty }
+                                .joined(separator: " ")
+                            let encoded = query.addingPercentEncoding(
+                                withAllowedCharacters: .urlQueryAllowed
+                            ) ?? ""
+                            if let url = URL(string: "http://maps.apple.com/?q=\(encoded)") {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "magnifyingglass")
+                                Text("Look up in Maps")
+                            }
+                            .font(.system(size: 13, weight: .medium, design: .serif))
+                            .foregroundStyle(Color.sunAccent)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Color.sunAccent.opacity(0.1))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.sunAccent.opacity(0.3), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     Divider()

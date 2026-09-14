@@ -77,12 +77,16 @@ struct MyRestaurantsView: View {
                 }
             }
 
-            // Map FAB — bottom right, below the boop button
+            // Map FAB — bottom right, below the boop button.
+            // Around Town IS the map now. It carries every restaurant plus the
+            // activities, reads the same geocode cache, and gets every fix the
+            // travel map gets. The separate restaurant map was a third copy
+            // where a tapped cluster did nothing at all.
             VStack {
                 Spacer()
                 HStack {
                     Spacer()
-                    NavigationLink(destination: RestaurantMapView(restaurants: filtered)) {
+                    NavigationLink(destination: AroundTownView(initialKind: .restaurant)) {
                         Image(systemName: "map.fill")
                             .font(.system(size: 16, design: .serif))
                             .foregroundStyle(Color.sunAccent)

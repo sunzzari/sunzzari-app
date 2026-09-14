@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import SwiftUI
 
 struct AroundTownItem: Identifiable {
     enum Kind { case restaurant, activity }
@@ -168,7 +169,16 @@ extension AroundTownItem {
         // row is placed or counted, never silently dropped. A row that resolves
         // to another metro is out of area, which is not the same as unplaceable.
         let region = Region.from(location: r.location)
-        guard region != nil || (r.location.isEmpty && !r.neighborhood.isEmpty) else { return nil }
+        // A blank Location is still a candidate IF the NEIGHBOURHOOD reads as
+        // LA or the Bay ("Rokusho", blank Location, Neighborhood "Hollywood").
+        // Accepting it merely because a neighbourhood exists let 11 rows with a
+        // Chengdu or Shanghai neighbourhood in; they never showed because the
+        // coordinate box kept them off the map and nothing listed the rows the
+        // map could not place. Now that list exists, so the rule is tightened.
+        let neighborhoodRegion = r.location.isEmpty
+            ? Region.from(location: r.neighborhood)
+            : nil
+        guard region != nil || neighborhoodRegion != nil else { return nil }
         // Not-rated is its OWN colour. It was briefly Top Choice blue, which put
         // 142 unrated places in the same blue as the 57 actual top choices.
         let color: String
@@ -183,7 +193,7 @@ extension AroundTownItem {
             id:             r.id,
             name:           r.name,
             kind:           .restaurant,
-            region:         region,
+            region:         region ?? neighborhoodRegion,
             subtitle:       r.neighborhood.isEmpty ? r.location : r.neighborhood,
             locationText:   r.location,
             thinkingAbout:  r.thinkingAbout,
@@ -227,5 +237,61 @@ extension AroundTownItem {
             comments:       "",
             coordinate:     nil
         )
+    }
+}
+
+// MARK: - Riding on the travel map
+
+extension AroundTownItem {
+    /// The travel map's map, cluster picker and unmapped list all speak
+    /// `TripItem`. An Around Town place is the same kind of thing -- a name, a
+    /// pin, a note -- so it rides on those through this one adapter rather than
+    /// a second copy of the map. Three copies of that map is what let the
+    /// numbered bubbles stay broken here for months.
+    ///
+    /// Every date field is nil on purpose. Around Town places are never
+    /// assigned to a day, so nothing downstream can grow a day strip.
+    var asTripItem: TripItem {
+        TripItem(
+            id: id,
+            url: "https://www.notion.so/\(id.replacingOccurrences(of: "-", with: ""))",
+            name: name,
+            type: kind == .restaurant ? .restaurant : .activity,
+            priority: nil,
+            // Status drives pin colour on a trip. Around Town colours by
+            // preference instead, through `pinStyle`, so this stays empty
+            // rather than borrowing a trip word that does not apply.
+            status: nil,
+            legCity: subtitle,
+            venue: "",
+            notes: comments,
+            date: nil,
+            dateEnd: nil,
+            assignedToDate: nil,
+            assignedToDateEnd: nil,
+            timeText: "",
+            address: locationText,
+            confirmationNumber: "",
+            bookedVia: "",
+            reservationRequired: false,
+            reservationMade: false,
+            tripRelationID: nil,
+            latitude: coordinate?.latitude,
+            longitude: coordinate?.longitude
+        )
+    }
+
+    /// Pin colour and glyph for the shared map. Been-there places go grey but
+    /// stay legible -- nothing is faded to near-invisible.
+    var pinStyle: MapPinStyle {
+        done
+            ? MapPinStyle(color: Color(uiColor: .systemGray), glyph: glyph, alpha: 0.9)
+            : MapPinStyle(color: Color(hex: markerColorHex), glyph: glyph)
+    }
+
+    /// Map annotation for the shared map, carrying the Around Town callout line
+    /// instead of a trip item's type/leg/status line.
+    func annotation(at coord: CLLocationCoordinate2D) -> TripItemAnnotation {
+        TripItemAnnotation(item: asTripItem, coordinate: coord, subtitleOverride: calloutSubtitle)
     }
 }
