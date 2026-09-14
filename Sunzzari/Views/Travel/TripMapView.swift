@@ -118,6 +118,15 @@ struct TripMKMap: UIViewRepresentable {
     // or the Bay and should not flash Europe on the way there.
     var initialRegion: MKCoordinateRegion?
 
+    // Limits every AUTO-fit to these annotation ids. Nil fits everything, which
+    // is right for a trip: its items are all in one place by definition.
+    //
+    // Around Town is not one place. Elisa, 2026-09-14: "id never want to fit all
+    // between sf and la. id fit all within one area but not all areas." Fitting
+    // both metros frames 400 miles of California and every pin is a speck, so
+    // Around Town passes the ids of one region.
+    var fitScopeIDs: Set<String>?
+
     func makeCoordinator() -> Coordinator {
         Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
@@ -202,8 +211,19 @@ struct TripMKMap: UIViewRepresentable {
             // refit. Vienna 2026 opened that way - 99 Austrian pins, one cluster,
             // zoomed to all of Europe. So the flag is only set once a fit has
             // actually run, and until then we retry.
+            let scope = fitScopeIDs
             func fit(_ attempt: Int) {
-                let itemAnns = map.annotations.filter { !($0 is MKUserLocation) }
+                var itemAnns = map.annotations.filter { !($0 is MKUserLocation) }
+                // Scope the fit, but never to nothing: if the scope matches no
+                // pin yet (geocoding still running) fall back to all of them
+                // rather than leaving the map parked on its seed region.
+                if let scope {
+                    let scoped = itemAnns.filter { ann in
+                        guard let ta = ann as? TripItemAnnotation else { return false }
+                        return scope.contains(ta.item.id)
+                    }
+                    if !scoped.isEmpty { itemAnns = scoped }
+                }
                 guard !itemAnns.isEmpty else { return }
                 guard map.bounds.width > 1, map.bounds.height > 1 else {
                     guard attempt < 20 else { return }

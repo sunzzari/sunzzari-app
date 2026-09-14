@@ -81,6 +81,38 @@ struct AroundTownMapView: View {
         filtered.filter { pins[$0.id] == nil }
     }
 
+    /// The ONE area a fit may span. Elisa, 2026-09-14: *"id never want to fit all
+    /// between sf and la. id fit all within one area but not all areas."*
+    ///
+    /// Her explicit LA / SF Bay choice wins. With no choice made it is whichever
+    /// area holds more of the places currently on screen, which is deterministic
+    /// and needs no location permission -- Locate Me is the control for "take me
+    /// to where I actually am".
+    private var fitRegion: AroundTownItem.Region {
+        if let filterRegion { return filterRegion }
+        var la = 0, sf = 0
+        for item in filtered {
+            guard let coord = pins[item.id] else { continue }
+            switch AroundTownItem.Region.from(coordinate: coord) {
+            case .la: la += 1
+            case .sfBay: sf += 1
+            case nil: break
+            }
+        }
+        return sf > la ? .sfBay : .la
+    }
+
+    /// Pins inside `fitRegion`. Pins outside it stay on the map and stay
+    /// tappable; they are simply never allowed to stretch the frame.
+    private var fitScopeIDs: Set<String> {
+        let region = fitRegion
+        return Set(filtered.compactMap { item -> String? in
+            guard let coord = pins[item.id],
+                  AroundTownItem.Region.from(coordinate: coord) == region else { return nil }
+            return item.id
+        })
+    }
+
     /// Rare path: a tap on a cluster or a callout. A linear scan is fine here.
     private func item(withID id: String) -> AroundTownItem? {
         items.first { $0.id == id }
@@ -96,7 +128,9 @@ struct AroundTownMapView: View {
 
     private var filterKey: String {
         let kindStr = filterKind.map { $0 == .restaurant ? "rest" : "act" } ?? "all"
-        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(triedFilter.rawValue)|\(wantToTryOnly)"
+        // fitRegion is in the key: when the majority area flips as geocoding
+        // lands, the map should re-frame on it rather than keep an old frame.
+        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(triedFilter.rawValue)|\(wantToTryOnly)|fit:\(fitRegion.label)"
     }
 
     var body: some View {
@@ -120,7 +154,8 @@ struct AroundTownMapView: View {
                 initialRegion: MKCoordinateRegion(
                     center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
                     latitudinalMeters: 60_000, longitudinalMeters: 60_000
-                )
+                ),
+                fitScopeIDs: fitScopeIDs
             )
             .ignoresSafeArea()
 
@@ -364,11 +399,14 @@ struct AroundTownMapView: View {
         }
     }
 
-    /// Back to every pin on screen, same control the trip map carries.
+    /// Back to every pin in ONE area. Never LA and the Bay at once -- that
+    /// frames 400 miles of California and turns every pin into a speck.
     private var fitAllButton: some View {
         Button {
             selectedID = nil
-            bridge.fitAll()
+            let ids = fitScopeIDs
+            guard !ids.isEmpty else { return }
+            bridge.fitToIDs(ids, in: filtered.map(\.asTripItem))
         } label: {
             Image(systemName: "scope")
                 .font(.system(size: 16, design: .serif))
