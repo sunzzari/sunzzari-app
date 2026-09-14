@@ -81,8 +81,17 @@ struct AroundTownMapView: View {
         filtered.filter { pins[$0.id] == nil }
     }
 
+    /// Rare path: a tap on a cluster or a callout. A linear scan is fine here.
     private func item(withID id: String) -> AroundTownItem? {
         items.first { $0.id == id }
+    }
+
+    /// Hot path: the map calls `styleFor` for EVERY annotation on EVERY update,
+    /// so the lookup behind it cannot be a scan. At 410 places a scan-per-pin is
+    /// ~168k string compares per refresh, on the main thread, while she pans.
+    /// Built once per body evaluation and captured by the closure.
+    private var pinStyleByID: [String: MapPinStyle] {
+        Dictionary(items.map { ($0.id, $0.pinStyle) }, uniquingKeysWith: { first, _ in first })
     }
 
     private var filterKey: String {
@@ -91,7 +100,8 @@ struct AroundTownMapView: View {
     }
 
     var body: some View {
-        ZStack {
+        let pinStyles = pinStyleByID
+        return ZStack {
             // The travel map, with Around Town data and Around Town pin colours.
             TripMKMap(
                 annotations: annotations,
@@ -104,7 +114,7 @@ struct AroundTownMapView: View {
                     if !members.isEmpty { activeSheet = .cluster(members) }
                 },
                 styleFor: { trip in
-                    item(withID: trip.id)?.pinStyle
+                    pinStyles[trip.id]
                         ?? MapPinStyle(color: Color(hex: AroundTownItem.notRatedHex), glyph: "mappin")
                 },
                 initialRegion: MKCoordinateRegion(
