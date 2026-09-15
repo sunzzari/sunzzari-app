@@ -42,7 +42,12 @@ cp Sunzzari/Config/Secrets.template Sunzzari/Config/Secrets.swift
 ```
 Open `Sunzzari/Config/Secrets.swift` and replace the two placeholder values with the real tokens. Ask Elisa if you don't have them.
 
-**3. Open in Xcode**
+**3. Turn on the repo's git hooks** (one line, do not skip — see Part 7)
+```bash
+git config core.hooksPath .githooks
+```
+
+**4. Open in Xcode**
 ```bash
 open Sunzzari.xcodeproj
 ```
@@ -127,6 +132,33 @@ If the Notion token is ever revoked or needs to be rotated:
 2. Update `Sunzzari/Config/Secrets.swift` locally with the new token
 3. Update the `NOTION_TOKEN` environment variable in App Store Connect → Xcode Cloud → Manage Workflows → TestFlight Release → Environment
 4. Push any commit to trigger a new build
+
+---
+
+## Part 7 — The Changelog (required)
+
+**Every push to `main` updates [CHANGELOG.md](CHANGELOG.md) in the same commit.**
+
+This is how either of us can come back in three months and know what changed and why. It is also the only readable record of the app for whoever is not the one who made the change.
+
+Format:
+
+- Newest at the top, always
+- A date heading (`## YYYY-MM-DD`) for today if there isn't one yet
+- Bold the headline, then explain what actually changed and why it matters, in plain language. Someone reading later should understand it without opening the diff.
+- Add `- Cathy` at the end of entries Cathy wrote
+
+Example:
+
+```markdown
+## 2026-09-20
+
+- **Restaurant cards show the price range** - the Notion Price field was being read but never displayed. It now sits under the name on the card. - Cathy
+```
+
+**A pre-push hook enforces this.** If you change any Swift file or the Xcode project without touching `CHANGELOG.md`, the push is refused with a reminder. That is the hook you turned on in Part 1, step 3. It is a reminder, not a lock — `git push --no-verify` bypasses it if you genuinely need to, but the default answer is to write the entry.
+
+This exists because it did not work before. `CHANGELOG.md` was started on 2026-05-13 and then went unwritten for 41 commits and four months, because nothing checked.
 
 ---
 
