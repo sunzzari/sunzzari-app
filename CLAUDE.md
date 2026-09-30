@@ -40,3 +40,22 @@ with `Secrets.GooglePlaces` - see the 2026-08-19 changelog entry.
 `TripMKMap` in `Views/Travel/TripMapView.swift` is the app's only map. Around Town
 renders through it via `AroundTownItem.asTripItem` plus the opt-in `styleFor`. A change
 to `TripMKMap` reaches both surfaces - say so in the same pass. Never add another map.
+
+## Logic that is duplicated in the travel map repo
+
+These files have a hand-maintained twin in `elisa-travel-map`. Nothing checks that they
+agree, so **editing one means editing the other in the same pass, or saying out loud
+that you did not**:
+
+| This repo | elisa-travel-map |
+|---|---|
+| `Models/AroundTownItem.swift` (region lists, bounding boxes, preference colours) | `lib/aroundtown-shared.ts` |
+| `Services/TripTime.swift` | `lib/time.ts` |
+| `Services/TripDayPlanner.swift` | `lib/day.ts` |
+
+The region word lists are 105 tokens long on each side. They were verified identical on
+2026-09-14; that is a snapshot, not a guarantee.
+
+Geocoding is NOT duplicated - both apps call the travel map's `/api/geocode`. That is
+the pattern to extend when this duplication gets painful, not a monorepo: Swift cannot
+import TypeScript, so merging the repos would preserve every copy above.
