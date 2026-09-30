@@ -157,6 +157,32 @@ extension AroundTownItem.Region {
         return nil
     }
 
+    /// The area a FIT may span. Deliberately TIGHTER than the area a pin may
+    /// belong to. Elisa, 2026-09-15: *"when im on LA in the sunzzari app it also
+    /// zooms out to san diego. i only want LA proper. not even orange county."*
+    ///
+    /// `from(coordinate:)` above stays wide ON PURPOSE - it decides whether a pin
+    /// is kept at all, so narrowing it would strip every San Diego and Orange
+    /// County place off the map instead of merely leaving it out of the frame.
+    /// A place outside this box keeps its pin and stays tappable; it just never
+    /// stretches the frame. Same rule as `fitScopeIds` on the trip map.
+    ///
+    /// LA proper is LA County, coast through the San Gabriel Valley: Long Beach,
+    /// San Pedro, Torrance and the beach cities at the south edge; Malibu and
+    /// Calabasas west; Santa Clarita at the north edge; Pasadena, Arcadia and
+    /// Monterey Park east. Anaheim (-117.91) and Fullerton (-117.92) sit just
+    /// outside the eastern edge; Irvine, Newport, Costa Mesa and Huntington
+    /// Beach sit below the southern edge. San Diego is nowhere near it.
+    func containsForFit(_ c: CLLocationCoordinate2D) -> Bool {
+        switch self {
+        case .la:
+            return c.latitude >= 33.70 && c.latitude <= 34.45 &&
+                   c.longitude >= -118.95 && c.longitude <= -117.95
+        case .sfBay:
+            return Self.from(coordinate: c) == .sfBay
+        }
+    }
+
     var label: String {
         switch self { case .la: return "LA"; case .sfBay: return "SF Bay" }
     }

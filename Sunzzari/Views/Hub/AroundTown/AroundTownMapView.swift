@@ -102,13 +102,17 @@ struct AroundTownMapView: View {
         return sf > la ? .sfBay : .la
     }
 
-    /// Pins inside `fitRegion`. Pins outside it stay on the map and stay
-    /// tappable; they are simply never allowed to stretch the frame.
+    /// Pins inside `fitRegion`'s FIT area, which is tighter than the area the
+    /// region accepts pins from - LA here means LA County, not San Diego and
+    /// Orange County too. Pins outside it stay on the map and stay tappable;
+    /// they are simply never allowed to stretch the frame. An empty scope makes
+    /// `TripMKMap.fitToIDs` fall back to fitting everything, so a filter that
+    /// leaves nothing in LA proper still frames something.
     private var fitScopeIDs: Set<String> {
         let region = fitRegion
         return Set(filtered.compactMap { item -> String? in
             guard let coord = pins[item.id],
-                  AroundTownItem.Region.from(coordinate: coord) == region else { return nil }
+                  region.containsForFit(coord) else { return nil }
             return item.id
         })
     }
