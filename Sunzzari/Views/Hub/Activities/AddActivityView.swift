@@ -10,6 +10,7 @@ struct AddActivityView: View {
     @State private var dateSpecific = false
     @State private var dateActive = Date()
     @State private var thinkingAbout = false
+    @State private var address = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -35,6 +36,15 @@ struct AddActivityView: View {
                                 .background(Color.sunSurface)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .foregroundStyle(Color.sunText)
+                        }
+
+                        formField(label: "Address (optional)", icon: "mappin.and.ellipse") {
+                            AddressLookupField(address: $address) {
+                                [name, location]
+                                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                                    .filter { !$0.isEmpty }
+                                    .joined(separator: ", ")
+                            }
                         }
 
                         formField(label: "Want to Do?", icon: "bookmark") {
@@ -148,7 +158,8 @@ struct AddActivityView: View {
                 home:           home,
                 calendarSynced: false,
                 thinkingAbout:  thinkingAbout,
-                done:           false
+                done:           false,
+                address:        address.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             try await NotionService.shared.createActivity(a)
             UINotificationFeedbackGenerator().notificationOccurred(.success)

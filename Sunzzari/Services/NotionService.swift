@@ -348,6 +348,12 @@ final class NotionService: @unchecked Sendable {
         try await createPage(body: restaurantPayload(r))
     }
 
+    /// Saves every editable field of an existing restaurant in one request.
+    func updateRestaurant(_ r: Restaurant) async throws {
+        try await updatePage(id: r.id, body: ["properties": restaurantProperties(r)])
+        invalidateRestaurants()
+    }
+
     /// Minimal add from the Home checklist: name only, flagged onto the shortlist.
     /// Returns the page ID so the new row can be checked off without a refetch.
     func createRestaurantOnShortlist(name: String, neighborhood: String? = nil) async throws -> String {
@@ -1060,7 +1066,8 @@ final class NotionService: @unchecked Sendable {
                 neighborhood:  extractRichText(from: props["Neighborhood"]) ?? "",
                 goodFor:       extractMultiSelect(from: props["Good For"]),
                 topDishes:     extractRichText(from: props["Top Dishes"]) ?? "",
-                comments:      extractRichText(from: props["Comments"]) ?? ""
+                comments:      extractRichText(from: props["Comments"]) ?? "",
+                address:       extractRichText(from: props["Address"]) ?? ""
             )
         }
     }
@@ -1146,7 +1153,8 @@ final class NotionService: @unchecked Sendable {
                 home:           (props["Home?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
                 calendarSynced: (props["Calendar Synced?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
                 thinkingAbout:  (props["Thinking About"] as? [String: Any])?["checkbox"] as? Bool ?? false,
-                done:           (props["Done?"] as? [String: Any])?["checkbox"] as? Bool ?? false
+                done:           (props["Done?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+                address:        extractRichText(from: props["Address"]) ?? ""
             )
         }
     }
@@ -1247,18 +1255,36 @@ final class NotionService: @unchecked Sendable {
     }
 
     private func restaurantPayload(_ r: Restaurant) -> [String: Any] {
-        var props: [String: Any] = [
+        var props = restaurantProperties(r)
+        if r.location.isEmpty { props.removeValue(forKey: "Location") }
+        if r.preference == nil { props.removeValue(forKey: "Preference") }
+        return ["parent": ["database_id": Constants.Notion.restaurantsDBID], "properties": props]
+    }
+
+    /// Every editable restaurant property. An empty Location or Preference is an
+    /// explicit null so that clearing one in the edit screen clears it in Notion.
+    private func restaurantProperties(_ r: Restaurant) -> [String: Any] {
+        let location: [String: Any] = r.location.isEmpty
+            ? ["select": NSNull()]
+            : ["select": ["name": r.location]]
+        let preference: [String: Any]
+        if let p = r.preference {
+            preference = ["select": ["name": p.rawValue]]
+        } else {
+            preference = ["select": NSNull()]
+        }
+        return [
             "Name":           titleProp(r.name),
             "Been There?":    ["checkbox": r.beenThere],
             "Thinking About": ["checkbox": r.thinkingAbout],
             "Good For":       ["multi_select": r.goodFor.map { ["name": $0] }],
             "Neighborhood":   richTextProp(r.neighborhood),
             "Top Dishes":     richTextProp(r.topDishes),
-            "Comments":       richTextProp(r.comments)
+            "Comments":       richTextProp(r.comments),
+            "Address":        richTextProp(r.address),
+            "Location":       location,
+            "Preference":     preference
         ]
-        if !r.location.isEmpty { props["Location"] = ["select": ["name": r.location]] }
-        if let pref = r.preference { props["Preference"] = ["select": ["name": pref.rawValue]] }
-        return ["parent": ["database_id": Constants.Notion.restaurantsDBID], "properties": props]
     }
 
     private func winePayload(_ w: Wine) -> [String: Any] {
@@ -1287,7 +1313,8 @@ final class NotionService: @unchecked Sendable {
             "Date-Specific?":   ["checkbox": a.dateSpecific],
             "Calendar Synced?": ["checkbox": a.calendarSynced],
             "Thinking About":   ["checkbox": a.thinkingAbout],
-            "Done?":            ["checkbox": a.done]
+            "Done?":            ["checkbox": a.done],
+            "Address":          richTextProp(a.address)
         ]
         if a.dateSpecific, let date = a.dateActive { props["Date Active"] = dateProp(date) }
         return ["parent": ["database_id": Constants.Notion.activitiesDBID], "properties": props]

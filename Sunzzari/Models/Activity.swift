@@ -12,4 +12,5 @@ struct Activity: Identifiable, Codable {
     var calendarSynced: Bool
     var thinkingAbout: Bool
     var done: Bool
+    var address: String = ""
 }

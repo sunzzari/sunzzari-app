@@ -20,6 +20,8 @@ struct AroundTownItem: Identifiable {
     let goodFor: [String]
     let topDishes: String
     let comments: String
+    /// Street address from Notion. When set it is what gets geocoded.
+    let address: String
     var coordinate: CLLocationCoordinate2D?
 
     // Stable geo cache key shared with the existing restaurant geo cache
@@ -45,7 +47,7 @@ struct AroundTownItem: Identifiable {
 
     /// Geocoder inputs, in the venue + city shape the travel map's endpoint takes.
     /// The city hint is what keeps a same-named place in another metro from winning.
-    var geoVenue: String { name }
+    var geoVenue: String { address.isEmpty ? name : address }
 
     /// Notion's Location select mapped to a real city. Using the coarse metro
     /// instead sent every San Diego and Napa row to Los Angeles / San Francisco,
@@ -79,6 +81,7 @@ struct AroundTownItem: Identifiable {
     /// First attempt. Restaurants get neighborhood plus city; activities carry
     /// their own free-text location ("Malibu, CA", "Getty Center, Los Angeles").
     var geoCity: String {
+        guard address.isEmpty else { return "" }
         switch kind {
         case .restaurant:
             let city = locationCity
@@ -204,6 +207,7 @@ extension AroundTownItem {
             goodFor:        r.goodFor,
             topDishes:      r.topDishes,
             comments:       r.comments,
+            address:        r.address,
             coordinate:     nil
         )
     }
@@ -235,6 +239,7 @@ extension AroundTownItem {
             goodFor:        [],
             topDishes:      "",
             comments:       "",
+            address:        a.address,
             coordinate:     nil
         )
     }
@@ -270,7 +275,7 @@ extension AroundTownItem {
             assignedToDate: nil,
             assignedToDateEnd: nil,
             timeText: "",
-            address: locationText,
+            address: address.isEmpty ? locationText : address,
             confirmationNumber: "",
             bookedVia: "",
             reservationRequired: false,

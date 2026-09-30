@@ -31,6 +31,60 @@ actor PlacesService {
         return nil  // no data = show by default
     }
 
+    // MARK: - Address lookup
+
+    struct PlaceMatch: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let address: String
+    }
+
+    enum LookupError: LocalizedError {
+        case noKey, failed
+        var errorDescription: String? {
+            switch self {
+            case .noKey:  return "Address lookup is not set up (no Google Places key). Type the address instead."
+            case .failed: return "Address lookup failed. Try again or type the address."
+            }
+        }
+    }
+
+    /// Up to five candidate places for a free-text query such as
+    /// "Bestia, Arts District, LA". The caller shows them and Elisa picks one;
+    /// nothing is saved from here.
+    func searchPlaces(query: String) async throws -> [PlaceMatch] {
+        let apiKey = await MainActor.run { Secrets.GooglePlaces.apiKey }
+        guard !apiKey.isEmpty else { throw LookupError.noKey }
+
+        var request = URLRequest(url: URL(string: "https://places.googleapis.com/v1/places:searchText")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
+        request.setValue("places.id,places.displayName,places.formattedAddress", forHTTPHeaderField: "X-Goog-FieldMask")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "textQuery": query,
+            "maxResultCount": 5
+        ])
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { throw LookupError.failed }
+
+        struct APIResponse: Decodable {
+            struct Place: Decodable {
+                struct DisplayName: Decodable { let text: String }
+                let id: String
+                let displayName: DisplayName?
+                let formattedAddress: String?
+            }
+            let places: [Place]?
+        }
+        guard let parsed = try? JSONDecoder().decode(APIResponse.self, from: data) else { throw LookupError.failed }
+        return (parsed.places ?? []).compactMap { p in
+            guard let address = p.formattedAddress, !address.isEmpty else { return nil }
+            return PlaceMatch(id: p.id, name: p.displayName?.text ?? "", address: address)
+        }
+    }
+
     // MARK: - Computation
 
     private func computeOpenNow(periods: [Period]) -> Bool {

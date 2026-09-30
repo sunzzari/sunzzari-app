@@ -4,6 +4,7 @@ struct MyRestaurantsView: View {
     @State private var restaurants: [Restaurant] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var editing: Restaurant?
     // Filters (all multi-select)
     @State private var beenThereFilter: BeenThereFilter = .all
     @State private var selectedPreferences: Set<Restaurant.Preference> = []
@@ -122,6 +123,17 @@ struct MyRestaurantsView: View {
             } else {
                 ForEach(filtered) { r in
                     RestaurantCardView(restaurant: r)
+                        .contentShape(Rectangle())
+                        .onTapGesture { editing = r }
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            Button {
+                                toggleBeenThere(r)
+                            } label: {
+                                Label(r.beenThere ? "Not Yet" : "Been There",
+                                      systemImage: r.beenThere ? "arrow.uturn.backward" : "checkmark.circle")
+                            }
+                            .tint(r.beenThere ? .gray : .green)
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -140,6 +152,33 @@ struct MyRestaurantsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable { await load(force: true) }
+        .sheet(item: $editing) { r in
+            RestaurantEditView(restaurant: r) { saved in
+                if let i = restaurants.firstIndex(where: { $0.id == saved.id }) { restaurants[i] = saved }
+            }
+        }
+    }
+
+    /// One swipe marks a place as been-there (and off the want-to-try list), or
+    /// undoes it. Updated in place first; reverted if Notion rejects the write.
+    private func toggleBeenThere(_ r: Restaurant) {
+        guard let i = restaurants.firstIndex(where: { $0.id == r.id }) else { return }
+        let before = restaurants[i]
+        let nowBeen = !before.beenThere
+        restaurants[i].beenThere = nowBeen
+        if nowBeen { restaurants[i].thinkingAbout = false }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            do {
+                var values = ["Been There?": nowBeen]
+                if nowBeen { values["Thinking About"] = false }
+                try await NotionService.shared.updatePageCheckboxes(pageID: r.id, values: values)
+                NotionService.shared.invalidateRestaurants()
+            } catch {
+                if let j = restaurants.firstIndex(where: { $0.id == r.id }) { restaurants[j] = before }
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Claude Search Bar

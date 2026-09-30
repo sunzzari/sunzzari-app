@@ -2,6 +2,31 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-09-30
+
+### Restaurants get an edit screen, and places get real addresses
+
+- **Tap a restaurant to edit it.** New `RestaurantEditView` edits Been There,
+  Want to Try, Preference, Review / Comments, Top Dishes, Address,
+  Neighborhood, Location and Good For, and saves them to Notion in one
+  request (`NotionService.updateRestaurant`). Clearing Location or Preference
+  now clears it in Notion instead of leaving the old value.
+- **Swipe right on a restaurant to mark Been There** (or undo it). It also
+  takes the place off the want-to-try list, the same as the Home checklist.
+- **Address lookup when adding a restaurant or activity.** A new
+  `AddressLookupField` searches Google Places with the name, neighborhood and
+  location typed so far and shows up to five matches with their addresses.
+  Tapping one fills the field; nothing is saved until the form is saved. It
+  uses the existing Google Places key; with no key it says so and the address
+  can be typed.
+- **Restaurants and Activities have a Notion `Address` column** (added
+  2026-09-30), read and written by the app. Addresses researched for places
+  the geocoder could not place were filled in from the travel map's
+  `pins-research` work.
+- **Around Town pins come from the address when there is one.** The address is
+  geocoded instead of the name plus neighborhood, and a pin cached from an
+  older name lookup is refreshed when the address is new or changes.
+
 ## 2026-09-14
 
 ### Around Town moved onto the trip map

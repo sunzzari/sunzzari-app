@@ -11,6 +11,7 @@ struct AddRestaurantView: View {
     @State private var selectedGoodFor: Set<String> = []
     @State private var topDishes = ""
     @State private var comments = ""
+    @State private var address = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -117,6 +118,15 @@ struct AddRestaurantView: View {
                                 .background(Color.sunSurface)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .foregroundStyle(Color.sunText)
+                        }
+
+                        formField(label: "Address", icon: "mappin.and.ellipse") {
+                            AddressLookupField(address: $address) {
+                                [name, neighborhood, location]
+                                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                                    .filter { !$0.isEmpty }
+                                    .joined(separator: ", ")
+                            }
                         }
 
                         formField(label: "Good For", icon: "tag") {
@@ -304,7 +314,8 @@ struct AddRestaurantView: View {
                 neighborhood: neighborhood,
                 goodFor:      Array(selectedGoodFor),
                 topDishes:    topDishes,
-                comments:     comments
+                comments:     comments,
+                address:      address.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             try await NotionService.shared.createRestaurant(r)
             UINotificationFeedbackGenerator().notificationOccurred(.success)

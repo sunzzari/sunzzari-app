@@ -700,6 +700,10 @@ struct AroundTownMapView: View {
     }
 
     private static let failPrefix = "FAIL:"
+
+    /// The address a cached coordinate was looked up from. When the Notion
+    /// address differs (newly added or edited), the cached pin is stale.
+    private static func addressKey(_ id: String) -> String { "sunzzari_around_geo_addr_\(id)" }
     private static let failRetryInterval: TimeInterval = 7 * 24 * 60 * 60
 
     private static func cachedCoord(forKey key: String) -> CLLocationCoordinate2D? {
@@ -725,6 +729,11 @@ struct AroundTownMapView: View {
         var uncached: [AroundTownItem] = []
         for item in items {
             if pins[item.id] != nil { continue }
+            if !item.address.isEmpty,
+               UserDefaults.standard.string(forKey: Self.addressKey(item.id)) != item.address {
+                uncached.append(item)
+                continue
+            }
             // The Restaurants map's cache is a valid source: same Notion page IDs.
             // A fresh lookup below writes both keys, so the two maps share work.
             let coord = Self.cachedCoord(forKey: AroundTownItem.geoKey(for: item.id))
@@ -740,6 +749,7 @@ struct AroundTownMapView: View {
         }
 
         guard !uncached.isEmpty else { return }
+        let addressByID = Dictionary(uncached.map { ($0.id, $0.address) }, uniquingKeysWith: { first, _ in first })
 
         // A name the geocoder cannot place resolves to the bare metro centroid
         // (an activity row like "Sushi making" is not a venue). Those centroids
@@ -783,7 +793,9 @@ struct AroundTownMapView: View {
                     if let usable {
                         let value = "\(usable.latitude),\(usable.longitude)"
                         UserDefaults.standard.set(value, forKey: AroundTownItem.geoKey(for: id))
-                        if isRestaurant, UserDefaults.standard.string(forKey: Restaurant.geoKey(for: id)) == nil {
+                        let address = addressByID[id] ?? ""
+                        if !address.isEmpty { UserDefaults.standard.set(address, forKey: Self.addressKey(id)) }
+                        if isRestaurant, !address.isEmpty || UserDefaults.standard.string(forKey: Restaurant.geoKey(for: id)) == nil {
                             UserDefaults.standard.set(value, forKey: Restaurant.geoKey(for: id))
                         }
                         await MainActor.run { accept(id: id, coord: usable) }
@@ -792,6 +804,11 @@ struct AroundTownMapView: View {
                             "\(Self.failPrefix)\(now)",
                             forKey: AroundTownItem.geoKey(for: id)
                         )
+                        // Recorded on failure too, so an address that cannot be
+                        // placed waits out the retry interval like any other miss.
+                        if let address = addressByID[id], !address.isEmpty {
+                            UserDefaults.standard.set(address, forKey: Self.addressKey(id))
+                        }
                     }
                 }
             }

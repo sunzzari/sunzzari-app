@@ -11,6 +11,7 @@ struct Restaurant: Identifiable, Codable {
     var goodFor: [String]
     var topDishes: String
     var comments: String
+    var address: String = ""
 
     enum Preference: String, CaseIterable, Codable {
         case topChoice = "Top Choice"
