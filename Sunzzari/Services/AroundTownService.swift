@@ -112,7 +112,10 @@ final class AroundTownService: @unchecked Sendable {
 
     private func send(_ request: URLRequest) async throws -> Data {
         var request = request
-        request.setValue(Constants.Status.pushSecret, forHTTPHeaderField: "x-app-secret")
+        // The app proves itself with the Notion key it already carries; the
+        // server accepts it only if Notion says that key can open the
+        // Restaurant Guide, then forgets it. No extra secret to set up anywhere.
+        request.setValue(Constants.Notion.token, forHTTPHeaderField: "x-notion-token")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 20
         guard let (data, response) = try? await URLSession.shared.data(for: request),

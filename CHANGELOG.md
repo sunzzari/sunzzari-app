@@ -34,8 +34,9 @@ where a place is. It asks the travel map server and draws the answer.
   trips, through `TripMKMap`, still the app's only map. A tap on a branch opens the place.
 - **"LA proper" fit** (paused 2026-09-15, now in): fitting on LA no longer zooms out to
   San Diego or Orange County. Which frame a pin belongs to is the server's call.
-- Needs `PHONE_APP_SECRET` on the travel map's Vercel project, equal to this app's
-  existing push secret. No new app secret and no Xcode Cloud change.
+- The app signs in to the server's lookup and save with the Notion key it already
+  carries (Elisa, 2026-10-01: "use the notion key"). No new app secret, no new server
+  setting and no Xcode Cloud change.
 
 ## 2026-09-14
 
