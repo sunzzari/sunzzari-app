@@ -29,6 +29,7 @@ final class AroundTownService: @unchecked Sendable {
             let address: String
             let lat: Double
             let lng: Double
+            let fitArea: String?
         }
         let id: String
         let name: String

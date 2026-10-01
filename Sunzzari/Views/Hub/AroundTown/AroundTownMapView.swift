@@ -123,10 +123,16 @@ struct AroundTownMapView: View {
     private var fitScopeIDs: Set<String> {
         // Which frame a pin belongs to is the server's call (`fitArea`), the
         // same rule the website uses, so the two never frame LA differently.
+        // A chain's branches follow the same rule as any pin.
         let region = fitRegion
-        return Set(filtered.compactMap { item -> String? in
-            item.coordinate != nil && item.fitArea == region ? item.id : nil
-        })
+        var ids = Set<String>()
+        for item in filtered where item.coordinate != nil {
+            if item.fitArea == region { ids.insert(item.id) }
+            for (index, branch) in item.branches.enumerated() where branch.fitArea == region {
+                ids.insert(AroundTownItem.branchID(item.id, index))
+            }
+        }
+        return ids
     }
 
     /// Rare path: a tap on a cluster or a callout. A linear scan is fine here.
@@ -424,7 +430,8 @@ struct AroundTownMapView: View {
             selectedID = nil
             let ids = fitScopeIDs
             guard !ids.isEmpty else { return }
-            bridge.fitToIDs(ids, in: filtered.map(\.asTripItem))
+            // Branch pins included, so a chain's branches are framed as well as drawn.
+            bridge.fitToIDs(ids, in: filtered.flatMap(\.annotations).map(\.item))
         } label: {
             Image(systemName: "scope")
                 .font(.system(size: 16, design: .serif))

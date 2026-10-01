@@ -32,6 +32,8 @@ struct AroundTownItem: Identifiable {
     struct Branch {
         let address: String
         let coordinate: CLLocationCoordinate2D
+        /// Same meaning as the place's own `fitArea`, decided by the server.
+        let fitArea: Region?
     }
 
     let id: String
@@ -87,7 +89,11 @@ struct AroundTownItem: Identifiable {
             coordinate = nil
         }
         branches = p.branches.map {
-            Branch(address: $0.address, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng))
+            Branch(
+                address: $0.address,
+                coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng),
+                fitArea: Region(server: $0.fitArea)
+            )
         }
     }
 
