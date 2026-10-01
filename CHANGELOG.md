@@ -28,6 +28,9 @@ where a place is. It asks the travel map server and draws the answer.
   the server (`/api/places/<id>`), everything else straight to Notion.
 - **Adding a restaurant or activity saves its pin** the same way, right after the row
   is created.
+- **A "+" on Around Town** opens the app's existing Add Restaurant / Add Activity
+  forms (no new form), the same job as "+ Add place" on the website. The map reloads
+  when the form closes.
 - **"Find it"** on any Around Town place with no map location: look it up, tap the
   match, save, and the pin appears.
 - **Every branch of a chain gets its own pin** (her request), on Around Town and on

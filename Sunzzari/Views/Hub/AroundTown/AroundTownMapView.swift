@@ -39,6 +39,8 @@ struct AroundTownMapView: View {
         case cluster([AroundTownItem])
         case unmapped
         case findIt(String)
+        case addRestaurant
+        case addActivity
 
         var id: String {
             switch self {
@@ -46,6 +48,8 @@ struct AroundTownMapView: View {
             case .cluster(let members): return "cluster-" + members.map(\.id).joined(separator: "-")
             case .unmapped: return "unmapped"
             case .findIt(let itemID): return "find-\(itemID)"
+            case .addRestaurant: return "add-restaurant"
+            case .addActivity: return "add-activity"
             }
         }
     }
@@ -233,6 +237,28 @@ struct AroundTownMapView: View {
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                 }
+            // The app's existing add forms, not new ones. They save the place
+            // and its pin; the map reloads when the form closes.
+            case .addRestaurant:
+                AddRestaurantView()
+                    .onDisappear { Task { await onLocationSaved() } }
+            case .addActivity:
+                AddActivityView()
+                    .onDisappear { Task { await onLocationSaved() } }
+            }
+        }
+        .toolbar {
+            // Same job as "+ Add place" on the website's Around Town.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { activeSheet = .addRestaurant } label: { Label("Restaurant", systemImage: "fork.knife") }
+                    Button { activeSheet = .addActivity } label: { Label("Activity", systemImage: "figure.walk") }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.sunAccent)
+                }
+                .accessibilityLabel("Add a place")
             }
         }
     }
@@ -387,6 +413,11 @@ struct AroundTownMapView: View {
             legendRow(color: Color(hex: AroundTownItem.notRatedHex), label: "Not rated")
             legendRow(color: Color(hex: AroundTownItem.activityHex), label: "Activity")
             legendRow(color: Color.gray, label: "Been there")
+            // Credit the pin sources, as the OpenStreetMap licence asks.
+            Text("Pins: OpenStreetMap, US Census")
+                .font(.system(size: 8, design: .serif))
+                .foregroundStyle(Color.white.opacity(0.45))
+                .padding(.top, 2)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
