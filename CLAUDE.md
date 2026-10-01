@@ -41,21 +41,23 @@ with `Secrets.GooglePlaces` - see the 2026-08-19 changelog entry.
 renders through it via `AroundTownItem.asTripItem` plus the opt-in `styleFor`. A change
 to `TripMKMap` reaches both surfaces - say so in the same pass. Never add another map.
 
-## Logic that is duplicated in the travel map repo
+## Where things are: the travel map server decides
 
-These files have a hand-maintained twin in `elisa-travel-map`. Nothing checks that they
-agree, so **editing one means editing the other in the same pass, or saying out loud
-that you did not**:
+Elisa, 2026-09-30: "the same data is used for both and the same features should be used
+for both". This app does not work out where a place is. Pins, chain branches, areas,
+colours, the address lookup and saving an address all live on the `elisa-travel-map`
+server; this app draws `/api/around-town` and `/api/trips/<id>/pins`
+(`AroundTownService`, `TravelService`) and saves through `/api/places*`.
+
+- **A location feature is built on the server first**, then drawn here. Never add a
+  Swift copy of a server rule, and never add a geocoder or a paid lookup to the app.
+- `AroundTownItem` is built only from the server's answer, never from Notion rows.
+
+Still duplicated by hand in `elisa-travel-map`, and not location code:
 
 | This repo | elisa-travel-map |
 |---|---|
-| `Models/AroundTownItem.swift` (region lists, bounding boxes, preference colours) | `lib/aroundtown-shared.ts` |
 | `Services/TripTime.swift` | `lib/time.ts` |
 | `Services/TripDayPlanner.swift` | `lib/day.ts` |
 
-The region word lists are 105 tokens long on each side. They were verified identical on
-2026-09-14; that is a snapshot, not a guarantee.
-
-Geocoding is NOT duplicated - both apps call the travel map's `/api/geocode`. That is
-the pattern to extend when this duplication gets painful, not a monorepo: Swift cannot
-import TypeScript, so merging the repos would preserve every copy above.
+Editing one means editing the other in the same pass, or saying out loud that you did not.

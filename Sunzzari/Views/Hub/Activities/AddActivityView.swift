@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 struct AddActivityView: View {
     @Environment(\.dismiss) private var dismiss
@@ -11,6 +12,7 @@ struct AddActivityView: View {
     @State private var dateActive = Date()
     @State private var thinkingAbout = false
     @State private var address = ""
+    @State private var pin: CLLocationCoordinate2D?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -39,11 +41,10 @@ struct AddActivityView: View {
                         }
 
                         formField(label: "Address (optional)", icon: "mappin.and.ellipse") {
-                            AddressLookupField(address: $address) {
-                                [name, location]
-                                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                                    .filter { !$0.isEmpty }
-                                    .joined(separator: ", ")
+                            AddressLookupField(address: $address, pin: $pin) {
+                                AddressLookupField.Context(
+                                    name: name, isRestaurant: false, neighborhood: "", location: location
+                                )
                             }
                         }
 
@@ -161,7 +162,11 @@ struct AddActivityView: View {
                 done:           false,
                 address:        address.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            try await NotionService.shared.createActivity(a)
+            let pageID = try await NotionService.shared.createActivity(a)
+            // Address and pin are saved by the travel map server; see AddRestaurantView.
+            if !a.address.isEmpty {
+                try? await AroundTownService.shared.saveLocation(pageID: pageID, address: a.address, pin: pin)
+            }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             NotionService.shared.invalidateActivities()
             dismiss()

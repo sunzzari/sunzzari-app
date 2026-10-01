@@ -6,21 +6,30 @@ import MapKit
 // it behaves on a trip because it is the same code, not because someone
 // remembered to copy the fix across. `AroundTownItem.asTripItem` is the whole
 // adapter. This file owns the Around Town-specific parts -- the filter bar, the
-// preference legend, the intent toggles, and the LA / SF Bay geocoder.
+// preference legend and the intent toggles. It places nothing: every pin, and
+// every chain branch, arrives already placed from the travel map server
+// (`AroundTownService`), the same answer the website draws.
 
 // MARK: - AroundTownMapView
 
 struct AroundTownMapView: View {
     @Binding var items: [AroundTownItem]
+    /// Called after a place's location is saved, so the caller can pull the
+    /// server's fresh answer and the new pin appears.
+    let onLocationSaved: () async -> Void
 
     /// Opens pre-filtered. My Restaurants' map button lands here on
     /// `.restaurant` now that the separate restaurant map is gone.
-    init(items: Binding<[AroundTownItem]>, initialKind: AroundTownItem.Kind? = nil) {
+    init(
+        items: Binding<[AroundTownItem]>,
+        initialKind: AroundTownItem.Kind? = nil,
+        onLocationSaved: @escaping () async -> Void = {}
+    ) {
         self._items = items
         self._filterKind = State(initialValue: initialKind)
+        self.onLocationSaved = onLocationSaved
     }
 
-    @State private var pins: [String: CLLocationCoordinate2D] = [:]
     @State private var selectedID: String?
     // ONE sheet, selected by case. Two separate .sheet modifiers on the same
     // view silently conflict -- the cluster sheet never presented until these
@@ -29,19 +38,20 @@ struct AroundTownMapView: View {
         case detail(String)
         case cluster([AroundTownItem])
         case unmapped
+        case findIt(String)
 
         var id: String {
             switch self {
             case .detail(let itemID): return "detail-\(itemID)"
             case .cluster(let members): return "cluster-" + members.map(\.id).joined(separator: "-")
             case .unmapped: return "unmapped"
+            case .findIt(let itemID): return "find-\(itemID)"
             }
         }
     }
 
     @State private var activeSheet: ActiveSheet?
     @State private var bridge = TripMapBridge()
-    @State private var geocodePassComplete = false
 
     /// The primary toggle: everything, or only the places we have not been to yet.
     enum TriedFilter: String, CaseIterable {
@@ -68,17 +78,20 @@ struct AroundTownMapView: View {
         }
     }
 
+    /// One pin per place, plus one per chain branch.
     private var annotations: [TripItemAnnotation] {
-        filtered.compactMap { item in
-            pins[item.id].map { item.annotation(at: $0) }
-        }
+        filtered.flatMap(\.annotations)
     }
 
-    /// The places the geocoder could not put anywhere. Counted in the control
-    /// bar and reachable from it -- a row she cannot open is a row she cannot
-    /// use, which is what the count alone amounted to.
+    private var mappedCount: Int {
+        filtered.reduce(0) { $0 + ($1.coordinate == nil ? 0 : 1) }
+    }
+
+    /// The places with no saved location. Counted in the control bar and
+    /// reachable from it -- a row she cannot open is a row she cannot use. Each
+    /// one opens to a "Find it" that gives it a pin.
     private var unmappedPlaces: [AroundTownItem] {
-        filtered.filter { pins[$0.id] == nil }
+        filtered.filter { $0.coordinate == nil }
     }
 
     /// The ONE area a fit may span. Elisa, 2026-09-14: *"id never want to fit all
@@ -91,9 +104,8 @@ struct AroundTownMapView: View {
     private var fitRegion: AroundTownItem.Region {
         if let filterRegion { return filterRegion }
         var la = 0, sf = 0
-        for item in filtered {
-            guard let coord = pins[item.id] else { continue }
-            switch AroundTownItem.Region.from(coordinate: coord) {
+        for item in filtered where item.coordinate != nil {
+            switch item.region {
             case .la: la += 1
             case .sfBay: sf += 1
             case nil: break
@@ -109,17 +121,19 @@ struct AroundTownMapView: View {
     /// `TripMKMap.fitToIDs` fall back to fitting everything, so a filter that
     /// leaves nothing in LA proper still frames something.
     private var fitScopeIDs: Set<String> {
+        // Which frame a pin belongs to is the server's call (`fitArea`), the
+        // same rule the website uses, so the two never frame LA differently.
         let region = fitRegion
         return Set(filtered.compactMap { item -> String? in
-            guard let coord = pins[item.id],
-                  region.containsForFit(coord) else { return nil }
-            return item.id
+            item.coordinate != nil && item.fitArea == region ? item.id : nil
         })
     }
 
     /// Rare path: a tap on a cluster or a callout. A linear scan is fine here.
+    /// A branch pin carries its place's id plus a suffix; both resolve here.
     private func item(withID id: String) -> AroundTownItem? {
-        items.first { $0.id == id }
+        let placeID = AroundTownItem.placeID(of: id)
+        return items.first { $0.id == placeID }
     }
 
     /// Hot path: the map calls `styleFor` for EVERY annotation on EVERY update,
@@ -132,8 +146,8 @@ struct AroundTownMapView: View {
 
     private var filterKey: String {
         let kindStr = filterKind.map { $0 == .restaurant ? "rest" : "act" } ?? "all"
-        // fitRegion is in the key: when the majority area flips as geocoding
-        // lands, the map should re-frame on it rather than keep an old frame.
+        // fitRegion is in the key: when the majority area flips as places
+        // load, the map should re-frame on it rather than keep an old frame.
         return "\(filterRegion?.label ?? "all")|\(kindStr)|\(triedFilter.rawValue)|\(wantToTryOnly)|fit:\(fitRegion.label)"
     }
 
@@ -146,13 +160,15 @@ struct AroundTownMapView: View {
                 filterKey: filterKey,
                 selectedID: $selectedID,
                 bridge: bridge,
-                onOpenDetail: { activeSheet = .detail($0.id) },
+                onOpenDetail: { activeSheet = .detail(AroundTownItem.placeID(of: $0.id)) },
                 onOpenCluster: { trip in
-                    let members = trip.compactMap { item(withID: $0.id) }
+                    // Two branches of one chain in the same bubble are one place.
+                    var seen = Set<String>()
+                    let members = trip.compactMap { item(withID: $0.id) }.filter { seen.insert($0.id).inserted }
                     if !members.isEmpty { activeSheet = .cluster(members) }
                 },
                 styleFor: { trip in
-                    pinStyles[trip.id]
+                    pinStyles[AroundTownItem.placeID(of: trip.id)]
                         ?? MapPinStyle(color: Color(hex: AroundTownItem.notRatedHex), glyph: "mappin")
                 },
                 initialRegion: MKCoordinateRegion(
@@ -201,13 +217,18 @@ struct AroundTownMapView: View {
                 placeListSheet(
                     title: "\(unmappedPlaces.count) with no map location",
                     members: unmappedPlaces,
-                    note: "No address the geocoder could place. Open one to read it, or look it up in Maps."
+                    note: "No pin yet. Open one and tap Find it to give it a pin."
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+            case .findIt(let id):
+                if let place = item(withID: id) {
+                    PlaceFinderSheet(item: place, onSaved: onLocationSaved)
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                }
             }
         }
-        .task(id: items.count) { await geocodeAll() }
     }
 
     // MARK: - Controls
@@ -235,31 +256,24 @@ struct AroundTownMapView: View {
             .padding(.horizontal, 16)
 
             HStack(spacing: 6) {
-                Text("\(annotations.count) on the map")
+                Text("\(mappedCount) on the map")
                     .font(.system(size: 11, design: .serif))
                     .foregroundStyle(Color.white.opacity(0.45))
-                if filtered.count > annotations.count {
-                    // Once the pass is done the remainder is not "still loading" --
-                    // those rows have no address the geocoder can place. Tapping
-                    // opens them: unmapped is fine, invisible is not.
+                if filtered.count > mappedCount {
+                    // These rows have no saved location. Tapping opens them:
+                    // unmapped is fine, invisible is not.
                     Button {
-                        guard geocodePassComplete else { return }
                         activeSheet = .unmapped
                     } label: {
                         HStack(spacing: 3) {
-                            Text(geocodePassComplete
-                                 ? "· \(filtered.count - annotations.count) with no map location"
-                                 : "· \(filtered.count - annotations.count) still locating")
-                            if geocodePassComplete {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 8, weight: .bold, design: .serif))
-                            }
+                            Text("· \(filtered.count - mappedCount) with no map location")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .bold, design: .serif))
                         }
                         .font(.system(size: 11, design: .serif))
-                        .foregroundStyle(Color.white.opacity(geocodePassComplete ? 0.55 : 0.3))
+                        .foregroundStyle(Color.white.opacity(0.55))
                     }
                     .buttonStyle(.plain)
-                    .disabled(!geocodePassComplete)
                 }
                 Spacer()
             }
@@ -426,7 +440,7 @@ struct AroundTownMapView: View {
     // MARK: - Place list (cluster members, and places with no pin)
 
     /// One list, two jobs: the members of a numbered bubble that no amount of
-    /// zooming will separate, and the places the geocoder could not place at all.
+    /// zooming will separate, and the places that have no saved location yet.
     /// A row for a place that HAS a pin points the map at it, the way tapping a
     /// trip row does; a row with no pin opens its description.
     @ViewBuilder
@@ -457,7 +471,7 @@ struct AroundTownMapView: View {
                     VStack(spacing: 0) {
                         ForEach(members) { member in
                             Button {
-                                if let coord = pins[member.id] {
+                                if let coord = member.coordinate {
                                     // Same behaviour as a tapped trip row: point
                                     // the map at it rather than covering the map
                                     // with a sheet.
@@ -486,7 +500,7 @@ struct AroundTownMapView: View {
                                             .lineLimit(1)
                                     }
                                     Spacer()
-                                    Image(systemName: pins[member.id] == nil
+                                    Image(systemName: member.coordinate == nil
                                           ? "chevron.right"
                                           : "mappin.and.ellipse")
                                         .font(.system(size: 11, design: .serif))
@@ -562,9 +576,26 @@ struct AroundTownMapView: View {
                         detailBlock(title: "Notes", body: item.comments)
                     }
 
-                    if pins[item.id] == nil {
-                        // Nothing to point at on the map, so give her the one
-                        // action that still works on an unplaceable row.
+                    if item.coordinate == nil {
+                        // No pin yet. "Find it" looks the place up (free, on the
+                        // server) and saves its address and pin, the same flow
+                        // the website has.
+                        Button {
+                            activeSheet = .findIt(item.id)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "mappin.and.ellipse")
+                                Text("Find it")
+                            }
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
+                            .foregroundStyle(Color.sunBackground)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Color.sunAccent)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+
                         Button {
                             let query = [item.name, item.locationText]
                                 .filter { !$0.isEmpty }
@@ -687,135 +718,5 @@ struct AroundTownMapView: View {
             .shadow(color: isActive ? color.opacity(0.4) : .clear, radius: 5)
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Geocoding
-
-    /// Accepts a coordinate only if it lands in LA or the SF Bay Area, and uses it
-    /// to set the item's region -- the coordinate is a better region signal than
-    /// the Notion text, which says "LA / SF" for a few places.
-    private func accept(id: String, coord: CLLocationCoordinate2D) {
-        guard let region = AroundTownItem.Region.from(coordinate: coord) else { return }
-        pins[id] = coord
-        if let idx = items.firstIndex(where: { $0.id == id }) {
-            items[idx].region = region
-            items[idx].coordinate = coord
-        }
-    }
-
-    private static let failPrefix = "FAIL:"
-
-    /// The address a cached coordinate was looked up from. When the Notion
-    /// address differs (newly added or edited), the cached pin is stale.
-    private static func addressKey(_ id: String) -> String { "sunzzari_around_geo_addr_\(id)" }
-    private static let failRetryInterval: TimeInterval = 7 * 24 * 60 * 60
-
-    private static func cachedCoord(forKey key: String) -> CLLocationCoordinate2D? {
-        guard let cached = UserDefaults.standard.string(forKey: key),
-              !cached.hasPrefix(failPrefix) else { return nil }
-        let parts = cached.split(separator: ",")
-        guard parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
-
-    /// True when a lookup for this item failed recently, so it is not retried on
-    /// every single launch.
-    private static func failedRecently(_ id: String, now: TimeInterval) -> Bool {
-        guard let cached = UserDefaults.standard.string(forKey: AroundTownItem.geoKey(for: id)),
-              cached.hasPrefix(failPrefix),
-              let stamp = TimeInterval(cached.dropFirst(failPrefix.count)) else { return false }
-        return now - stamp < failRetryInterval
-    }
-
-    private func geocodeAll() async {
-        defer { geocodePassComplete = true }
-        let now = Date().timeIntervalSince1970
-        var uncached: [AroundTownItem] = []
-        for item in items {
-            if pins[item.id] != nil { continue }
-            if !item.address.isEmpty,
-               UserDefaults.standard.string(forKey: Self.addressKey(item.id)) != item.address {
-                uncached.append(item)
-                continue
-            }
-            // The Restaurants map's cache is a valid source: same Notion page IDs.
-            // A fresh lookup below writes both keys, so the two maps share work.
-            let coord = Self.cachedCoord(forKey: AroundTownItem.geoKey(for: item.id))
-                ?? (item.kind == .restaurant
-                    ? Self.cachedCoord(forKey: Restaurant.geoKey(for: item.id))
-                    : nil)
-            if let coord {
-                accept(id: item.id, coord: coord)
-                continue
-            }
-            if Self.failedRecently(item.id, now: now) { continue }
-            uncached.append(item)
-        }
-
-        guard !uncached.isEmpty else { return }
-        let addressByID = Dictionary(uncached.map { ($0.id, $0.address) }, uniquingKeysWith: { first, _ in first })
-
-        // A name the geocoder cannot place resolves to the bare metro centroid
-        // (an activity row like "Sushi making" is not a venue). Those centroids
-        // are looked up once and any match on one is rejected rather than dropped
-        // on the map as a pin at city hall.
-        var centroids: [CLLocationCoordinate2D] = []
-        for hint in Set(uncached.map(\.geoCityFallback)) {
-            if let c = await PlaceGeocoder.coordinate(venue: "", city: hint) { centroids.append(c) }
-        }
-        func isCentroid(_ c: CLLocationCoordinate2D) -> Bool {
-            let loc = CLLocation(latitude: c.latitude, longitude: c.longitude)
-            return centroids.contains {
-                loc.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) < 150
-            }
-        }
-
-        await withTaskGroup(of: (String, Bool, CLLocationCoordinate2D?).self) { group in
-            var inFlight = 0
-            var index = 0
-
-            while index < uncached.count || inFlight > 0 {
-                while inFlight < 8 && index < uncached.count {
-                    let item = uncached[index]; index += 1; inFlight += 1
-                    group.addTask {
-                        var coord = await PlaceGeocoder.coordinate(venue: item.geoVenue, city: item.geoCity)
-                        if coord == nil {
-                            coord = await PlaceGeocoder.coordinate(
-                                venue: item.geoVenue, city: item.geoCityFallback
-                            )
-                        }
-                        return (item.id, item.kind == .restaurant, coord)
-                    }
-                }
-
-                if let (id, isRestaurant, coord) = await group.next() {
-                    inFlight -= 1
-                    let usable = coord.flatMap { c -> CLLocationCoordinate2D? in
-                        guard AroundTownItem.Region.from(coordinate: c) != nil, !isCentroid(c) else { return nil }
-                        return c
-                    }
-                    if let usable {
-                        let value = "\(usable.latitude),\(usable.longitude)"
-                        UserDefaults.standard.set(value, forKey: AroundTownItem.geoKey(for: id))
-                        let address = addressByID[id] ?? ""
-                        if !address.isEmpty { UserDefaults.standard.set(address, forKey: Self.addressKey(id)) }
-                        if isRestaurant, !address.isEmpty || UserDefaults.standard.string(forKey: Restaurant.geoKey(for: id)) == nil {
-                            UserDefaults.standard.set(value, forKey: Restaurant.geoKey(for: id))
-                        }
-                        await MainActor.run { accept(id: id, coord: usable) }
-                    } else {
-                        UserDefaults.standard.set(
-                            "\(Self.failPrefix)\(now)",
-                            forKey: AroundTownItem.geoKey(for: id)
-                        )
-                        // Recorded on failure too, so an address that cannot be
-                        // placed waits out the retry interval like any other miss.
-                        if let address = addressByID[id], !address.isEmpty {
-                            UserDefaults.standard.set(address, forKey: Self.addressKey(id))
-                        }
-                    }
-                }
-            }
-        }
     }
 }

@@ -1,16 +1,22 @@
 import SwiftUI
+import CoreLocation
 
 /// Edit an existing restaurant: been there, preference, review, dishes, address.
-/// Saves every field to Notion in one request.
+/// The address and its pin are saved through the travel map server; everything
+/// else goes to Notion in one request.
 struct RestaurantEditView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: Restaurant
+    /// The pin of a tapped lookup match; nil when the address was typed or untouched.
+    @State private var pin: CLLocationCoordinate2D?
+    private let originalAddress: String
     @State private var isSaving = false
     @State private var errorMessage: String?
     let onSaved: (Restaurant) -> Void
 
     init(restaurant: Restaurant, onSaved: @escaping (Restaurant) -> Void) {
         _draft = State(initialValue: restaurant)
+        originalAddress = restaurant.address
         self.onSaved = onSaved
     }
 
@@ -93,11 +99,13 @@ struct RestaurantEditView: View {
                         }
 
                         formField(label: "Address", icon: "mappin.and.ellipse") {
-                            AddressLookupField(address: $draft.address) {
-                                [draft.name, draft.neighborhood, draft.location]
-                                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                                    .filter { !$0.isEmpty }
-                                    .joined(separator: ", ")
+                            AddressLookupField(address: $draft.address, pin: $pin) {
+                                AddressLookupField.Context(
+                                    name: draft.name,
+                                    isRestaurant: true,
+                                    neighborhood: draft.neighborhood,
+                                    location: draft.location
+                                )
                             }
                         }
 
@@ -195,11 +203,23 @@ struct RestaurantEditView: View {
         if r.beenThere { r.thinkingAbout = false }
         do {
             try await NotionService.shared.updateRestaurant(r)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            onSaved(r)
-            dismiss()
         } catch {
             errorMessage = error.localizedDescription
+            return
         }
+        // The address goes up only when it changed or a match was tapped, after
+        // the row itself, so the server checks the pin against the area just saved.
+        if pin != nil || r.address != originalAddress {
+            do {
+                try await AroundTownService.shared.saveLocation(pageID: r.id, address: r.address, pin: pin)
+            } catch {
+                onSaved(r)
+                errorMessage = "Everything else saved, but the address did not: \(error.localizedDescription)"
+                return
+            }
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        onSaved(r)
+        dismiss()
     }
 }

@@ -4,28 +4,38 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-09-30
 
-### Restaurants get an edit screen, and places get real addresses
+### Locations come from the travel map server, the same as the website
 
-- **Tap a restaurant to edit it.** New `RestaurantEditView` edits Been There,
-  Want to Try, Preference, Review / Comments, Top Dishes, Address,
-  Neighborhood, Location and Good For, and saves them to Notion in one
-  request (`NotionService.updateRestaurant`). Clearing Location or Preference
-  now clears it in Notion instead of leaving the old value.
-- **Swipe right on a restaurant to mark Been There** (or undo it). It also
-  takes the place off the want-to-try list, the same as the Home checklist.
-- **Address lookup when adding a restaurant or activity.** A new
-  `AddressLookupField` searches Google Places with the name, neighborhood and
-  location typed so far and shows up to five matches with their addresses.
-  Tapping one fills the field; nothing is saved until the form is saved. It
-  uses the existing Google Places key; with no key it says so and the address
-  can be typed.
-- **Restaurants and Activities have a Notion `Address` column** (added
-  2026-09-30), read and written by the app. Addresses researched for places
-  the geocoder could not place were filled in from the travel map's
-  `pins-research` work.
-- **Around Town pins come from the address when there is one.** The address is
-  geocoded instead of the name plus neighborhood, and a pin cached from an
-  older name lookup is refreshed when the address is new or changes.
+Elisa: "the overall goal is to make the locations on my app and web app functional
+(these two things should be synced in terms of function)" and "the same data is used
+for both and the same features should be used for both". The app no longer decides
+where a place is. It asks the travel map server and draws the answer.
+
+- **Around Town loads `/api/around-town`** (new `AroundTownService`): places, saved
+  pins, chain branches, colours and areas, computed by the same code that draws the
+  website. The last answer is kept on disk, so the map still opens offline. The app's
+  own Around Town Notion reading, its region word lists and its geocoding loop are
+  deleted (`PlaceGeocoder.swift` is gone).
+- **Trip maps load `/api/trips/<id>/pins`**: one request per trip instead of one per
+  item, cached on disk for offline. Trip content is still read from Notion as before.
+- **No Google lookup.** The Google Places address search a cloud session added earlier
+  today (never merged) is removed. `AddressLookupField` now calls the server's free
+  lookup (OpenStreetMap and the US Census), and tapping a match sets the address and
+  its pin. The Open Now filter's existing Google call is unchanged.
+- **Restaurant edit screen kept** (Elisa's call): tap a restaurant to edit Been There,
+  Want to Try, Preference, Review / Comments, Top Dishes, Address, Neighborhood,
+  Location and Good For; swipe right to mark Been There. Address and pin save through
+  the server (`/api/places/<id>`), everything else straight to Notion.
+- **Adding a restaurant or activity saves its pin** the same way, right after the row
+  is created.
+- **"Find it"** on any Around Town place with no map location: look it up, tap the
+  match, save, and the pin appears.
+- **Every branch of a chain gets its own pin** (her request), on Around Town and on
+  trips, through `TripMKMap`, still the app's only map. A tap on a branch opens the place.
+- **"LA proper" fit** (paused 2026-09-15, now in): fitting on LA no longer zooms out to
+  San Diego or Orange County. Which frame a pin belongs to is the server's call.
+- Needs `PHONE_APP_SECRET` on the travel map's Vercel project, equal to this app's
+  existing push secret. No new app secret and no Xcode Cloud change.
 
 ## 2026-09-14
 

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import CoreLocation
 
 struct TripItem: Identifiable, Codable {
     let id: String
@@ -25,8 +26,50 @@ struct TripItem: Identifiable, Codable {
     var tripRelationID: String?
     var latitude: Double?
     var longitude: Double?
+    /// A chain's other branches, from the travel map server. Each is drawn as
+    /// its own pin that opens this item.
+    var branches: [Branch]? = nil
+
+    struct Branch: Codable {
+        let address: String
+        let latitude: Double
+        let longitude: Double
+    }
 
     var hasCoordinates: Bool { latitude != nil && longitude != nil }
+
+    // The map tells pins apart by id, so a branch pin carries its item's id plus
+    // a suffix, and every tap is mapped back with `placeID(of:)`. Same scheme as
+    // the website (`lib/saved-pins.ts`). Notion ids never contain "~".
+    static func branchID(_ itemID: String, _ index: Int) -> String { "\(itemID)~\(index + 1)" }
+
+    static func placeID(of id: String) -> String {
+        id.split(separator: "~", maxSplits: 1).first.map(String.init) ?? id
+    }
+
+    /// This item again, standing at one of its branches, for the map only.
+    func atBranch(_ index: Int) -> TripItem? {
+        guard let branch = branches?[safe: index] else { return nil }
+        return TripItem(
+            id: Self.branchID(id, index), url: url, name: name, type: type, priority: priority,
+            status: status, legCity: legCity, venue: venue, notes: notes, date: date, dateEnd: dateEnd,
+            assignedToDate: assignedToDate, assignedToDateEnd: assignedToDateEnd, timeText: timeText,
+            address: branch.address, confirmationNumber: confirmationNumber, bookedVia: bookedVia,
+            reservationRequired: reservationRequired, reservationMade: reservationMade,
+            tripRelationID: tripRelationID, latitude: branch.latitude, longitude: branch.longitude
+        )
+    }
+
+    /// Every pin this item puts on the map: its own, then one per branch.
+    var mapAnnotations: [TripItemAnnotation] {
+        guard let latitude, let longitude else { return [] }
+        let main = TripItemAnnotation(item: self, coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+        let extra = (branches ?? []).indices.compactMap { index -> TripItemAnnotation? in
+            guard let copy = atBranch(index), let lat = copy.latitude, let lon = copy.longitude else { return nil }
+            return TripItemAnnotation(item: copy, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        }
+        return [main] + extra
+    }
 
     /// What to show under the name once you are standing there.
     var confirmationLine: String? {
@@ -44,7 +87,6 @@ struct TripItem: Identifiable, Codable {
         return fmt.date(from: str)
     }
 
-    static func geoKey(for id: String) -> String { "sunzzari_travel_geo_\(id)" }
 
     // MARK: - Enums
 
@@ -145,4 +187,8 @@ struct TripItem: Identifiable, Codable {
 
         var color: Color { Color(hex: colorHex) }
     }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }

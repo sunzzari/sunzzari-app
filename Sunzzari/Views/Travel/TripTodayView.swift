@@ -651,11 +651,9 @@ struct TripTodayView: View {
     @ViewBuilder
     private func mapSection(pool: [TripItem], scopeKey: String, title: String, countsUnmapped: Bool = true) -> some View {
         let shown = pool.filter(matches)
-        let annotations = shown.compactMap { item -> TripItemAnnotation? in
-            guard let lat = item.latitude, let lon = item.longitude else { return nil }
-            return TripItemAnnotation(item: item, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
-        }
-        let unmapped = shown.count - annotations.count
+        // One pin per item, plus one per chain branch (the server decides both).
+        let annotations = shown.flatMap(\.mapAnnotations)
+        let unmapped = shown.filter { !$0.hasCoordinates }.count
 
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -697,8 +695,17 @@ struct TripTodayView: View {
                     filterKey: "\(scopeKey)|\(activeTypes.map(\.rawValue).sorted().joined(separator: ","))|\(activeLegs.sorted().joined(separator: ","))|\(confirmedOnly)|\(nearMe)|\(searchQuery)|\((assistantResponse?.matchedItemIds ?? []).joined(separator: ","))",
                     selectedID: $mapSelectedID,
                     bridge: mapBridge,
-                    onOpenDetail: { detailItem = $0 },
-                    onOpenCluster: { clusterItems = ClusterSelection(items: $0) },
+                    // A branch pin opens its own item, not a copy of it.
+                    onOpenDetail: { tapped in
+                        detailItem = items.first { $0.id == TripItem.placeID(of: tapped.id) } ?? tapped
+                    },
+                    onOpenCluster: { tapped in
+                        var seen = Set<String>()
+                        let members = tapped
+                            .map { t in items.first { $0.id == TripItem.placeID(of: t.id) } ?? t }
+                            .filter { seen.insert($0.id).inserted }
+                        clusterItems = ClusterSelection(items: members)
+                    },
                     // The assistant's matches used to light up on the trip
                     // map. That map is gone; the capability lives in
                     // TripMKMap and just needed wiring here.
@@ -940,14 +947,13 @@ struct TripTodayView: View {
     private func load(force: Bool = false) async {
         do {
             let result = try await TravelService.shared.fetchTripItems(tripId: trip.id, force: force)
-            let withCoords = TravelService.shared.applyCachedCoordinates(result.items)
+            let withCoords = TravelService.shared.applyCachedCoordinates(result.items, tripId: trip.id)
             apply(withCoords, offline: result.isOffline)
             isLoading = false
 
-            // Geocoding needs the network, so it comes after the day is already
-            // on screen. Without it the day still renders; only pin-accurate
-            // directions and the Near You list wait.
-            let geocoded = await TravelService.shared.geocodeItems(withCoords, tripLocation: trip.location)
+            // Fresh pins need the network, so they come after the day is already
+            // on screen. Without them the day still renders from the last answer.
+            let geocoded = await TravelService.shared.geocodeItems(withCoords, tripId: trip.id)
             apply(geocoded, offline: result.isOffline)
         } catch {
             isLoading = false

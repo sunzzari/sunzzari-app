@@ -6,22 +6,11 @@ final class TravelService: @unchecked Sendable {
     static let shared = TravelService()
     private let baseURL = "https://api.notion.com/v1"
 
-    // Bump this when geocoding logic changes to clear stale caches
-    // v7: cache values carry a text hash so edited venues re-geocode
-    private static let geocodeVersion = 8
+    private static let geocodeVersion = 9
     private static let geocodeVersionKey = "sunzzari_travel_geocode_version"
 
-    // Vercel-side Google Maps geocoder. The web app gets ~100% coverage from
-    // this; MKLocalSearch capped iOS at ~30/401 due to undocumented throttling.
-    // See elisa-travel-map/lib/geocode.ts and /api/geocode/route.ts.
-    private static let geocoderEndpoint = "https://elisa-travel-map.vercel.app/api/geocode"
-    private static let maxConcurrentGeocodes = 8
-
-    // Persistent failure marker so we don't re-hammer the API every launch
-    // for items that won't resolve. Retried after the interval elapses.
-    private static let failureCachePrefix = "FAIL:"
-    private static let failureRetryInterval: TimeInterval = 7 * 24 * 60 * 60
-
+    // v9: per-item geocode entries are gone; pins come from the server in one
+    // answer per trip and are cached on disk. The bump clears the old entries.
     private init() {
         let stored = UserDefaults.standard.integer(forKey: Self.geocodeVersionKey)
         if stored < Self.geocodeVersion {
@@ -145,162 +134,70 @@ final class TravelService: @unchecked Sendable {
         }
     }
 
-    // MARK: - Cached Coordinates (synchronous, no network)
+    // MARK: - Pins (from the travel map server)
+    //
+    // The phone used to geocode every item itself, one request each, through an
+    // endpoint that called Google. Google is off and stays off (Elisa,
+    // 2026-09-28: no spend beyond the credit), and the website worked the same
+    // pins out separately. Now the server answers once for the whole trip
+    // (`/api/trips/<id>/pins`: saved pin, then its saved table), the website
+    // draws that same answer, and this app caches it on disk for offline.
 
-    func applyCachedCoordinates(_ items: [TripItem]) -> [TripItem] {
+    private struct TripPin: Codable {
+        struct Branch: Codable {
+            let address: String
+            let lat: Double
+            let lng: Double
+        }
+        let lat: Double
+        let lng: Double
+        let branches: [Branch]
+    }
+
+    private struct PinsAnswer: Codable { let pins: [String: TripPin] }
+
+    private static let pinsEndpoint = "https://elisa-travel-map.vercel.app/api/trips"
+
+    private func pinsDiskName(_ tripId: String) -> String {
+        "pins_\(tripId.replacingOccurrences(of: "-", with: ""))"
+    }
+
+    private func cachedPins(tripId: String) -> [String: TripPin]? {
+        loadFromDisk(name: pinsDiskName(tripId))
+            .flatMap { try? JSONDecoder().decode(PinsAnswer.self, from: $0) }?.pins
+    }
+
+    private func apply(_ pins: [String: TripPin], to items: [TripItem]) -> [TripItem] {
         var result = items
-        for i in result.indices where !result[i].hasCoordinates && Self.hasGeocodableText(result[i]) {
-            let key = TripItem.geoKey(for: result[i].id)
-            guard let cached = UserDefaults.standard.string(forKey: key),
-                  !cached.hasPrefix(Self.failureCachePrefix) else { continue }
-            if let (lat, lon) = Self.cachedCoords(cached, for: result[i]) {
-                result[i].latitude = lat
-                result[i].longitude = lon
+        for i in result.indices {
+            guard let pin = pins[result[i].id] else { continue }
+            result[i].latitude = pin.lat
+            result[i].longitude = pin.lng
+            result[i].branches = pin.branches.isEmpty ? nil : pin.branches.map {
+                TripItem.Branch(address: $0.address, latitude: $0.lat, longitude: $0.lng)
             }
         }
         return result
     }
 
-    // Cached geocode values are "lat,lon|textHash". The hash covers the text
-    // fed to the geocoder, so editing a venue in Notion invalidates just that
-    // item's coordinate instead of requiring an app-wide geocodeVersion bump.
-    private static func geoTextHash(_ item: TripItem) -> String {
-        var h: UInt64 = 0xcbf29ce484222325 // FNV-1a: stable across launches
-        for b in "\(item.venue)|\(item.name)|\(item.legCity)".utf8 {
-            h = (h ^ UInt64(b)) &* 0x100000001b3
-        }
-        return String(h, radix: 16)
+    /// Pins from the last answer on disk. Synchronous, no network: the day
+    /// renders with its map before the fresh answer arrives, and offline.
+    func applyCachedCoordinates(_ items: [TripItem], tripId: String) -> [TripItem] {
+        cachedPins(tripId: tripId).map { apply($0, to: items) } ?? items
     }
 
-    private static func cachedCoords(_ cached: String, for item: TripItem) -> (Double, Double)? {
-        let pieces = cached.split(separator: "|")
-        guard pieces.count == 2, String(pieces[1]) == geoTextHash(item) else { return nil }
-        let parts = pieces[0].split(separator: ",")
-        guard parts.count == 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
-        return (lat, lon)
-    }
-
-    /// True if the item has any text we can feed to a geocoder. We fall back
-    /// to `name` when `venue` is empty because most Notion items put the
-    /// place in the title (e.g. "Sacre Coeur", "Pajar") and leave the
-    /// Provider/Venue field blank. The previous code skipped those silently,
-    /// which produced ~17% map coverage on a 400-item trip.
-    private static func hasGeocodableText(_ item: TripItem) -> Bool {
-        !item.venue.isEmpty || !item.name.isEmpty
-    }
-
-    // MARK: - Geocoding
-
-    func geocodeItems(_ items: [TripItem], tripLocation: String = "") async -> [TripItem] {
-        var result = items
-        let toGeocode = items.enumerated().filter { !$0.element.hasCoordinates && Self.hasGeocodableText($0.element) }
-
-        var needsNetwork: [(index: Int, item: TripItem)] = []
-        let now = Date().timeIntervalSince1970
-        for (index, item) in toGeocode {
-            let key = TripItem.geoKey(for: item.id)
-            if let cached = UserDefaults.standard.string(forKey: key) {
-                if cached.hasPrefix(Self.failureCachePrefix) {
-                    let ts = TimeInterval(cached.dropFirst(Self.failureCachePrefix.count)) ?? 0
-                    if now - ts < Self.failureRetryInterval { continue }
-                } else if let (lat, lon) = Self.cachedCoords(cached, for: item) {
-                    result[index].latitude = lat
-                    result[index].longitude = lon
-                    continue
-                }
-                // Stale text hash falls through and re-geocodes.
-            }
-            needsNetwork.append((index, item))
-        }
-
-        // Hit the Vercel /api/geocode endpoint (Google Maps Geocoding API,
-        // Redis-cached server-side). 8-wide concurrency is fine since cached
-        // hits return instantly and the upstream limit is 50/sec; we never
-        // exceed that with 401 items.
-        let batchSize = Self.maxConcurrentGeocodes
-        var batchStart = 0
-        while batchStart < needsNetwork.count {
-            let batchEnd = min(batchStart + batchSize, needsNetwork.count)
-            let batch = Array(needsNetwork[batchStart..<batchEnd])
-
-            await withTaskGroup(of: (Int, (Double, Double)?).self) { group in
-                for (index, item) in batch {
-                    group.addTask {
-                        let coords = await Self.geocodeItem(item, region: tripLocation)
-                        return (index, coords)
-                    }
-                }
-                for await (index, coords) in group {
-                    let key = TripItem.geoKey(for: result[index].id)
-                    if let (lat, lon) = coords {
-                        result[index].latitude = lat
-                        result[index].longitude = lon
-                        UserDefaults.standard.set("\(lat),\(lon)|\(Self.geoTextHash(result[index]))", forKey: key)
-                    } else {
-                        UserDefaults.standard.set("\(Self.failureCachePrefix)\(now)", forKey: key)
-                    }
-                }
-            }
-            batchStart = batchEnd
-        }
-
-        return result
-    }
-
-    // Geocode a single item via the Vercel endpoint. Tries venue first, then
-    // name as fallback for items without a Provider/Venue. Returns nil only
-    // when every query exhausted; caller caches success or failure.
-    ///
-    /// `region` is the trip's own location, used when the item has no leg. A
-    /// venue name with no geography behind it is looked up against the whole
-    /// planet: "Baroque Hall - St. Peter restaurant" on the Vienna trip has a
-    /// blank leg and Google placed it in Adelaide, South Australia, which
-    /// stretched the map until Austria was a dot. The server rejects a result
-    /// in the wrong country; this is what tells it which country to expect.
-    private static func geocodeItem(_ item: TripItem, region: String) async -> (Double, Double)? {
-        // Most specific source first. An Address is exact; a venue is usually
-        // right; the item's own name is the last resort but still far better
-        // than the city, which is never an item's location.
-        if !item.address.isEmpty,
-           let coords = await geocodeViaVercel(query: item.address, city: "", region: region) {
-            return coords
-        }
-        if !item.venue.isEmpty,
-           let coords = await geocodeViaVercel(query: item.venue, city: item.legCity, region: region) {
-            return coords
-        }
-        if !item.name.isEmpty && item.name != item.venue,
-           let coords = await geocodeViaVercel(query: item.name, city: item.legCity, region: region) {
-            return coords
-        }
-        return nil
-    }
-
-    private static func geocodeViaVercel(query: String, city: String, region: String) async -> (Double, Double)? {
-        guard !query.isEmpty || !city.isEmpty else { return nil }
-        guard var components = URLComponents(string: Self.geocoderEndpoint) else { return nil }
-        components.queryItems = [
-            URLQueryItem(name: "venue", value: query),
-            URLQueryItem(name: "city", value: city),
-            URLQueryItem(name: "region", value: region)
-        ]
-        guard let url = components.url else { return nil }
+    /// Fresh pins for the whole trip in one request. On any failure the items
+    /// come back as given (with whatever the disk cache already applied).
+    func geocodeItems(_ items: [TripItem], tripId: String) async -> [TripItem] {
+        let id = tripId.replacingOccurrences(of: "-", with: "")
+        guard let url = URL(string: "\(Self.pinsEndpoint)/\(id)/pins") else { return items }
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 10
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return nil
-            }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let lat = json["lat"] as? Double, let lng = json["lng"] as? Double else {
-                return nil
-            }
-            return (lat, lng)
-        } catch {
-            return nil
-        }
+        request.timeoutInterval = 20
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let answer = try? JSONDecoder().decode(PinsAnswer.self, from: data) else { return items }
+        saveToDisk(data, name: pinsDiskName(tripId))
+        return apply(answer.pins, to: items)
     }
 
     // MARK: - Create a trip item (the only write path in this service)

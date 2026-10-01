@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 struct AddRestaurantView: View {
     @Environment(\.dismiss) private var dismiss
@@ -12,6 +13,7 @@ struct AddRestaurantView: View {
     @State private var topDishes = ""
     @State private var comments = ""
     @State private var address = ""
+    @State private var pin: CLLocationCoordinate2D?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -121,11 +123,10 @@ struct AddRestaurantView: View {
                         }
 
                         formField(label: "Address", icon: "mappin.and.ellipse") {
-                            AddressLookupField(address: $address) {
-                                [name, neighborhood, location]
-                                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                                    .filter { !$0.isEmpty }
-                                    .joined(separator: ", ")
+                            AddressLookupField(address: $address, pin: $pin) {
+                                AddressLookupField.Context(
+                                    name: name, isRestaurant: true, neighborhood: neighborhood, location: location
+                                )
                             }
                         }
 
@@ -317,7 +318,13 @@ struct AddRestaurantView: View {
                 comments:     comments,
                 address:      address.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            try await NotionService.shared.createRestaurant(r)
+            let pageID = try await NotionService.shared.createRestaurant(r)
+            // Address and pin are saved by the travel map server. The place is
+            // already in Notion, so a failure here costs only the pin: it shows
+            // under "no map location", where Find it can place it.
+            if !r.address.isEmpty {
+                try? await AroundTownService.shared.saveLocation(pageID: pageID, address: r.address, pin: pin)
+            }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             NotionService.shared.invalidateRestaurants()
             dismiss()

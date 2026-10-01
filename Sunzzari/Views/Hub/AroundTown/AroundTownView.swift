@@ -21,29 +21,22 @@ struct AroundTownView: View {
                         .foregroundStyle(Color.sunSecondary)
                 }
             } else {
-                AroundTownMapView(items: $items, initialKind: initialKind)
+                AroundTownMapView(items: $items, initialKind: initialKind, onLocationSaved: { await load() })
             }
         }
         .task { await load() }
     }
 
+    /// The server's answer, with the last one from disk shown first and kept
+    /// when the server cannot be reached (offline, on a plane).
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        let r0 = NotionService.shared.restaurantsDiskCache() ?? []
-        let a0 = NotionService.shared.activitiesDiskCache() ?? []
-        if !r0.isEmpty || !a0.isEmpty {
-            items = build(r0, a0)
+        if items.isEmpty, let cached = AroundTownService.shared.cachedPlaces() {
+            items = cached
         }
-        do {
-            async let r = NotionService.shared.fetchRestaurants()
-            async let a = NotionService.shared.fetchActivities()
-            items = try await build(r, a)
-        } catch { /* keep disk data */ }
-    }
-
-    private func build(_ restaurants: [Restaurant], _ activities: [Activity]) -> [AroundTownItem] {
-        restaurants.compactMap { AroundTownItem.from($0) }
-        + activities.compactMap { AroundTownItem.from($0) }
+        if let fresh = try? await AroundTownService.shared.fetchPlaces() {
+            items = fresh
+        }
     }
 }

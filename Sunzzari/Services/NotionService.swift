@@ -344,11 +344,16 @@ final class NotionService: @unchecked Sendable {
         }
     }
 
-    func createRestaurant(_ r: Restaurant) async throws {
-        try await createPage(body: restaurantPayload(r))
+    /// Returns the new page ID, so the address and pin can then be saved through
+    /// the travel map server (`AroundTownService.saveLocation`).
+    @discardableResult
+    func createRestaurant(_ r: Restaurant) async throws -> String {
+        try await createPageReturningID(body: restaurantPayload(r))
     }
 
-    /// Saves every editable field of an existing restaurant in one request.
+    /// Saves every editable field of an existing restaurant in one request,
+    /// except its address and pin: those are saved by the travel map server so
+    /// the phone and the website place a restaurant the same way.
     func updateRestaurant(_ r: Restaurant) async throws {
         try await updatePage(id: r.id, body: ["properties": restaurantProperties(r)])
         invalidateRestaurants()
@@ -425,8 +430,10 @@ final class NotionService: @unchecked Sendable {
         }
     }
 
-    func createActivity(_ a: Activity) async throws {
-        try await createPage(body: activityPayload(a))
+    /// Returns the new page ID; see `createRestaurant`.
+    @discardableResult
+    func createActivity(_ a: Activity) async throws -> String {
+        try await createPageReturningID(body: activityPayload(a))
     }
 
     /// `Thinking About` requires `Home?` on this DB (see STRUCTURE.md), so both
@@ -1281,7 +1288,6 @@ final class NotionService: @unchecked Sendable {
             "Neighborhood":   richTextProp(r.neighborhood),
             "Top Dishes":     richTextProp(r.topDishes),
             "Comments":       richTextProp(r.comments),
-            "Address":        richTextProp(r.address),
             "Location":       location,
             "Preference":     preference
         ]
@@ -1313,8 +1319,7 @@ final class NotionService: @unchecked Sendable {
             "Date-Specific?":   ["checkbox": a.dateSpecific],
             "Calendar Synced?": ["checkbox": a.calendarSynced],
             "Thinking About":   ["checkbox": a.thinkingAbout],
-            "Done?":            ["checkbox": a.done],
-            "Address":          richTextProp(a.address)
+            "Done?":            ["checkbox": a.done]
         ]
         if a.dateSpecific, let date = a.dateActive { props["Date Active"] = dateProp(date) }
         return ["parent": ["database_id": Constants.Notion.activitiesDBID], "properties": props]
