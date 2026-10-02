@@ -57,26 +57,22 @@ struct AroundTownMapView: View {
     @State private var activeSheet: ActiveSheet?
     @State private var bridge = TripMapBridge()
 
-    /// The primary toggle: everything, or only the places we have not been to yet.
-    enum TriedFilter: String, CaseIterable {
-        case all = "Around Town"
-        case notTried = "Haven't Tried"
-    }
-
-    @State private var triedFilter: TriedFilter = .all
     @State private var filterRegion: AroundTownItem.Region? = nil
     @State private var filterKind: AroundTownItem.Kind? = nil
     @State private var wantToTryOnly = false
+    /// "Haven't Tried": hides the places we have been to. One on/off chip, the
+    /// same as the website's, not a switch with an "Around Town" half.
+    @State private var hideBeenThere = false
 
     private var hasActiveFilters: Bool {
-        filterRegion != nil || filterKind != nil || wantToTryOnly || triedFilter != .all
+        filterRegion != nil || filterKind != nil || wantToTryOnly || hideBeenThere
     }
 
     private var filtered: [AroundTownItem] {
         items.filter { item in
             let regionOK = filterRegion == nil || item.region == filterRegion
             let kindOK   = filterKind == nil || item.kind == filterKind
-            let triedOK  = triedFilter == .all || !item.done
+            let triedOK  = !hideBeenThere || !item.done
             let wantOK   = !wantToTryOnly || item.thinkingAbout
             return regionOK && kindOK && triedOK && wantOK
         }
@@ -158,7 +154,7 @@ struct AroundTownMapView: View {
         let kindStr = filterKind.map { $0 == .restaurant ? "rest" : "act" } ?? "all"
         // fitRegion is in the key: when the majority area flips as places
         // load, the map should re-frame on it rather than keep an old frame.
-        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(triedFilter.rawValue)|\(wantToTryOnly)|fit:\(fitRegion.label)"
+        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(hideBeenThere ? "nottried" : "all")|\(wantToTryOnly)|fit:\(fitRegion.label)"
     }
 
     var body: some View {
@@ -267,26 +263,6 @@ struct AroundTownMapView: View {
 
     private var controlBar: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                ForEach(TriedFilter.allCases, id: \.self) { option in
-                    Button { triedFilter = option } label: {
-                        Text(option.rawValue)
-                            .font(.system(size: 13, weight: .semibold, design: .serif))
-                            .foregroundStyle(triedFilter == option ? Color.sunBackground : Color.white.opacity(0.75))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(triedFilter == option ? Color.sunAccent : Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(
-                                triedFilter == option ? Color.sunAccent : Color.white.opacity(0.2),
-                                lineWidth: 1
-                            ))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-
             HStack(spacing: 6) {
                 Text("\(mappedCount) on the map")
                     .font(.system(size: 11, design: .serif))
@@ -338,13 +314,16 @@ struct AroundTownMapView: View {
                     filterChip(label: "Want to Try", icon: "bookmark", isActive: wantToTryOnly) {
                         wantToTryOnly.toggle()
                     }
+                    filterChip(label: "Haven't Tried", icon: "eye.slash", isActive: hideBeenThere) {
+                        hideBeenThere.toggle()
+                    }
 
                     if hasActiveFilters {
                         Button {
                             filterRegion = nil
                             filterKind = nil
                             wantToTryOnly = false
-                            triedFilter = .all
+                            hideBeenThere = false
                         } label: {
                             HStack(spacing: 3) {
                                 Image(systemName: "xmark")

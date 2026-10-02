@@ -4,6 +4,21 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-10-02
 
+### Around Town: "Haven't Tried" is one chip, not a switch
+
+Elisa: "whats the point of the "around town" button on the round town page?" then "make
+the havent tried a single chip".
+
+- **The "Around Town | Haven't Tried" switch at the top of the map is gone.** Its
+  "Around Town" half only meant "show everything" and repeated the page title.
+- **"Haven't Tried" is now an on/off chip** at the end of the filter row, after "Want to
+  Try", the same as the website. On hides the places we have been to; off shows
+  everything. "Clear" turns it off with the other filters.
+- The filter bar is one row shorter, so the map gets that space back.
+- Checked in the simulator: 387 places on the map with it off, 150 with it on, back to
+  387 when tapped again.
+- Only the Around Town screen changed. Trip maps and `TripMKMap` are untouched.
+
 ### Wine Picker: log the one you tried
 
 Elisa: "is there also a flow to add a wine bsaed on the picker? like "sleect the one i
