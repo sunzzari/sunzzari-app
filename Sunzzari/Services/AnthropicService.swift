@@ -32,11 +32,19 @@ final class AnthropicService: @unchecked Sendable {
     Be direct and confident. If a label is hard to read, note it briefly.
     """
 
-    func analyzeWineImage(_ image: UIImage) async throws -> String {
+    // `notes` is what she typed for this one pick ("a white", "by the glass only"). It rides in
+    // the user message, never in `winePickerSystemPrompt`, which /wine-picker-sync owns.
+    func analyzeWineImage(_ image: UIImage, notes: String = "") async throws -> String {
         guard let compressed = compress(image) else {
             throw AnthropicError.compressionFailed
         }
         let base64 = compressed.base64EncodedString()
+
+        var ask = "Look at this photo. Figure out if it's a grocery shelf, wine shop, restaurant menu, or wine list - then recommend the best wine for us."
+        let request = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !request.isEmpty {
+            ask += "\n\nOur request for this pick: \"\(request)\". Treat it as a requirement that comes ahead of our general preferences: only recommend wines that meet it. If nothing in the photo meets it, say so plainly instead of recommending something that does not."
+        }
 
         let body: [String: Any] = [
             "model": Constants.Anthropic.model,
@@ -46,7 +54,7 @@ final class AnthropicService: @unchecked Sendable {
                 "role": "user",
                 "content": [
                     ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": base64]],
-                    ["type": "text", "text": "Look at this photo. Figure out if it's a grocery shelf, wine shop, restaurant menu, or wine list - then recommend the best wine for us."]
+                    ["type": "text", "text": ask]
                 ]
             ]]
         ]
@@ -55,12 +63,14 @@ final class AnthropicService: @unchecked Sendable {
 
     // MARK: - Wine Autofill
 
-    struct WineAutofill {
+    struct WineAutofill: Identifiable {
+        let id = UUID()
         var wineName: String = ""
         var producer: String = ""
         var vintage: Int? = nil
         var region: String = ""
         var wineType: Wine.WineType = .red
+        var cost: Double? = nil
         var notes: String = ""
     }
 
@@ -96,6 +106,37 @@ final class AnthropicService: @unchecked Sendable {
 
         let text = try await sendRequest(body)
         return try parseWineAutofill(text)
+    }
+
+    // MARK: - Wine Picker: every wine in the photo
+
+    /// Every wine readable in a Wine Picker photo, so she can log the one she tried.
+    /// One short line per wine rather than JSON: the backend function has a short time
+    /// cap and a long wine list in JSON would not finish inside it.
+    func listWines(in image: UIImage) async throws -> [WineAutofill] {
+        guard let compressed = compress(image) else {
+            throw AnthropicError.compressionFailed
+        }
+        let base64 = compressed.base64EncodedString()
+
+        let body: [String: Any] = [
+            "model": Constants.Anthropic.model,
+            "max_tokens": 1500,
+            "system": "You read wines off photos of wine lists, menus, shelves and bottles. Return ONLY the lines asked for, no markdown, no explanation.",
+            "messages": [[
+                "role": "user",
+                "content": [
+                    ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": base64]],
+                    ["type": "text", "text": """
+                    List every wine you can read in this photo, one per line, in the order they appear, as six fields separated by | :
+                    wine name or appellation | producer | vintage | region | type | price
+                    Rules: type must be one of: Red, White, Rosé, Sparkling, Dessert, Other. vintage is a four-digit year. price is a plain number with no currency symbol: the bottle price if one is shown, otherwise the only price shown. Leave a field empty when the photo does not show it. region may be worked out from the appellation, but never guess a producer, vintage or price. If there are no wines, return nothing.
+                    """]
+                ]
+            ]]
+        ]
+
+        return parseWineList(try await sendRequest(body))
     }
 
     // MARK: - Restaurant Autofill
@@ -412,6 +453,24 @@ final class AnthropicService: @unchecked Sendable {
         let typeStr = obj["wineType"] as? String ?? "Red"
         result.wineType = Wine.WineType(rawValue: typeStr) ?? .red
         return result
+    }
+
+    /// A line that is not six fields (a heading, a cut-off last line) is skipped, not guessed at.
+    private func parseWineList(_ text: String) -> [WineAutofill] {
+        text.split(whereSeparator: \.isNewline).compactMap { line in
+            let f = line.split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            guard f.count == 6, !f[0].isEmpty, !f[0].lowercased().hasPrefix("wine name") else { return nil }
+
+            var wine = WineAutofill()
+            wine.wineName = f[0]
+            wine.producer = f[1]
+            wine.vintage = Int(f[2])
+            wine.region = f[3]
+            wine.wineType = Wine.WineType(rawValue: f[4]) ?? .other
+            wine.cost = Double(f[5].filter { $0.isNumber || $0 == "." })
+            return wine
+        }
     }
 
     private func parseRestaurantAutofill(_ text: String) throws -> RestaurantAutofill {

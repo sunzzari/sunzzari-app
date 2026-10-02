@@ -24,6 +24,22 @@ struct AddWineView: View {
     @State private var isAILoading = false
     @State private var aiMessage: String? = nil
 
+    /// Called after a successful save, before the form closes.
+    private let onSaved: () -> Void
+
+    /// `prefill` opens the form already filled in, e.g. with a wine picked off a Wine Picker photo.
+    init(prefill: AnthropicService.WineAutofill? = nil, onSaved: @escaping () -> Void = {}) {
+        self.onSaved = onSaved
+        guard let prefill else { return }
+        _wineName = State(initialValue: prefill.wineName)
+        _wineType = State(initialValue: prefill.wineType)
+        _producer = State(initialValue: prefill.producer)
+        _vintageText = State(initialValue: prefill.vintage.map(String.init) ?? "")
+        _region = State(initialValue: prefill.region)
+        _costText = State(initialValue: prefill.cost.map { String(format: "%.2f", $0) } ?? "")
+        _notes = State(initialValue: prefill.notes)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -319,6 +335,7 @@ struct AddWineView: View {
             try await NotionService.shared.createWine(w)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             NotionService.shared.invalidateWines()
+            onSaved()
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

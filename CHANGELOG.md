@@ -4,6 +4,50 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-10-02
 
+### Wine Picker: log the one you tried
+
+Elisa: "is there also a flow to add a wine bsaed on the picker? like "sleect the one i
+tried" from the menu adn then add it with all the necessary data fields".
+
+- **"Log one I tried" on the pick screen.** It reads every wine in the photo and lists
+  them (name, producer, vintage, region, type, price). Tap one and the usual New Wine
+  form opens with name, type, producer, vintage, region and cost already filled in.
+  Rating, where it was bought and notes are left for her. Nothing is saved until she
+  taps Save Wine; a saved wine shows "Added" in the list.
+- **One extra paid read, only when the button is tapped.** The list is kept for that
+  photo, so going back and forth does not pay twice.
+- **Only what the photo shows.** The reader is told to leave producer, vintage and price
+  blank when they are not visible. A line it cannot make sense of is skipped, not
+  guessed at.
+- **One Add Wine form, not two.** `AddWineView` gained an optional `prefill`; the picker
+  opens that same form. Add Wine from the Wine hub is unchanged.
+- **Tested live on a 31-wine list:** all 31 came back with the right producer, vintage,
+  region, type and price, in roughly 10 to 20 seconds. Wines with no vintage on the list
+  kept a blank vintage.
+- **Known limit:** the backend function has a time cap, so a much longer list (untested
+  past 31 wines) may time out with the usual "taking longer than usual" message. The
+  answer format was kept to one short line per wine to leave as much room as possible.
+- **The pick no longer shows stray `**` symbols.** The sommelier marks bold and italic
+  with asterisks and the app was printing them as-is. They now draw as bold and italic.
+
+### Wine Picker takes a typed note
+
+Elisa: "add a feature to my wine feature in the app that lets me type notes. for
+example (" i want a white" or "red" or wines by the galss only")".
+
+- **A notes box on the photo screen**, above "Pick for us": "Anything specific?
+  (optional)". Whatever is typed there is sent with the photo as a requirement that
+  comes ahead of the usual taste profile, so "a white" gets a white. If nothing in the
+  photo fits the note, the sommelier is told to say so instead of picking something
+  else. Left blank, the picker behaves exactly as before.
+- **The note stays put across "Try Another"**, so the second page of the same wine list
+  needs no retyping. Closing the Wine Picker clears it.
+- **The note rides in the request, not in the taste profile.** `winePickerSystemPrompt`
+  is untouched and still owned by `/wine-picker-sync`.
+- **Fixed on the same screen:** a wide (landscape) photo stretched the whole column past
+  both screen edges, so the button ran edge to edge and left-aligned text was cut off.
+  The photo now stays inside the margins.
+
 ### Locations come from the travel map server, the same as the website
 
 Elisa: "the overall goal is to make the locations on my app and web app functional
