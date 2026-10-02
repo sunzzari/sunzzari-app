@@ -2,7 +2,7 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 2026-09-30
+## 2026-10-02
 
 ### Locations come from the travel map server, the same as the website
 
