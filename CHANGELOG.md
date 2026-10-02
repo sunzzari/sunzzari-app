@@ -4,6 +4,27 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-10-02
 
+### Around Town: Edit a restaurant from its pin, and saves no longer look lost
+
+Elisa: "can i toggle want to try on the app? or add my reviews on the app?" Want to Try
+was already on the pin sheet; reviews could only be edited from the Restaurants list.
+
+- **"Edit" on a restaurant's pin sheet.** It opens the same edit screen the Restaurants
+  list uses (been there, want to try, preference, review, top dishes, address, good
+  for), not a second copy. Activities have no edit screen, so they get no button.
+- **The form opens from Notion's row as it is that second.** It saves every field, so
+  starting from the map's copy could have written an old review back over a newer one.
+  New `NotionService.fetchRestaurant(id:)` reads the one row; the list and this read
+  share one parser.
+- **Around Town now reads a live copy from the server.** The cached copy it was reading
+  was found 64 minutes old, so a "Want to Try" or a review saved on the phone could
+  have looked unsaved when the map was reopened. `AroundTownService.fetchPlaces` asks
+  `/api/around-town/live` first and falls back to the cached route.
+- **Needs the travel map server change pushed first** (same day). Until then the app
+  quietly uses the cached route, as before.
+- Checked in the simulator: Edit opens the form with the place's real review; Cancel
+  returns to the map. A save was not tested, to keep test edits out of the real list.
+
 ### Around Town: "Haven't Tried" is one chip, not a switch
 
 Elisa: "whats the point of the "around town" button on the round town page?" then "make

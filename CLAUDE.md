@@ -46,7 +46,8 @@ to `TripMKMap` reaches both surfaces - say so in the same pass. Never add anothe
 Elisa, 2026-09-30: "the same data is used for both and the same features should be used
 for both". This app does not work out where a place is. Pins, chain branches, areas,
 colours, the address lookup and saving an address all live on the `elisa-travel-map`
-server; this app draws `/api/around-town` and `/api/trips/<id>/pins`
+server; this app draws `/api/around-town/live` (never cached; the cached
+`/api/around-town` is only the fallback) and `/api/trips/<id>/pins`
 (`AroundTownService`, `TravelService`) and saves through `/api/places*`.
 
 - **A location feature is built on the server first**, then drawn here. Never add a

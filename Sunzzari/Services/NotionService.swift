@@ -344,6 +344,24 @@ final class NotionService: @unchecked Sendable {
         }
     }
 
+    /// One restaurant, read from Notion right now and never from a cache. For
+    /// opening the edit screen from somewhere other than the Restaurants list
+    /// (the Around Town map): the form saves every field, so it has to start
+    /// from what Notion holds this minute or it would write an old review back.
+    func fetchRestaurant(id: String) async throws -> Restaurant {
+        var request = URLRequest(url: URL(string: "\(baseURL)/pages/\(id)")!)
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NotionError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        guard let page = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let restaurant = restaurant(fromPage: page) else {
+            throw NotionError.httpError(http.statusCode)
+        }
+        return restaurant
+    }
+
     /// Returns the new page ID, so the address and pin can then be saved through
     /// the travel map server (`AroundTownService.saveLocation`).
     @discardableResult
@@ -1059,24 +1077,28 @@ final class NotionService: @unchecked Sendable {
     private func parseRestaurants(from data: Data) -> [Restaurant] {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]] else { return [] }
-        return results.compactMap { page in
-            guard let id = page["id"] as? String,
-                  let props = page["properties"] as? [String: Any] else { return nil }
-            let prefStr = extractSelect(from: props["Preference"])
-            return Restaurant(
-                id:            id,
-                name:          extractTitle(from: props["Name"]) ?? "Untitled",
-                beenThere:     (props["Been There?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
-                thinkingAbout: (props["Thinking About"] as? [String: Any])?["checkbox"] as? Bool ?? false,
-                preference:    prefStr.flatMap { Restaurant.Preference(rawValue: $0) },
-                location:      extractSelect(from: props["Location"]) ?? "",
-                neighborhood:  extractRichText(from: props["Neighborhood"]) ?? "",
-                goodFor:       extractMultiSelect(from: props["Good For"]),
-                topDishes:     extractRichText(from: props["Top Dishes"]) ?? "",
-                comments:      extractRichText(from: props["Comments"]) ?? "",
-                address:       extractRichText(from: props["Address"]) ?? ""
-            )
-        }
+        return results.compactMap(restaurant(fromPage:))
+    }
+
+    /// One Notion page as a restaurant. The list and the single-row read both
+    /// come through here, so the edit screen is handed the same record either way.
+    private func restaurant(fromPage page: [String: Any]) -> Restaurant? {
+        guard let id = page["id"] as? String,
+              let props = page["properties"] as? [String: Any] else { return nil }
+        let prefStr = extractSelect(from: props["Preference"])
+        return Restaurant(
+            id:            id,
+            name:          extractTitle(from: props["Name"]) ?? "Untitled",
+            beenThere:     (props["Been There?"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+            thinkingAbout: (props["Thinking About"] as? [String: Any])?["checkbox"] as? Bool ?? false,
+            preference:    prefStr.flatMap { Restaurant.Preference(rawValue: $0) },
+            location:      extractSelect(from: props["Location"]) ?? "",
+            neighborhood:  extractRichText(from: props["Neighborhood"]) ?? "",
+            goodFor:       extractMultiSelect(from: props["Good For"]),
+            topDishes:     extractRichText(from: props["Top Dishes"]) ?? "",
+            comments:      extractRichText(from: props["Comments"]) ?? "",
+            address:       extractRichText(from: props["Address"]) ?? ""
+        )
     }
 
     private func parseWatchlist(from data: Data) -> [WatchlistItem] {

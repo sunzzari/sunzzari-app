@@ -67,7 +67,18 @@ final class AroundTownService: @unchecked Sendable {
 
     /// Fresh places from the server. Throws when it cannot be reached or the
     /// answer does not parse; the caller keeps whatever is on disk.
+    ///
+    /// Asks the live route, which reads Notion on every request. This app saves
+    /// "Want to Try", "Been There" and reviews to Notion itself, and the cached
+    /// route was seen handing back an answer over an hour old, so a saved
+    /// review would have looked unsaved on the next open. The cached route is
+    /// only the fallback, for when the live one cannot answer.
     func fetchPlaces() async throws -> [AroundTownItem] {
+        if let live = try? await send(URLRequest(url: URL(string: "\(Self.base)/api/around-town/live")!)),
+           let items = decode(live) {
+            try? live.write(to: diskURL, options: .atomic)
+            return items
+        }
         var request = URLRequest(url: URL(string: "\(Self.base)/api/around-town")!)
         request.timeoutInterval = 20
         let (data, response) = try await URLSession.shared.data(for: request)

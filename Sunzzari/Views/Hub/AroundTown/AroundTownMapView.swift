@@ -39,6 +39,7 @@ struct AroundTownMapView: View {
         case cluster([AroundTownItem])
         case unmapped
         case findIt(String)
+        case edit(Restaurant)
         case addRestaurant
         case addActivity
 
@@ -48,6 +49,7 @@ struct AroundTownMapView: View {
             case .cluster(let members): return "cluster-" + members.map(\.id).joined(separator: "-")
             case .unmapped: return "unmapped"
             case .findIt(let itemID): return "find-\(itemID)"
+            case .edit(let restaurant): return "edit-\(restaurant.id)"
             case .addRestaurant: return "add-restaurant"
             case .addActivity: return "add-activity"
             }
@@ -56,6 +58,9 @@ struct AroundTownMapView: View {
 
     @State private var activeSheet: ActiveSheet?
     @State private var bridge = TripMapBridge()
+    /// The place whose edit screen is being opened, while Notion is read.
+    @State private var openingEditID: String?
+    @State private var editError: String?
 
     @State private var filterRegion: AroundTownItem.Region? = nil
     @State private var filterKind: AroundTownItem.Kind? = nil
@@ -233,6 +238,11 @@ struct AroundTownMapView: View {
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                 }
+            // The Restaurants list's own edit screen, not a second one. The
+            // map reloads when it closes, so the sheet shows what was saved.
+            case .edit(let restaurant):
+                RestaurantEditView(restaurant: restaurant) { _ in }
+                    .onDisappear { Task { await onLocationSaved() } }
             // The app's existing add forms, not new ones. They save the place
             // and its pin; the map reloads when the form closes.
             case .addRestaurant:
@@ -243,6 +253,8 @@ struct AroundTownMapView: View {
                     .onDisappear { Task { await onLocationSaved() } }
             }
         }
+        // A failed "Edit" belongs to the sheet it happened on.
+        .onChange(of: activeSheet?.id) { editError = nil }
         .toolbar {
             // Same job as "+ Add place" on the website's Around Town.
             ToolbarItem(placement: .topBarTrailing) {
@@ -568,6 +580,17 @@ struct AroundTownMapView: View {
                                 .clipShape(Capsule())
                         }
                         Spacer()
+                        // Same job as "Edit" on the website's Around Town.
+                        // Activities have no edit screen in this app.
+                        if item.kind == .restaurant {
+                            editButton(for: item)
+                        }
+                    }
+
+                    if let editError {
+                        Text(editError)
+                            .font(.system(size: 12, design: .serif))
+                            .foregroundStyle(.red)
                     }
 
                     Text(item.name)
@@ -685,6 +708,46 @@ struct AroundTownMapView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    /// Opens the Restaurants list's edit screen for a place on the map. The
+    /// form saves every field, so it starts from Notion's row as it is right
+    /// now, not from the map's copy, which can be minutes old.
+    private func editButton(for item: AroundTownItem) -> some View {
+        Button {
+            guard openingEditID == nil else { return }
+            openingEditID = item.id
+            editError = nil
+            Task {
+                defer { openingEditID = nil }
+                do {
+                    activeSheet = .edit(try await NotionService.shared.fetchRestaurant(id: item.id))
+                } catch {
+                    editError = "Could not open the editor. Check the connection and try again."
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if openingEditID == item.id {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(Color.sunAccent)
+                } else {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                }
+                Text("Edit")
+                    .font(.system(size: 12, weight: .semibold, design: .serif))
+            }
+            .foregroundStyle(Color.sunAccent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.sunAccent.opacity(0.1))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.sunAccent.opacity(0.3), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit \(item.name)")
     }
 
     private func detailBlock(title: String, body: String) -> some View {
