@@ -97,6 +97,14 @@ struct AroundTownItem: Identifiable {
         }
     }
 
+    /// Metres to this place, or to its nearest branch when it is a chain. Nil
+    /// for a place with no pin.
+    func distance(from here: CLLocation) -> CLLocationDistance? {
+        ([coordinate].compactMap { $0 } + branches.map(\.coordinate))
+            .map { here.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) }
+            .min()
+    }
+
     /// One-line description shown inside the map callout bubble, mirroring the
     /// travel map's title + subtitle callout. Kept short -- MapKit truncates.
     var calloutSubtitle: String {

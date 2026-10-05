@@ -184,48 +184,15 @@ struct MyRestaurantsView: View {
     // MARK: - Claude Search Bar
 
     private var claudeSearchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 14, design: .serif))
-                .foregroundStyle(Color.sunAccent)
-
-            TextField("Ask Claude...", text: $claudeQuery)
-                .font(.system(size: 14, design: .serif))
-                .foregroundStyle(Color.sunText)
-                .focused($claudeFieldFocused)
-                .submitLabel(.search)
-                .onSubmit { Task { await runClaudeSearch() } }
-
-            if isSearching {
-                ProgressView().scaleEffect(0.7)
-            } else if claudeResults != nil || !claudeQuery.isEmpty {
-                Button {
-                    clearClaudeSearch()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16, design: .serif))
-                        .foregroundStyle(Color.sunSecondary)
-                }
-            } else if !claudeQuery.isEmpty {
-                // no-op placeholder: kept structure for readability
-                EmptyView()
-            }
-
-            Button {
-                Task { await runClaudeSearch() }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 20, design: .serif))
-                    .foregroundStyle(claudeQuery.trimmingCharacters(in: .whitespaces).isEmpty
-                                     ? Color.sunSecondary
-                                     : Color.sunAccent)
-            }
-            .disabled(claudeQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.sunSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        AskSearchBar(
+            placeholder: "Ask Claude...",
+            text: $claudeQuery,
+            isSearching: isSearching,
+            hasResults: claudeResults != nil,
+            focused: $claudeFieldFocused,
+            onSubmit: { Task { await runClaudeSearch() } },
+            onClear: clearClaudeSearch
+        )
         .padding(.horizontal, 16)
         .padding(.top, 10)
     }

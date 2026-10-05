@@ -89,6 +89,44 @@ final class AroundTownService: @unchecked Sendable {
         return items
     }
 
+    // MARK: - Search
+
+    /// The server's reading of a typed question. The matching is done there, by
+    /// the same code the website's search box runs; there is no Swift copy.
+    struct SearchAnswer: Decodable, Equatable {
+        /// Been / want / rated words in the question. Applied here, to this
+        /// app's own copy of those ticks, which is newer than the server's.
+        struct Filters: Decodable, Equatable {
+            let wantToTry: Bool
+            let haventBeen: Bool
+            let beenThere: Bool
+            let topChoice: Bool
+        }
+        /// Matching places, best first.
+        let ids: [String]
+        /// She asked for "near me". Worked out on this phone: the question is
+        /// sent, her location never is.
+        let nearMe: Bool
+        let filters: Filters
+        /// How the question was read, to show under the bar. Empty for a name.
+        let understood: String
+    }
+
+    /// Which saved places match a name or a question such as "jian bing in
+    /// rowland heights". Free: a keyword search, no Claude call.
+    func search(_ query: String) async throws -> SearchAnswer {
+        var components = URLComponents(string: "\(Self.base)/api/around-town/search")!
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        // A public route over public data, so the Notion key is not sent.
+        var request = URLRequest(url: components.url!)
+        request.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let answer = try? JSONDecoder().decode(SearchAnswer.self, from: data)
+        else { throw ServiceError.badAnswer }
+        return answer
+    }
+
     // MARK: - Lookup and save (same routes as the website)
 
     struct Match: Identifiable, Hashable, Decodable {

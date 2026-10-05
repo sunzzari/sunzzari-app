@@ -53,6 +53,9 @@ server; this app draws `/api/around-town/live` (never cached; the cached
 - **A location feature is built on the server first**, then drawn here. Never add a
   Swift copy of a server rule, and never add a geocoder or a paid lookup to the app.
 - `AroundTownItem` is built only from the server's answer, never from Notion rows.
+- **Search is the server's too.** Which places match a typed question is decided by
+  `lib/place-search.ts` there (`AroundTownService.search`). Never match in Swift, beyond
+  the names-only fallback for when the server cannot be reached.
 
 Still duplicated by hand in `elisa-travel-map`, and not location code:
 
@@ -60,5 +63,6 @@ Still duplicated by hand in `elisa-travel-map`, and not location code:
 |---|---|
 | `Services/TripTime.swift` | `lib/time.ts` |
 | `Services/TripDayPlanner.swift` | `lib/day.ts` |
+| `AroundTownMapView.nearest` ("near me" is 5 miles, else the 5 nearest) | `nearest` in `lib/place-search.ts` |
 
 Editing one means editing the other in the same pass, or saying out loud that you did not.

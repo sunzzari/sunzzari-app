@@ -69,23 +69,156 @@ struct AroundTownMapView: View {
     /// same as the website's, not a switch with an "Around Town" half.
     @State private var hideBeenThere = false
 
+    // Search: a name, or a question such as "jian bing in rowland heights".
+    // The travel map server reads the question (`AroundTownService.search`),
+    // the same rule the website's search box runs; this screen only applies it.
+    @State private var searchText = ""
+    @State private var searchAnswer: AroundTownService.SearchAnswer?
+    /// The server could not be reached, so only names are being matched.
+    @State private var searchNamesOnly = false
+    @State private var isSearching = false
+    @FocusState private var searchFocused: Bool
+
+    /// "Near me": the chip, or the words typed into the search bar.
+    @State private var nearMeChip = false
+    @State private var userCoordinate: CLLocationCoordinate2D?
+
+    private var searchQuery: String { searchText.trimmingCharacters(in: .whitespaces) }
+    private var nearMeAsked: Bool { nearMeChip || (searchAnswer?.nearMe ?? false) }
+    private var nearMeOn: Bool { nearMeAsked && userCoordinate != nil }
+
     private var hasActiveFilters: Bool {
         filterRegion != nil || filterKind != nil || wantToTryOnly || hideBeenThere
+            || nearMeChip || !searchQuery.isEmpty
     }
 
-    private var filtered: [AroundTownItem] {
-        items.filter { item in
+    /// What the chips and the search leave, best match first, before distance.
+    private var matched: [AroundTownItem] {
+        var result = items.filter { item in
             let regionOK = filterRegion == nil || item.region == filterRegion
             let kindOK   = filterKind == nil || item.kind == filterKind
             let triedOK  = !hideBeenThere || !item.done
             let wantOK   = !wantToTryOnly || item.thinkingAbout
             return regionOK && kindOK && triedOK && wantOK
         }
+        if searchNamesOnly {
+            let words = searchQuery.lowercased().split(separator: " ")
+            return result.filter { item in
+                let name = item.name.lowercased()
+                return words.allSatisfy { name.contains($0) }
+            }
+        }
+        guard let answer = searchAnswer else { return result }
+        let rank = Dictionary(answer.ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        let asked = answer.filters
+        result = result.filter { item in
+            guard rank[item.id] != nil else { return false }
+            if asked.wantToTry && !item.thinkingAbout { return false }
+            if asked.haventBeen && item.done { return false }
+            if asked.beenThere && !item.done { return false }
+            if asked.topChoice && item.preferenceLabel != "Top Choice" { return false }
+            return true
+        }
+        return result.sorted { rank[$0.id]! < rank[$1.id]! }
+    }
+
+    /// "Near me" is 5 miles; with nothing that close, the 5 nearest instead.
+    /// Twin of `nearest` in elisa-travel-map `lib/place-search.ts`: the same two
+    /// numbers. It lives on each device because her location is never sent to
+    /// the server.
+    private static let nearMeMeters: CLLocationDistance = 8_050
+    private static let nearMeFallbackCount = 5
+
+    /// `reach` is how far a pin may be and still be drawn: nil with near me
+    /// off, 5 miles with it on, or out to the last of the nearest few.
+    private var nearest: (items: [AroundTownItem], widened: Bool, reach: CLLocationDistance?) {
+        guard nearMeOn, let here = userCoordinate else { return (matched, false, nil) }
+        let from = CLLocation(latitude: here.latitude, longitude: here.longitude)
+        let placed = matched
+            .compactMap { item in item.distance(from: from).map { (item: item, meters: $0) } }
+            .sorted { $0.meters < $1.meters }
+        let close = placed.filter { $0.meters <= Self.nearMeMeters }
+        if !close.isEmpty || placed.isEmpty { return (close.map(\.item), false, Self.nearMeMeters) }
+        let few = placed.prefix(Self.nearMeFallbackCount)
+        return (few.map(\.item), true, few.last?.meters)
+    }
+
+    private var filtered: [AroundTownItem] { nearest.items }
+
+    /// Whether a pin is drawn. With near me on, only the pins that are actually
+    /// near: a chain with one branch close by does not also show its branch
+    /// across town.
+    private var isInReach: (CLLocationCoordinate2D) -> Bool {
+        guard let reach = nearest.reach, let here = userCoordinate else { return { _ in true } }
+        let from = CLLocation(latitude: here.latitude, longitude: here.longitude)
+        return { from.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= reach + 10 }
+    }
+
+    /// The line under the search bar: how the question was read, and what
+    /// "near me" did. Nil when there is nothing to say.
+    private var searchNote: String? {
+        var parts: [String] = []
+        if searchNamesOnly {
+            parts.append("Search could not be reached: matching names only")
+        } else if let understood = searchAnswer?.understood, !understood.isEmpty {
+            parts.append("Searching for: \(understood)")
+        }
+        if nearMeOn {
+            let near = nearest
+            parts.append(near.widened ? "Nothing within 5 miles, so these are the nearest"
+                : near.items.isEmpty ? "Nothing within 5 miles" : "Within 5 miles, nearest first")
+        } else if nearMeAsked {
+            parts.append("Location is off, so this is every match")
+        }
+        if parts.isEmpty, !searchQuery.isEmpty, !isSearching, searchAnswer != nil, filtered.isEmpty {
+            parts.append("No saved place matches")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " - ")
+    }
+
+    /// Runs when the typed text changes, after a short pause so a question is
+    /// not sent letter by letter.
+    private func runSearch() async {
+        let query = searchQuery
+        guard !query.isEmpty else {
+            searchAnswer = nil
+            searchNamesOnly = false
+            isSearching = false
+            return
+        }
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        guard !Task.isCancelled else { return }
+        isSearching = true
+        defer { isSearching = false }
+        do {
+            let answer = try await AroundTownService.shared.search(query)
+            guard !Task.isCancelled else { return }
+            searchAnswer = answer
+            searchNamesOnly = false
+            if answer.nearMe { requestLocation() }
+        } catch {
+            guard !Task.isCancelled else { return }
+            // No signal is not a dead search box: a name still finds its place.
+            searchAnswer = nil
+            searchNamesOnly = true
+        }
+    }
+
+    private func clearSearch() {
+        searchText = ""
+        searchAnswer = nil
+        searchNamesOnly = false
+    }
+
+    private func requestLocation() {
+        userCoordinate = LocationService.shared.lastKnownCoordinate
+        LocationService.shared.requestLocationForNearMe()
     }
 
     /// One pin per place, plus one per chain branch.
     private var annotations: [TripItemAnnotation] {
-        filtered.flatMap(\.annotations)
+        let inReach = isInReach
+        return filtered.flatMap(\.annotations).filter { inReach($0.coordinate) }
     }
 
     private var mappedCount: Int {
@@ -130,10 +263,13 @@ struct AroundTownMapView: View {
         // same rule the website uses, so the two never frame LA differently.
         // A chain's branches follow the same rule as any pin.
         let region = fitRegion
+        let inReach = isInReach
         var ids = Set<String>()
-        for item in filtered where item.coordinate != nil {
-            if item.fitArea == region { ids.insert(item.id) }
-            for (index, branch) in item.branches.enumerated() where branch.fitArea == region {
+        for item in filtered {
+            guard let coordinate = item.coordinate else { continue }
+            if item.fitArea == region, inReach(coordinate) { ids.insert(item.id) }
+            for (index, branch) in item.branches.enumerated()
+            where branch.fitArea == region && inReach(branch.coordinate) {
                 ids.insert(AroundTownItem.branchID(item.id, index))
             }
         }
@@ -159,7 +295,9 @@ struct AroundTownMapView: View {
         let kindStr = filterKind.map { $0 == .restaurant ? "rest" : "act" } ?? "all"
         // fitRegion is in the key: when the majority area flips as places
         // load, the map should re-frame on it rather than keep an old frame.
-        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(hideBeenThere ? "nottried" : "all")|\(wantToTryOnly)|fit:\(fitRegion.label)"
+        // The search and near-me are in it too: a new answer re-frames the map on what it found.
+        let searchStr = searchNamesOnly ? "names:\(searchQuery)" : (searchAnswer?.ids.joined(separator: ",") ?? "")
+        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(hideBeenThere ? "nottried" : "all")|\(wantToTryOnly)|\(nearMeOn ? "near" : "any")|\(searchStr.hashValue)|fit:\(fitRegion.label)"
     }
 
     var body: some View {
@@ -255,6 +393,10 @@ struct AroundTownMapView: View {
         }
         // A failed "Edit" belongs to the sheet it happened on.
         .onChange(of: activeSheet?.id) { editError = nil }
+        .task(id: searchText) { await runSearch() }
+        .onReceive(NotificationCenter.default.publisher(for: .ownLocationDidUpdate)) { _ in
+            if nearMeAsked { userCoordinate = LocationService.shared.lastKnownCoordinate }
+        }
         .toolbar {
             // Same job as "+ Add place" on the website's Around Town.
             ToolbarItem(placement: .topBarTrailing) {
@@ -275,6 +417,27 @@ struct AroundTownMapView: View {
 
     private var controlBar: some View {
         VStack(spacing: 8) {
+            AskSearchBar(
+                placeholder: "Search: a name, or chinese food near me",
+                icon: "magnifyingglass",
+                autocorrects: false,
+                text: $searchText,
+                isSearching: isSearching,
+                hasResults: searchAnswer != nil || searchNamesOnly,
+                focused: $searchFocused,
+                onSubmit: { searchFocused = false },
+                onClear: clearSearch
+            )
+            .padding(.horizontal, 16)
+
+            if let searchNote {
+                Text(searchNote)
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+            }
+
             HStack(spacing: 6) {
                 Text("\(mappedCount) on the map")
                     .font(.system(size: 11, design: .serif))
@@ -329,6 +492,10 @@ struct AroundTownMapView: View {
                     filterChip(label: "Haven't Tried", icon: "eye.slash", isActive: hideBeenThere) {
                         hideBeenThere.toggle()
                     }
+                    filterChip(label: "Near me", icon: "location", isActive: nearMeChip) {
+                        nearMeChip.toggle()
+                        if nearMeChip { requestLocation() }
+                    }
 
                     if hasActiveFilters {
                         Button {
@@ -336,6 +503,8 @@ struct AroundTownMapView: View {
                             filterKind = nil
                             wantToTryOnly = false
                             hideBeenThere = false
+                            nearMeChip = false
+                            clearSearch()
                         } label: {
                             HStack(spacing: 3) {
                                 Image(systemName: "xmark")
@@ -453,7 +622,7 @@ struct AroundTownMapView: View {
             let ids = fitScopeIDs
             guard !ids.isEmpty else { return }
             // Branch pins included, so a chain's branches are framed as well as drawn.
-            bridge.fitToIDs(ids, in: filtered.flatMap(\.annotations).map(\.item))
+            bridge.fitToIDs(ids, in: annotations.map(\.item))
         } label: {
             Image(systemName: "scope")
                 .font(.system(size: 16, design: .serif))

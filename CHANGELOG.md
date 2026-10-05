@@ -2,6 +2,34 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-05
+
+### Around Town: a search bar that takes a name or a question
+
+Elisa: "i want a search feature. either keyword search or claude ai search like 'jian
+bing in rowland heights' or chinese food near me. and i want to be able to search by
+name". Around Town on the phone had chips and no search at all.
+
+- **A search bar above the chips.** Type a name ("bestia") or a question ("chinese food
+  near me", "cafe in san gabriel valley", "tacos i haven't been to"). The map narrows to
+  the matches and re-frames on them; a line under the bar says how the question was read.
+- **It is a keyword search, not Claude, so it costs nothing per search.** It finds our own
+  saved places by the words written on them: name, neighborhood, address, Good For, Top
+  Dishes, Comments.
+- **The travel map server reads the question** (`/api/around-town/search`), the same code
+  the website's search box runs, so the phone and the website cannot answer differently.
+  `AroundTownService.search` asks; there is no Swift copy of the matching.
+- **Near me**: a new chip, also switched on by typing "near me". Within 5 miles, nearest
+  first; if nothing is that close, the 5 nearest, and it says so. Worked out on the phone:
+  the question is sent to the server, the location never is. Only the pins that are
+  near are drawn, so a chain with one branch close by does not also show its branch
+  across town.
+- **No signal:** the bar falls back to matching names and says so.
+- **One search bar in the app.** The "Ask Claude..." bar on My Restaurants moved into
+  `Views/Shared/AskSearchBar.swift` and both screens use it. My Restaurants looks and
+  behaves as before, and still asks Claude.
+- `TripMKMap` is untouched, so trips are unaffected.
+
 ## 2026-10-02
 
 ### Around Town: Edit a restaurant from its pin, and saves no longer look lost
