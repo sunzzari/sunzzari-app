@@ -2,6 +2,36 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-06
+
+### Maps: single pins instead of bubbles, search matches in a list, and the dot no longer hides pins
+
+Elisa: "i searched jian bing and nothing acame up. also, the bubbles are over-clustering.
+i want to see individual entries where I can, but now I just see bubbles. Bubble should
+only be used in the case where there are too many bubbles to display. Also, if there are
+multiple hits for a search term, all of the items should be highlighted on the map, and a
+list should be shown."
+
+- **Her own location dot was hiding the pins around her.** The dot's view is 80 points
+  wide to hold the heading cone, and MapKit dropped every pin and bubble under that
+  square. On the full LA map that removed the three biggest bubbles (278 of 387 places)
+  whenever location was on. The dot no longer collides with anything. Trips had the same
+  fault and get the same fix.
+- **Bubbles only when crowded.** MapKit merged two pins the moment they touched. Now,
+  with 40 pins or fewer in view, every pin is drawn on its own; past that, bubbles come
+  back. Places at the same address still share one bubble, and a tap lists them. This is
+  `TripMKMap`, the app's one map, so trips and Around Town both change.
+- **A list of matches under the search bar.** Every match is listed (about three rows,
+  then it scrolls). A match with no pin comes first and says "No pin yet - tap to find
+  it", which is why "jian bing" looked like it found nothing: it was found, had no pin,
+  and showed only as a count. Tapping a pinned match points the map at it.
+- **Matches are framed together below the list**, not under it. The map takes a new
+  opt-in `topCover` so a fit keeps pins clear of whatever the screen puts on top. Trips
+  pass nothing and frame as before.
+- The lists of a bubble's members, of places with no pin, and of search matches now
+  share one row view.
+- "jianbing" typed as one word finds Jian Bing too; that fix is on the travel map server.
+
 ## 2026-10-05
 
 ### Around Town: a search bar that takes a name or a question

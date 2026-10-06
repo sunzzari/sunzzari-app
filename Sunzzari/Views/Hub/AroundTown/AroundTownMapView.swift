@@ -78,6 +78,9 @@ struct AroundTownMapView: View {
     @State private var searchNamesOnly = false
     @State private var isSearching = false
     @FocusState private var searchFocused: Bool
+    /// How much of the map the search bar, results and chips cover, so the map
+    /// frames its pins below them.
+    @State private var controlBarHeight: CGFloat = 0
 
     /// "Near me": the chip, or the words typed into the search bar.
     @State private var nearMeChip = false
@@ -324,12 +327,18 @@ struct AroundTownMapView: View {
                     center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
                     latitudinalMeters: 60_000, longitudinalMeters: 60_000
                 ),
-                fitScopeIDs: fitScopeIDs
+                fitScopeIDs: fitScopeIDs,
+                topCover: controlBarHeight
             )
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 controlBar
+                    .background(GeometryReader { bar in
+                        Color.clear
+                            .onAppear { controlBarHeight = bar.size.height }
+                            .onChange(of: bar.size.height) { _, height in controlBarHeight = height }
+                    })
                 Spacer()
             }
 
@@ -437,6 +446,8 @@ struct AroundTownMapView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)
             }
+
+            searchResultsList
 
             HStack(spacing: 6) {
                 Text("\(mappedCount) on the map")
@@ -635,6 +646,94 @@ struct AroundTownMapView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Place rows
+
+    /// One place in a list: the members of a bubble, the places with no pin,
+    /// and the matches of a search all use this row. A place that HAS a pin
+    /// points the map at it, the way tapping a trip row does; a place with no
+    /// pin opens its sheet, which is where Find it lives.
+    private func placeRow(_ member: AroundTownItem, detail: String? = nil) -> some View {
+        Button {
+            searchFocused = false
+            if let coord = member.coordinate {
+                activeSheet = nil
+                selectedID = member.id
+                bridge.panTo(coord)
+                bridge.selectPin(id: member.id)
+            } else {
+                activeSheet = .detail(member.id)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: member.glyph)
+                    .font(.system(size: 13, design: .serif))
+                    .foregroundStyle(member.done
+                                     ? Color.gray
+                                     : Color(hex: member.markerColorHex))
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(member.name)
+                        .font(.system(size: 15, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.sunText)
+                    Text(detail ?? member.calloutSubtitle)
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(Color.sunSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: member.coordinate == nil
+                      ? "chevron.right"
+                      : "mappin.and.ellipse")
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Color.sunSecondary.opacity(0.5))
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The matches of a search, listed under the bar. Elisa, 2026-10-05: "if
+    /// there are multiple hits for a search term, all of the items should be
+    /// highlighted on the map, and a list should be shown." A match with no pin
+    /// is not on the map at all, so this list is the only place it can be seen;
+    /// those come first and say so.
+    @ViewBuilder
+    private var searchResultsList: some View {
+        let results = filtered
+        if isSearchActive, !results.isEmpty {
+            let unpinned = results.filter { $0.coordinate == nil }
+            let pinned = results.filter { $0.coordinate != nil }
+            let here = nearMeOn ? userCoordinate.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) } : nil
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(results.count) match\(results.count == 1 ? "" : "es")")
+                    .font(.system(size: 11, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 2)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(unpinned + pinned) { place in
+                            placeRow(place, detail: resultDetail(for: place, from: here))
+                            Divider().background(Color.white.opacity(0.07))
+                        }
+                    }
+                }
+                // About three rows, then it scrolls: the map stays in view.
+                .frame(maxHeight: results.count <= 3 ? CGFloat(results.count) * 58 : 190)
+            }
+        }
+    }
+
+    private var isSearchActive: Bool { searchAnswer != nil || searchNamesOnly }
+
+    private func resultDetail(for place: AroundTownItem, from here: CLLocation?) -> String {
+        if place.coordinate == nil { return "No pin yet - tap to find it" }
+        guard let here, let meters = place.distance(from: here) else { return place.calloutSubtitle }
+        return String(format: "%.1f mi · ", meters / 1609.34) + place.calloutSubtitle
+    }
+
     // MARK: - Place list (cluster members, and places with no pin)
 
     /// One list, two jobs: the members of a numbered bubble that no amount of
@@ -668,47 +767,7 @@ struct AroundTownMapView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(members) { member in
-                            Button {
-                                if let coord = member.coordinate {
-                                    // Same behaviour as a tapped trip row: point
-                                    // the map at it rather than covering the map
-                                    // with a sheet.
-                                    activeSheet = nil
-                                    selectedID = member.id
-                                    bridge.panTo(coord)
-                                    bridge.selectPin(id: member.id)
-                                } else {
-                                    activeSheet = .detail(member.id)
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: member.glyph)
-                                        .font(.system(size: 13, design: .serif))
-                                        .foregroundStyle(member.done
-                                                         ? Color.gray
-                                                         : Color(hex: member.markerColorHex))
-                                        .frame(width: 22)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(member.name)
-                                            .font(.system(size: 15, weight: .medium, design: .serif))
-                                            .foregroundStyle(Color.sunText)
-                                        Text(member.calloutSubtitle)
-                                            .font(.system(size: 12, design: .serif))
-                                            .foregroundStyle(Color.sunSecondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                    Image(systemName: member.coordinate == nil
-                                          ? "chevron.right"
-                                          : "mappin.and.ellipse")
-                                        .font(.system(size: 11, design: .serif))
-                                        .foregroundStyle(Color.sunSecondary.opacity(0.5))
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                            placeRow(member)
 
                             Divider().background(Color.white.opacity(0.07))
                         }

@@ -23,6 +23,10 @@ final class UserLocationAnnotationView: MKAnnotationView {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
         let s = Self.size
         frame = CGRect(x: 0, y: 0, width: s, height: s)
+        // The view is 80 points wide to hold the heading cone, but only the dot
+        // is solid. Left to collide, MapKit hid every pin and bubble under that
+        // whole square, which is the busiest part of the map: wherever she is.
+        collisionMode = .none
         centerOffset = .zero
         isUserInteractionEnabled = false
         buildLayers()

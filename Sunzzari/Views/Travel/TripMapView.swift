@@ -127,6 +127,12 @@ struct TripMKMap: UIViewRepresentable {
     // Around Town passes the ids of one region.
     var fitScopeIDs: Set<String>?
 
+    // How much of the top of the map the caller has covered with its own
+    // controls. A fit keeps the pins below it. Zero for a trip, whose map has
+    // nothing on top; Around Town's search bar and results list sit over the
+    // map and grow, so it passes their height.
+    var topCover: CGFloat = 0
+
     func makeCoordinator() -> Coordinator {
         Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
@@ -185,9 +191,17 @@ struct TripMKMap: UIViewRepresentable {
         }
         if !toRemove.isEmpty { map.removeAnnotations(toRemove) }
 
+        // Before any pin is added: a new pin's view asks which spot it shares.
+        coordinator.noteSharedSpots(annotations)
+
         let toAdd = annotations.filter { !existing.contains($0.item.id) }
         if !toAdd.isEmpty {
             map.addAnnotations(toAdd)
+        }
+        // A filter can thin the pins out without moving the map, so the map
+        // moving is not the only moment to ask whether bubbles are still needed.
+        if !toAdd.isEmpty || !toRemove.isEmpty {
+            DispatchQueue.main.async { coordinator.refreshBubbling(map) }
         }
 
         // Re-fit when filter changes, on first load, OR when annotations grow
@@ -199,7 +213,14 @@ struct TripMKMap: UIViewRepresentable {
         let filterChanged = filterKey != coordinator.lastFilterKey
         let firstLoad = !coordinator.hasFittedInitially && !annotations.isEmpty
         let annotationsGrew = annotations.count > coordinator.lastAnnotationCount
-        if firstLoad || filterChanged || (annotationsGrew && !coordinator.userHasInteracted) {
+
+        // Pins fitted under the caller's controls are pins she cannot see, so
+        // a cover that has grown or shrunk by a real amount (a results list
+        // opening, not a one-line note) fits again.
+        let coverChanged = abs(coordinator.lastTopCover - topCover) > 40
+        if coverChanged { coordinator.lastTopCover = topCover }
+        let cover = topCover
+        if firstLoad || filterChanged || coverChanged || (annotationsGrew && !coordinator.userHasInteracted) {
             coordinator.lastFilterKey = filterKey
             let includeUser = fitIncludesUser
 
@@ -232,7 +253,27 @@ struct TripMKMap: UIViewRepresentable {
                 }
                 coordinator.hasFittedInitially = true
                 let anns: [MKAnnotation] = includeUser ? map.annotations : itemAnns
-                map.showAnnotations(anns, animated: true)
+                guard cover > 0 else {
+                    map.showAnnotations(anns, animated: true)
+                    return
+                }
+                // The caller covers the top of the map: frame the pins in what
+                // is left. A lone pin gets about a mile around it, not the
+                // closest zoom the map has.
+                var rect = anns.reduce(MKMapRect.null) {
+                    $0.union(MKMapRect(origin: MKMapPoint($1.coordinate), size: MKMapSize(width: 0, height: 0)))
+                }
+                let mile = 1_600 * MKMapPointsPerMeterAtLatitude(rect.origin.coordinate.latitude)
+                rect = rect.insetBy(
+                    dx: -max(0, mile - rect.size.width) / 2,
+                    dy: -max(0, mile - rect.size.height) / 2
+                )
+                map.setVisibleMapRect(
+                    rect,
+                    // On top of the safe area, which MapKit already keeps clear.
+                    edgePadding: UIEdgeInsets(top: cover + 64, left: 36, bottom: 90, right: 36),
+                    animated: true
+                )
             }
             DispatchQueue.main.async { fit(0) }
         }
@@ -246,7 +287,7 @@ struct TripMKMap: UIViewRepresentable {
                 continue
             }
             let isSelected = ta.item.id == selectedID
-            view.displayPriority = isSelected ? .required : .defaultHigh
+            view.displayPriority = isSelected || !coordinator.bubbling ? .required : .defaultHigh
             if highlightedItemIds.contains(ta.item.id) {
                 view.markerTintColor = UIColor(red: 0.231, green: 0.510, blue: 0.965, alpha: 1)
                 view.alpha = 1
@@ -283,8 +324,73 @@ struct TripMKMap: UIViewRepresentable {
         var hasFittedInitially = false
         var lastFilterKey: String = ""
         var lastAnnotationCount = 0
+        var lastTopCover: CGFloat = 0
         var userHasInteracted = false
         var highlightedItemIds: Set<String> = []
+
+        // MARK: Bubbles only when crowded
+        //
+        // Elisa, 2026-10-05: "the bubbles are over-clustering. i want to see
+        // individual entries where I can, but now I just see bubbles. Bubble
+        // should only be used in the case where there are too many bubbles to
+        // display."
+        //
+        // MapKit merges two pins the moment they touch, which on a phone is
+        // almost always. So bubbling is off unless the map is crowded: with this
+        // many pins or fewer in view, each one is drawn on its own, even if two
+        // overlap. This is the app's one map, so trips and Around Town both get it.
+        static let maxSinglePins = 40
+        /// Bubbles come back a little above the limit, so a pan that hovers
+        /// around it does not flip the whole map back and forth.
+        static let bubblesReturnAbove = 48
+        private(set) var bubbling = true
+        /// Pins that share a spot, by item id. They can never be told apart at
+        /// any zoom, so they stay one bubble (a tap lists them) even when
+        /// bubbling is off.
+        private var sharedSpot: [String: String] = [:]
+
+        func noteSharedSpots(_ annotations: [TripItemAnnotation]) {
+            var bySpot: [String: [String]] = [:]
+            for ann in annotations {
+                // Four decimals is about 11 metres.
+                let key = String(format: "spot:%.4f,%.4f", ann.coordinate.latitude, ann.coordinate.longitude)
+                bySpot[key, default: []].append(ann.item.id)
+            }
+            var shared: [String: String] = [:]
+            for (key, ids) in bySpot where ids.count > 1 {
+                for id in ids { shared[id] = key }
+            }
+            sharedSpot = shared
+        }
+
+        /// Which bubble group a pin may join: every pin's when the map is
+        /// crowded, otherwise only the pins at its own spot, if any.
+        func clusteringIdentifier(for item: TripItem) -> String? {
+            bubbling ? "tripItem" : sharedSpot[item.id]
+        }
+
+        /// Counts the pins in view and switches bubbling on or off to match.
+        func refreshBubbling(_ mapView: MKMapView) {
+            let pins = mapView.annotations.compactMap { $0 as? TripItemAnnotation }
+            let visible = mapView.visibleMapRect
+            let inView = pins.reduce(0) { $0 + (visible.contains(MKMapPoint($1.coordinate)) ? 1 : 0) }
+            let crowded = bubbling ? inView > Self.maxSinglePins : inView > Self.bubblesReturnAbove
+            guard crowded != bubbling else { return }
+            bubbling = crowded
+
+            // MapKit only regroups pins when they are added, so changing the
+            // setting on the views already drawn does nothing. Take them off
+            // and put them back; `viewFor` gives each its new group.
+            let wasUpdating = isUpdating
+            isUpdating = true
+            let selected = selectedID
+            mapView.removeAnnotations(pins)
+            mapView.addAnnotations(pins)
+            if let selected, let ann = pins.first(where: { $0.item.id == selected }) {
+                mapView.selectAnnotation(ann, animated: false)
+            }
+            isUpdating = wasUpdating
+        }
 
         private var headingManager: CLLocationManager?
         weak var userLocView: UserLocationAnnotationView?
@@ -360,6 +466,7 @@ struct TripMKMap: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             updateCone()
+            refreshBubbling(mapView)
         }
 
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
@@ -383,6 +490,9 @@ struct TripMKMap: UIViewRepresentable {
                 ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
                 v.markerTintColor = UIColor(red: 0.984, green: 0.749, blue: 0.141, alpha: 1) // sunAccent
                 v.glyphText = "\(cluster.memberAnnotations.count)"
+                // A bubble stands for many places, so it is never the one
+                // dropped when two markers touch.
+                v.displayPriority = .required
                 v.titleVisibility = .hidden
                 v.subtitleVisibility = .hidden
                 return v
@@ -393,7 +503,7 @@ struct TripMKMap: UIViewRepresentable {
                 withIdentifier: "tripItem",
                 for: annotation
             ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "tripItem")
-            v.clusteringIdentifier = "tripItem"
+            v.clusteringIdentifier = clusteringIdentifier(for: ta.item)
             // Show MapKit's built-in callout bubble on tap, mirroring the web
             // app's InfoWindow. Title comes from annotation.title (item name);
             // subtitle is type + legCity + status. The right accessory is an
@@ -424,8 +534,10 @@ struct TripMKMap: UIViewRepresentable {
             v.glyphImage = UIImage(systemName: style?.glyph ?? type.sfSymbol)
 
             // Selected state: larger display priority
+            // With bubbling off nothing may be dropped for overlapping: MapKit
+            // hides the lower of two touching pins unless both are required.
             let isSelected = ta.item.id == selectedID
-            v.displayPriority = isSelected ? .required : .defaultHigh
+            v.displayPriority = isSelected || !bubbling ? .required : .defaultHigh
 
             return v
         }
