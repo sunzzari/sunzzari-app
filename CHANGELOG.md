@@ -2,6 +2,32 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-07
+
+### Around Town: rating colours that show, chains with every branch in view
+
+Elisa: "when something has multiple locations, it's not showing all the locations on the
+map. It's just showing one of them. for example mian" and "there is a color legend that's
+always on the map, but the colors don't actually show on the bubble, so it's completely
+pointless."
+
+- **Pins show their rating colour.** Every rated place is one we have been to, and
+  been-there grey was covering all four rating colours: most of the map was grey. Grey now
+  means "been there, not rated", and the legend says so.
+- **A bubble takes the colour most of its places have**, instead of always amber. Trips
+  keep amber (`bubblesTakePinColor` on `TripMKMap` is opt-in).
+- **A chain shows all its branches.** A search frames every match across the whole area,
+  Orange County included, and tapping a chain in the list frames all of its pins instead
+  of jumping to one. Mian's three (Costa Mesa, San Gabriel, West Adams) are in view
+  together. Browsing with no search keeps the LA-proper frame.
+- **An area search leaves off branches outside the area**: "cafe in san gabriel valley"
+  no longer draws a matching chain's Santa Monica branch. The server names the pins to
+  hide; the app just skips them.
+- The rest of this round is on the travel map server and needs no app build: a place with
+  a blank Location in Notion is no longer dropped (why "jian bing" could not find Yu Ji
+  Stone Mill Chinese Crepes), a row with an address and no pin is pinned automatically,
+  "Chinese" also covers Taiwanese, and results come back best-rated first.
+
 ## 2026-10-06
 
 ### Maps: single pins instead of bubbles, search matches in a list, and the dot no longer hides pins

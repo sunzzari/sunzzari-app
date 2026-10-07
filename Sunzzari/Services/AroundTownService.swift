@@ -30,6 +30,9 @@ final class AroundTownService: @unchecked Sendable {
             let lat: Double
             let lng: Double
             let fitArea: String?
+            /// The wide area (LA includes Orange County). Missing from an
+            /// answer cached by an older server.
+            let region: String?
         }
         let id: String
         let name: String
@@ -110,6 +113,9 @@ final class AroundTownService: @unchecked Sendable {
         let filters: Filters
         /// How the question was read, to show under the bar. Empty for a name.
         let understood: String
+        /// Pins not to draw: she asked for an area and these branches of a
+        /// matching chain are elsewhere. A place's id, or `id~n` for a branch.
+        let hiddenPins: [String]?
     }
 
     /// Which saved places match a name or a question such as "jian bing in

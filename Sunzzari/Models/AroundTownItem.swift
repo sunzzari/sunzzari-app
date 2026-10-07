@@ -34,6 +34,8 @@ struct AroundTownItem: Identifiable {
         let coordinate: CLLocationCoordinate2D
         /// Same meaning as the place's own `fitArea`, decided by the server.
         let fitArea: Region?
+        /// The wide area this branch is in, which is what a search frames.
+        let region: Region?
     }
 
     let id: String
@@ -92,7 +94,8 @@ struct AroundTownItem: Identifiable {
             Branch(
                 address: $0.address,
                 coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng),
-                fitArea: Region(server: $0.fitArea)
+                fitArea: Region(server: $0.fitArea),
+                region: Region(server: $0.region) ?? Region(server: $0.fitArea)
             )
         }
     }
@@ -169,12 +172,22 @@ extension AroundTownItem {
         )
     }
 
-    /// Pin colour and glyph for the shared map. Been-there places go grey but
-    /// stay legible -- nothing is faded to near-invisible.
+    /// Pin colour and glyph for the shared map. A rating wins: grey is only
+    /// "been there, not rated". Elisa, 2026-10-07: "the colors don't actually
+    /// show ... so it's completely pointless" - every rated place is one we have
+    /// been to, and been-there grey was hiding all four rating colours. Same
+    /// rule as the server's `colorFor`; kept here so a tick un-greys at once.
     var pinStyle: MapPinStyle {
-        done
+        let rated = !(preferenceLabel ?? "").isEmpty
+        return done && !rated
             ? MapPinStyle(color: Color(uiColor: .systemGray), glyph: glyph, alpha: 0.9)
             : MapPinStyle(color: Color(hex: markerColorHex), glyph: glyph)
+    }
+
+    /// Every pin id this place draws: its own, then one per branch.
+    var pinIDs: [String] {
+        guard coordinate != nil else { return [] }
+        return [id] + branches.indices.map { Self.branchID(id, $0) }
     }
 
     /// Every pin this place puts on the shared map: its own, plus one per chain

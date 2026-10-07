@@ -219,9 +219,14 @@ struct AroundTownMapView: View {
     }
 
     /// One pin per place, plus one per chain branch.
+    /// Pins the search asked to leave off: a matching chain's branches outside
+    /// the area she named. Decided by the server.
+    private var hiddenPinIDs: Set<String> { Set(searchAnswer?.hiddenPins ?? []) }
+
     private var annotations: [TripItemAnnotation] {
         let inReach = isInReach
-        return filtered.flatMap(\.annotations).filter { inReach($0.coordinate) }
+        let hidden = hiddenPinIDs
+        return filtered.flatMap(\.annotations).filter { inReach($0.coordinate) && !hidden.contains($0.item.id) }
     }
 
     private var mappedCount: Int {
@@ -265,15 +270,25 @@ struct AroundTownMapView: View {
         // Which frame a pin belongs to is the server's call (`fitArea`), the
         // same rule the website uses, so the two never frame LA differently.
         // A chain's branches follow the same rule as any pin.
+        //
+        // A search frames wider: every match in the region, Orange County and
+        // San Diego included, so all of a chain's branches are in view (Mian's
+        // main branch is in Costa Mesa). LA proper is for browsing.
         let region = fitRegion
         let inReach = isInReach
+        let hidden = hiddenPinIDs
+        let wide = isSearchActive
         var ids = Set<String>()
         for item in filtered {
             guard let coordinate = item.coordinate else { continue }
-            if item.fitArea == region, inReach(coordinate) { ids.insert(item.id) }
-            for (index, branch) in item.branches.enumerated()
-            where branch.fitArea == region && inReach(branch.coordinate) {
-                ids.insert(AroundTownItem.branchID(item.id, index))
+            if (wide ? item.region : item.fitArea) == region, inReach(coordinate), !hidden.contains(item.id) {
+                ids.insert(item.id)
+            }
+            for (index, branch) in item.branches.enumerated() {
+                let pinID = AroundTownItem.branchID(item.id, index)
+                if (wide ? branch.region : branch.fitArea) == region, inReach(branch.coordinate), !hidden.contains(pinID) {
+                    ids.insert(pinID)
+                }
             }
         }
         return ids
@@ -328,7 +343,8 @@ struct AroundTownMapView: View {
                     latitudinalMeters: 60_000, longitudinalMeters: 60_000
                 ),
                 fitScopeIDs: fitScopeIDs,
-                topCover: controlBarHeight
+                topCover: controlBarHeight,
+                bubblesTakePinColor: true
             )
             .ignoresSafeArea()
 
@@ -583,7 +599,7 @@ struct AroundTownMapView: View {
             legendRow(color: Color(hex: "#FF6B6B"), label: "Bad")
             legendRow(color: Color(hex: AroundTownItem.notRatedHex), label: "Not rated")
             legendRow(color: Color(hex: AroundTownItem.activityHex), label: "Activity")
-            legendRow(color: Color.gray, label: "Been there")
+            legendRow(color: Color.gray, label: "Been there, not rated")
             // Credit the pin sources, as the OpenStreetMap licence asks.
             Text("Pins: OpenStreetMap, US Census")
                 .font(.system(size: 8, design: .serif))
@@ -658,7 +674,16 @@ struct AroundTownMapView: View {
             if let coord = member.coordinate {
                 activeSheet = nil
                 selectedID = member.id
-                bridge.panTo(coord)
+                // A chain is framed with ALL its branches. Elisa, 2026-10-07:
+                // "when something has multiple locations, it's not showing all
+                // the locations on the map. It's just showing one of them."
+                let drawn = annotations.map(\.item)
+                let pins = Set(member.pinIDs).intersection(drawn.map(\.id))
+                if pins.count > 1 {
+                    bridge.fitToIDs(pins, in: drawn)
+                } else {
+                    bridge.panTo(coord)
+                }
                 bridge.selectPin(id: member.id)
             } else {
                 activeSheet = .detail(member.id)
@@ -720,8 +745,9 @@ struct AroundTownMapView: View {
                         }
                     }
                 }
-                // About three rows, then it scrolls: the map stays in view.
-                .frame(maxHeight: results.count <= 3 ? CGFloat(results.count) * 58 : 190)
+                // About three rows, then it scrolls: the map stays in view. A short
+                // list gets room for a name that wraps to two lines.
+                .frame(maxHeight: results.count <= 2 ? CGFloat(results.count) * 80 : 190)
             }
         }
     }

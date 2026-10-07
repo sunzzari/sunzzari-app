@@ -133,6 +133,11 @@ struct TripMKMap: UIViewRepresentable {
     // map and grow, so it passes their height.
     var topCover: CGFloat = 0
 
+    // A bubble takes the colour most of its pins have, instead of amber. Around
+    // Town asks for it so its colour legend means something on a bubble too;
+    // a trip keeps amber.
+    var bubblesTakePinColor = false
+
     func makeCoordinator() -> Coordinator {
         Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
@@ -180,6 +185,7 @@ struct TripMKMap: UIViewRepresentable {
         // latest closure captured by the SwiftUI body.
         coordinator.onOpenDetail = onOpenDetail
         coordinator.styleFor = styleFor
+        coordinator.bubblesTakePinColor = bubblesTakePinColor
 
         // Sync annotations
         let existing = Set(map.annotations.compactMap { ($0 as? TripItemAnnotation)?.item.id })
@@ -327,6 +333,18 @@ struct TripMKMap: UIViewRepresentable {
         var lastTopCover: CGFloat = 0
         var userHasInteracted = false
         var highlightedItemIds: Set<String> = []
+        var bubblesTakePinColor = false
+
+        /// The colour most of a bubble's pins have. Nil when the caller did not
+        /// ask for it, or has no colour rule.
+        private func commonColor(of cluster: MKClusterAnnotation) -> UIColor? {
+            guard bubblesTakePinColor, let styleFor else { return nil }
+            var tally: [UIColor: Int] = [:]
+            for case let member as TripItemAnnotation in cluster.memberAnnotations {
+                tally[UIColor(styleFor(member.item).color), default: 0] += 1
+            }
+            return tally.max { $0.value < $1.value }?.key
+        }
 
         // MARK: Bubbles only when crowded
         //
@@ -488,7 +506,12 @@ struct TripMKMap: UIViewRepresentable {
                     withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier,
                     for: cluster
                 ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
-                v.markerTintColor = UIColor(red: 0.984, green: 0.749, blue: 0.141, alpha: 1) // sunAccent
+                let common = commonColor(of: cluster)
+                v.markerTintColor = common ?? UIColor(red: 0.984, green: 0.749, blue: 0.141, alpha: 1) // sunAccent
+                // The count has to read on a pale bubble as well as a dark one.
+                var white: CGFloat = 0
+                common?.getWhite(&white, alpha: nil)
+                v.glyphTintColor = white > 0.7 ? .darkGray : .white
                 v.glyphText = "\(cluster.memberAnnotations.count)"
                 // A bubble stands for many places, so it is never the one
                 // dropped when two markers touch.
