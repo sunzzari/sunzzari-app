@@ -47,7 +47,7 @@ struct RestaurantEditView: View {
                         }
 
                         if !draft.beenThere {
-                            formField(label: "Want to Try?", icon: "bookmark") {
+                            formField(label: "Bookmarked?", icon: "bookmark") {
                                 Toggle("", isOn: $draft.thinkingAbout.animation())
                                     .tint(.sunAccent)
                                     .padding()

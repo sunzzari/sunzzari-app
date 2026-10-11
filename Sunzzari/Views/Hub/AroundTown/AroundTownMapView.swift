@@ -68,6 +68,12 @@ struct AroundTownMapView: View {
     /// "Haven't Tried": hides the places we have been to. One on/off chip, the
     /// same as the website's, not a switch with an "Around Town" half.
     @State private var hideBeenThere = false
+    /// "Been There": only the places we have been to. Never on together with
+    /// "Haven't Tried", which is its opposite.
+    @State private var beenThereOnly = false
+    /// "Hide Bad": leaves out the places rated Bad. On unless she turns it
+    /// off. Elisa, 2026-10-11: "make hide bad the default".
+    @State private var hideBad = true
 
     // Search: a name, or a question such as "jian bing in rowland heights".
     // The travel map server reads the question (`AroundTownService.search`),
@@ -92,17 +98,21 @@ struct AroundTownMapView: View {
 
     private var hasActiveFilters: Bool {
         filterRegion != nil || filterKind != nil || wantToTryOnly || hideBeenThere
+            || beenThereOnly || !hideBad
             || nearMeChip || !searchQuery.isEmpty
     }
 
     /// What the chips and the search leave, best match first, before distance.
-    private var matched: [AroundTownItem] {
+    private var matched: [AroundTownItem] { matches(in: filterRegion) }
+
+    private func matches(in area: AroundTownItem.Region?) -> [AroundTownItem] {
         var result = items.filter { item in
-            let regionOK = filterRegion == nil || item.region == filterRegion
+            let regionOK = area == nil || item.region == area
             let kindOK   = filterKind == nil || item.kind == filterKind
-            let triedOK  = !hideBeenThere || !item.done
+            let triedOK  = (!hideBeenThere || !item.done) && (!beenThereOnly || item.done)
+            let badOK    = !hideBad || item.preferenceLabel != "Bad"
             let wantOK   = !wantToTryOnly || item.thinkingAbout
-            return regionOK && kindOK && triedOK && wantOK
+            return regionOK && kindOK && triedOK && badOK && wantOK
         }
         if searchNamesOnly {
             let words = searchQuery.lowercased().split(separator: " ")
@@ -148,6 +158,13 @@ struct AroundTownMapView: View {
 
     private var filtered: [AroundTownItem] { nearest.items }
 
+    /// Matches of the search that the LA / SF Bay chip is hiding, so a search
+    /// kept to one area still says the other area has some.
+    private var matchesOutsideArea: Int {
+        guard isSearchActive, filterRegion != nil else { return 0 }
+        return matches(in: nil).count - matched.count
+    }
+
     /// Whether a pin is drawn. With near me on, only the pins that are actually
     /// near: a chain with one branch close by does not also show its branch
     /// across town.
@@ -175,6 +192,10 @@ struct AroundTownMapView: View {
         }
         if parts.isEmpty, !searchQuery.isEmpty, !isSearching, searchAnswer != nil, filtered.isEmpty {
             parts.append("No saved place matches")
+        }
+        // The area chip is hiding every match: say so, or it reads as "not found".
+        if let area = filterRegion, matched.isEmpty, matchesOutsideArea > 0 {
+            parts.append("None in \(area.label), \(matchesOutsideArea) elsewhere: tap \(area.label) to see them")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " - ")
     }
@@ -315,7 +336,7 @@ struct AroundTownMapView: View {
         // load, the map should re-frame on it rather than keep an old frame.
         // The search and near-me are in it too: a new answer re-frames the map on what it found.
         let searchStr = searchNamesOnly ? "names:\(searchQuery)" : (searchAnswer?.ids.joined(separator: ",") ?? "")
-        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(hideBeenThere ? "nottried" : "all")|\(wantToTryOnly)|\(nearMeOn ? "near" : "any")|\(searchStr.hashValue)|fit:\(fitRegion.label)"
+        return "\(filterRegion?.label ?? "all")|\(kindStr)|\(hideBeenThere ? "nottried" : beenThereOnly ? "been" : "all")|\(hideBad ? "nobad" : "bad")|\(wantToTryOnly)|\(nearMeOn ? "near" : "any")|\(searchStr.hashValue)|fit:\(fitRegion.label)"
     }
 
     var body: some View {
@@ -336,7 +357,7 @@ struct AroundTownMapView: View {
                 },
                 styleFor: { trip in
                     pinStyles[AroundTownItem.placeID(of: trip.id)]
-                        ?? MapPinStyle(color: Color(hex: AroundTownItem.notRatedHex), glyph: "mappin")
+                        ?? MapPinStyle(color: Color(hex: AroundTownItem.haventTriedHex), glyph: "mappin")
                 },
                 initialRegion: MKCoordinateRegion(
                     center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
@@ -361,8 +382,12 @@ struct AroundTownMapView: View {
             VStack {
                 Spacer()
                 HStack(alignment: .bottom, spacing: 0) {
-                    kindLegend
-                        .padding(.leading, 16)
+                    // Off while searching: with the keyboard up it sat on top
+                    // of the matches.
+                    if !searchFocused && !isSearchActive {
+                        kindLegend
+                            .padding(.leading, 16)
+                    }
                     Spacer()
                     VStack(spacing: 10) {
                         fitAllButton
@@ -372,6 +397,7 @@ struct AroundTownMapView: View {
                 }
                 .padding(.bottom, 32)
             }
+            .ignoresSafeArea(.keyboard)
         }
         .navigationTitle("Around Town")
         .navigationBarTitleDisplayMode(.inline)
@@ -455,40 +481,8 @@ struct AroundTownMapView: View {
             )
             .padding(.horizontal, 16)
 
-            if let searchNote {
-                Text(searchNote)
-                    .font(.system(size: 11, design: .serif))
-                    .foregroundStyle(Color.white.opacity(0.6))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-            }
-
-            searchResultsList
-
-            HStack(spacing: 6) {
-                Text("\(mappedCount) on the map")
-                    .font(.system(size: 11, design: .serif))
-                    .foregroundStyle(Color.white.opacity(0.45))
-                if filtered.count > mappedCount {
-                    // These rows have no saved location. Tapping opens them:
-                    // unmapped is fine, invisible is not.
-                    Button {
-                        activeSheet = .unmapped
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text("· \(filtered.count - mappedCount) with no map location")
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 8, weight: .bold, design: .serif))
-                        }
-                        .font(.system(size: 11, design: .serif))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 18)
-
+            // Straight under the bar, so the area a search is kept to is in
+            // view while she types, not below the results.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     filterChip(label: "LA", isActive: filterRegion == .la) {
@@ -513,11 +507,19 @@ struct AroundTownMapView: View {
                         .fill(Color.white.opacity(0.15))
                         .frame(width: 1, height: 16)
 
-                    filterChip(label: "Want to Try", icon: "bookmark", isActive: wantToTryOnly) {
-                        wantToTryOnly.toggle()
+                    filterChip(label: "Been There", icon: "checkmark", isActive: beenThereOnly) {
+                        beenThereOnly.toggle()
+                        if beenThereOnly { hideBeenThere = false }
                     }
                     filterChip(label: "Haven't Tried", icon: "eye.slash", isActive: hideBeenThere) {
                         hideBeenThere.toggle()
+                        if hideBeenThere { beenThereOnly = false }
+                    }
+                    filterChip(label: "Hide Bad", icon: "hand.thumbsdown", isActive: hideBad) {
+                        hideBad.toggle()
+                    }
+                    filterChip(label: "Bookmarked", icon: "bookmark", isActive: wantToTryOnly) {
+                        wantToTryOnly.toggle()
                     }
                     filterChip(label: "Near me", icon: "location", isActive: nearMeChip) {
                         nearMeChip.toggle()
@@ -530,6 +532,8 @@ struct AroundTownMapView: View {
                             filterKind = nil
                             wantToTryOnly = false
                             hideBeenThere = false
+                            beenThereOnly = false
+                            hideBad = true
                             nearMeChip = false
                             clearSearch()
                         } label: {
@@ -550,6 +554,44 @@ struct AroundTownMapView: View {
                     }
                 }
                 .padding(.horizontal, 16)
+            }
+
+            if let searchNote {
+                Text(searchNote)
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+            }
+
+            searchResultsList
+
+            // A search lists its own matches, pinned or not, so the counts
+            // line is for browsing only.
+            if !isSearchActive {
+            HStack(spacing: 6) {
+                Text("\(mappedCount) on the map")
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                if filtered.count > mappedCount {
+                    // These rows have no saved location. Tapping opens them:
+                    // unmapped is fine, invisible is not.
+                    Button {
+                        activeSheet = .unmapped
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("· \(filtered.count - mappedCount) with no map location")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .bold, design: .serif))
+                        }
+                        .font(.system(size: 11, design: .serif))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 18)
             }
         }
         .padding(.vertical, 10)
@@ -589,17 +631,11 @@ struct AroundTownMapView: View {
     // MARK: - Kind legend (bottom-left)
 
     private var kindLegend: some View {
-        // The old legend claimed blue = Restaurant, but restaurant pins are
-        // coloured by Preference, so four of the five colours on screen were
-        // unexplained. This states what the colours actually mean.
+        // The three pin colours, and nothing else.
         VStack(alignment: .leading, spacing: 5) {
-            legendRow(color: Color(hex: "#54A0FF"), label: "Top Choice")
-            legendRow(color: Color(hex: "#70C17C"), label: "Great")
-            legendRow(color: Color(hex: "#FBBF24"), label: "Good")
-            legendRow(color: Color(hex: "#FF6B6B"), label: "Bad")
-            legendRow(color: Color(hex: AroundTownItem.notRatedHex), label: "Not rated")
-            legendRow(color: Color(hex: AroundTownItem.activityHex), label: "Activity")
-            legendRow(color: Color.gray, label: "Been there, not rated")
+            legendRow(color: Color(hex: AroundTownItem.wantToTryHex), label: "Bookmarked")
+            legendRow(color: Color(hex: AroundTownItem.haventTriedHex), label: "Haven't Tried")
+            legendRow(color: Color.gray, label: "Tried")
             // Credit the pin sources, as the OpenStreetMap licence asks.
             Text("Pins: OpenStreetMap, US Census")
                 .font(.system(size: 8, design: .serif))
@@ -732,11 +768,21 @@ struct AroundTownMapView: View {
             let pinned = results.filter { $0.coordinate != nil }
             let here = nearMeOn ? userCoordinate.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) } : nil
             VStack(alignment: .leading, spacing: 0) {
-                Text("\(results.count) match\(results.count == 1 ? "" : "es")")
-                    .font(.system(size: 11, weight: .semibold, design: .serif))
-                    .foregroundStyle(Color.white.opacity(0.6))
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 2)
+                HStack(spacing: 6) {
+                    Text("\(results.count) match\(results.count == 1 ? "" : "es")\(filterRegion.map { " in \($0.label)" } ?? "")")
+                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.white.opacity(0.6))
+                    if matchesOutsideArea > 0 {
+                        Button { filterRegion = nil } label: {
+                            Text("· \(matchesOutsideArea) more elsewhere")
+                                .font(.system(size: 11, design: .serif))
+                                .foregroundStyle(Color.sunAccent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 2)
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(unpinned + pinned) { place in
@@ -921,7 +967,7 @@ struct AroundTownMapView: View {
 
                     HStack(spacing: 12) {
                         intentButton(
-                            label: "Want to Try",
+                            label: "Bookmarked",
                             icon: item.thinkingAbout ? "bookmark.fill" : "bookmark",
                             isActive: item.thinkingAbout,
                             color: Color.sunAccent

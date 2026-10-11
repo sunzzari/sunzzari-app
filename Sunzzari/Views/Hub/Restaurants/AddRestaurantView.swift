@@ -52,7 +52,7 @@ struct AddRestaurantView: View {
                         }
 
                         if !beenThere {
-                            formField(label: "Want to Try?", icon: "bookmark") {
+                            formField(label: "Bookmarked?", icon: "bookmark") {
                                 Toggle("", isOn: $thinkingAbout.animation())
                                     .tint(.sunAccent)
                                     .padding()

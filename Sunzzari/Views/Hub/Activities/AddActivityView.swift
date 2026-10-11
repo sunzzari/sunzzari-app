@@ -48,7 +48,7 @@ struct AddActivityView: View {
                             }
                         }
 
-                        formField(label: "Want to Do?", icon: "bookmark") {
+                        formField(label: "Bookmarked?", icon: "bookmark") {
                             Toggle("", isOn: $thinkingAbout.animation())
                                 .tint(.sunAccent)
                                 .padding()

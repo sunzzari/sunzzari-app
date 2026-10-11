@@ -62,9 +62,10 @@ struct AroundTownItem: Identifiable {
     let coordinate: CLLocationCoordinate2D?
     let branches: [Branch]
 
-    /// Legend swatches. Pin colours themselves come from the server.
-    static let notRatedHex = "#E2E8F0"
-    static let activityHex = "#A78BFA"
+    /// Legend swatches. Pin colours themselves come from the server
+    /// (`colorFor` in elisa-travel-map `lib/aroundtown-shared.ts`).
+    static let wantToTryHex = "#FBBF24"
+    static let haventTriedHex = "#54A0FF"
 
     init(place p: AroundTownService.Place) {
         let isRestaurant = p.kind == "restaurant"
@@ -172,14 +173,12 @@ extension AroundTownItem {
         )
     }
 
-    /// Pin colour and glyph for the shared map. A rating wins: grey is only
-    /// "been there, not rated". Elisa, 2026-10-07: "the colors don't actually
-    /// show ... so it's completely pointless" - every rated place is one we have
-    /// been to, and been-there grey was hiding all four rating colours. Same
-    /// rule as the server's `colorFor`; kept here so a tick un-greys at once.
+    /// Pin colour and glyph for the shared map. Three colours only (Elisa,
+    /// 2026-10-11): Want to Try, Haven't Tried, Tried. The first two arrive
+    /// from the server as `markerColorHex`; Tried grey is applied here so a
+    /// Been There tick greys the pin at once.
     var pinStyle: MapPinStyle {
-        let rated = !(preferenceLabel ?? "").isEmpty
-        return done && !rated
+        done
             ? MapPinStyle(color: Color(uiColor: .systemGray), glyph: glyph, alpha: 0.9)
             : MapPinStyle(color: Color(hex: markerColorHex), glyph: glyph)
     }

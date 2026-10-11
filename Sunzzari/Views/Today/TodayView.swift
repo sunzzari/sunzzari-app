@@ -89,6 +89,21 @@ struct TodayView: View {
                                 }
                             }
 
+                            // AROUND TOWN - moved here from the Hub. Elisa,
+                            // 2026-10-11: "move the around town to the home
+                            // page. above the boops."
+                            Section {
+                                NavigationLink { AroundTownView() } label: {
+                                    homeBanner(
+                                        icon: "mappin.and.ellipse", eyebrow: "LA & SF BAY",
+                                        title: "Around Town", detail: "Map and search our places"
+                                    )
+                                }
+                                .listRowBackground(Color.sunBackground)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
+                            }
+
                             // BOOPS (one-tap) — always rendered, including NYD
                             Section {
                                 boopGrid
@@ -282,21 +297,29 @@ struct TodayView: View {
     // MARK: - Boop grid (3 columns × 2 rows)
 
     private func tripBanner(_ trip: Trip) -> some View {
+        homeBanner(
+            icon: "suitcase.rolling.fill", eyebrow: "ON THIS TRIP NOW",
+            title: trip.name, detail: "Open today's plan"
+        )
+    }
+
+    /// One banner row on the home page: the live trip, and Around Town.
+    private func homeBanner(icon: String, eyebrow: String, title: String, detail: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "suitcase.rolling.fill")
+            Image(systemName: icon)
                 .font(.system(size: 18))
                 .foregroundStyle(Color.sunBackground)
                 .frame(width: 38, height: 38)
                 .background(Color.sunAccent)
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text("ON THIS TRIP NOW")
+                Text(eyebrow)
                     .font(.system(size: 10, weight: .semibold, design: .serif))
                     .foregroundStyle(Color.sunAccent)
-                Text(trip.name)
+                Text(title)
                     .font(.system(size: 17, weight: .bold, design: .serif))
                     .foregroundStyle(Color.sunText)
-                Text("Open today's plan")
+                Text(detail)
                     .font(.system(.caption, design: .serif))
                     .foregroundStyle(Color.sunSecondary)
             }

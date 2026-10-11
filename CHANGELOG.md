@@ -2,6 +2,45 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-11
+
+### Around Town: on the home page, a cleaner search, three pin colours
+
+Elisa: "the search feature is looking very bad. Look how clunky it is with the legend
+still overlaying everything ... I don't want things coming up in SF if I'm just searching
+for things in LA", then "i should be able to filter my search like been there? and turn
+off bad", "make hide bad the default. make want to try as a special colored pin. also
+havent tried vs tried", "move the around town to the home page. above the boops" and
+"instead of want to try put bookmarked".
+
+- **Around Town opens from the home page.** A row above the Boops opens the map. Its
+  tile is gone from the Hub, which now has five cards. The Restaurants screen still
+  links to the map.
+- **The legend no longer sits on the search.** It is hidden while the search box is in
+  use or a search is showing, and the two round map buttons stay at the bottom instead
+  of riding up over the matches with the keyboard. Not seen with the on-screen keyboard
+  up: the Simulator typed with the Mac keyboard.
+- **The filter chips sit directly under the search bar.** They were below the results,
+  where the legend covered them. With LA or SF Bay on, the header reads "5 matches in
+  LA" with a tappable "2 more elsewhere", and a search whose matches are all in the
+  other area says so instead of reading as nothing found. The "N on the map" line is
+  hidden during a search, since the match list covers it.
+- **Two new chips.** "Been There" shows only places we have been to; it and "Haven't
+  Tried" switch each other off. "Hide Bad" leaves out places rated Bad and is ON by
+  default, so a search for a Bad place by name finds nothing until it is switched off.
+- **Three pin colours.** Gold is Bookmarked, blue is Haven't Tried, grey is Tried. The
+  rating colours no longer colour a pin; the rating is still in the list row and the
+  place's sheet. Gold and blue come from the travel map server (`colorFor`), grey is
+  applied here so a Been There tick greys the pin at once. A place ticked both
+  Bookmarked and Been There shows as Tried. Activities follow the same three colours.
+- **"Want to Try" is now "Bookmarked"** on the legend, the chip, a place's sheet and
+  the add and edit forms (activities said "Want to Do?"). The Notion column keeps its
+  name, Thinking About.
+- Trip maps are unchanged. `TripMKMap` is not touched; whether trip pins take the three
+  colours is undecided (her words: "lets decide that later").
+- The same chips, colours and names went live on the travel map website the same day
+  (`elisa-travel-map` `c3a7fd7`, `a9898c5`).
+
 ## 2026-10-07
 
 ### Around Town: rating colours that show, chains with every branch in view

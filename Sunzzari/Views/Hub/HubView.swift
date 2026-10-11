@@ -10,7 +10,8 @@ struct HubView: View {
         _resumeTrip = resumeTrip
     }
 
-    // Six fixed cards laid out NON-lazily.
+    // Five fixed cards laid out NON-lazily. Around Town moved to the home page
+    // (Elisa, 2026-10-11), above the Boops.
     //
     // This was a LazyVGrid. With only six always-visible cards there is nothing to
     // gain from laziness, and lazy containers are where NavigationLink(destination:)
@@ -24,8 +25,7 @@ struct HubView: View {
          .init(title: "Gallery",     subtitle: "Our Memories",  symbolName: "photo.stack.fill")],
         [.init(title: "Wine",        subtitle: "My Collection", assetName: "hubWine"),
          .init(title: "Restaurants", subtitle: "My Guide",      assetName: "hubRestaurants")],
-        [.init(title: "Activities",  subtitle: "Things To Do",  assetName: "hubActivities"),
-         .init(title: "Around Town", subtitle: "LA & SF Bay",   symbolName: "mappin.and.ellipse")]
+        [.init(title: "Activities",  subtitle: "Things To Do",  assetName: "hubActivities")]
     ]
 
     var body: some View {
@@ -54,6 +54,10 @@ struct HubView: View {
                                         .buttonStyle(.plain)
                                         .frame(maxWidth: .infinity)
                                     }
+                                    // A lone card keeps its half-width size.
+                                    if rows[row].count == 1 {
+                                        Color.clear.frame(maxWidth: .infinity).frame(height: 1)
+                                    }
                                 }
                             }
                         }
@@ -76,8 +80,7 @@ struct HubView: View {
         case "Gallery":     GalleryView()
         case "Wine":        WineHubView()
         case "Restaurants": RestaurantHubView()
-        case "Activities":  ActivitiesHubView()
-        default:            AroundTownView()
+        default:            ActivitiesHubView()
         }
     }
 }
