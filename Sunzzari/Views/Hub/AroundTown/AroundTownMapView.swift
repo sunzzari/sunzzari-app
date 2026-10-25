@@ -718,7 +718,7 @@ struct AroundTownMapView: View {
                 if pins.count > 1 {
                     bridge.fitToIDs(pins, in: drawn)
                 } else {
-                    bridge.panTo(coord)
+                    bridge.focus(on: coord)
                 }
                 bridge.selectPin(id: member.id)
             } else {

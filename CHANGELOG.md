@@ -2,6 +2,29 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-25
+
+### Maps: tapping a place keeps your zoom
+
+Elisa: "we've just made a bunch of streamlined changes to the zooming/bubbles on the travel
+app but they didnt get ported to sunzzari", then "Port only the tap-keeps-your-zoom fix to
+the phone for now." The website's rule from 2026-10-21 ("when i click on an entry it zooms
+very close and i dont always want that"), now on the phone.
+
+- **A tap on a list entry keeps the zoom.** It went to street level every time. Now the
+  map only moves if the place is out of view, and from far out it goes to city level,
+  never street level (the website's zoom 12). A chain with several branches is still
+  framed with all of them.
+- **Out of view means what she can see.** A pin under Around Town's search results is
+  out of view, and a moved map puts the pin in the open part below the list.
+- **A far place jumps, a near one glides.** A long glide (LA to SF) was still flying
+  when the pin opened, which stopped the map halfway out.
+- **A place inside a bubble still opens.** If keeping the zoom leaves it in a bubble,
+  the map zooms in a step at a time until it stands alone (never closer than the old
+  street-level zoom).
+- In the shared map (`TripMKMap` bridge), so Around Town and the trip day view both get
+  it. Seen in the iPhone 17 Simulator on Around Town; the trip day view was not opened.
+
 ## 2026-10-11
 
 ### Around Town: on the home page, a cleaner search, three pin colours

@@ -103,7 +103,7 @@ struct TripTodayView: View {
             return
         }
         mapSelectedID = item.id
-        mapBridge.panTo(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        mapBridge.focus(on: CLLocationCoordinate2D(latitude: lat, longitude: lon))
         mapBridge.selectPin(id: item.id)
         // Pointing at a pin she cannot see is not pointing at anything: in day
         // mode the map sits below the confirmed list.

@@ -17,6 +17,8 @@ struct MapPinStyle {
 
 final class TripMapBridge {
     weak var mapView: MKMapView?
+    /// The map's `topCover`, kept here so `focus` knows what is hidden.
+    var topCover: CGFloat = 0
 
     /// Default: fit only item annotations, ignoring the user-location dot.
     /// Pass includeUser=true (Near Me active) to keep the user dot in frame.
@@ -36,6 +38,66 @@ final class TripMapBridge {
             MKCoordinateRegion(center: coord, latitudinalMeters: zoom, longitudinalMeters: zoom),
             animated: true
         )
+    }
+
+    /// Points the map at one place someone tapped in a list, keeping her zoom.
+    /// It went to street level on every tap and she had to zoom back out to see
+    /// the rest. Elisa, 2026-10-21: "when i click on an entry it zooms very
+    /// close and i dont always want that". Same rule as the website's map: pan
+    /// only if the place is off screen; zoom in only from far out, and only to
+    /// city level. Zoom levels are the website's (Google) numbers.
+    ///
+    /// "On screen" is the part of the map she can see: below whatever the caller
+    /// lays over its top (`topCover`) and above the tab bar. A pin under Around
+    /// Town's results list is not on screen, and a moved map puts the pin in the
+    /// middle of the open part, not behind the list.
+    func focus(on coord: CLLocationCoordinate2D) {
+        guard let mv = mapView, mv.bounds.width > 0, mv.bounds.height > 0 else { return }
+        let b = mv.bounds
+        let open = openArea(of: mv)
+        let farOut = Self.googleZoom(of: mv) < 11
+        guard farOut || !open.contains(mv.convert(coord, toPointTo: mv)) else { return }
+        show(coord, width: farOut
+            ? MKMapSize.world.width / pow(2, 12) * Double(b.width) / 256
+            : mv.visibleMapRect.width)
+    }
+
+    /// The part of the map not under the caller's controls or the tab bar.
+    private func openArea(of mv: MKMapView) -> CGRect {
+        let b = mv.bounds
+        return CGRect(
+            x: b.minX + 20,
+            y: b.minY + topCover + 20,
+            width: b.width - 40,
+            height: max(b.height - topCover - 20 - 110, 1)
+        )
+    }
+
+    /// Moves the map to `width` map points across with `coord` in the middle
+    /// of the open area.
+    private func show(_ coord: CLLocationCoordinate2D, width: Double) {
+        guard let mv = mapView, mv.bounds.width > 0 else { return }
+        let b = mv.bounds
+        let open = openArea(of: mv)
+        let height = width * Double(b.height / b.width)
+        let perPoint = width / Double(b.width)
+        let point = MKMapPoint(coord)
+        // Shift the whole view so the pin lands in the middle of the open part.
+        let centerY = point.y + Double(b.midY - open.midY) * perPoint
+        // A place already in view glides there; a far one jumps, as the
+        // website's map does. A long glide (LA to SF) was still flying when the
+        // pin was selected, and selecting it stopped the map halfway out.
+        mv.setVisibleMapRect(
+            MKMapRect(x: point.x - width / 2, y: centerY - height / 2, width: width, height: height),
+            animated: mv.visibleMapRect.contains(point)
+        )
+    }
+
+    /// The website's zoom number for what this map shows: 256 points span the
+    /// whole world at zoom 0, and each level doubles that.
+    private static func googleZoom(of mv: MKMapView) -> Double {
+        let lonDelta = max(mv.region.span.longitudeDelta, 1e-9)
+        return log2(360 * Double(mv.bounds.width) / (256 * lonDelta))
     }
 
     func centerOnUser() {
@@ -73,12 +135,28 @@ final class TripMapBridge {
 
     /// Selects the annotation with the given trip item ID after a short delay so
     /// the pan animation can finish and clusters have a chance to dissolve.
-    /// Must be called AFTER panTo so the zoom level is already set.
-    func selectPin(id: String) {
+    /// Must be called AFTER panTo / focus so the zoom level is already set.
+    ///
+    /// Keeping her zoom can leave the place inside a bubble, where selecting it
+    /// shows nothing. Then it zooms in on the place, halving the view a few
+    /// times, until the pin stands on its own or the map reaches the old
+    /// street-level tap zoom (pins that share a spot never separate).
+    func selectPin(id: String, triesLeft: Int = 4) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-            guard let mv = self?.mapView,
+            guard let self, let mv = self.mapView,
                   let ann = mv.annotations.first(where: { ($0 as? TripItemAnnotation)?.item.id == id })
             else { return }
+            let bubbled = mv.annotations.contains { a in
+                (a as? MKClusterAnnotation)?.memberAnnotations.contains { $0 === ann } ?? false
+            }
+            let wide = mv.visibleMapRect.width
+            // The old tap zoom: 2 km across.
+            let floor = 2000 * MKMapPointsPerMeterAtLatitude(ann.coordinate.latitude)
+            if bubbled, triesLeft > 0, wide > floor {
+                self.show(ann.coordinate, width: max(wide / 2, floor))
+                self.selectPin(id: id, triesLeft: triesLeft - 1)
+                return
+            }
             mv.selectAnnotation(ann, animated: true)
         }
     }
@@ -186,6 +264,7 @@ struct TripMKMap: UIViewRepresentable {
         coordinator.onOpenDetail = onOpenDetail
         coordinator.styleFor = styleFor
         coordinator.bubblesTakePinColor = bubblesTakePinColor
+        bridge.topCover = topCover
 
         // Sync annotations
         let existing = Set(map.annotations.compactMap { ($0 as? TripItemAnnotation)?.item.id })
