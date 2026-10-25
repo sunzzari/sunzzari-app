@@ -4,6 +4,16 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-10-25
 
+### Hub: Around Town is back, Restaurants and Activities are gone
+
+Elisa: "make sure to add around town to hub. it got eliminated from that. also you can
+eliminate restaurants and actiities because those are encapsulated on around town".
+
+- **Hub has four cards:** Travel, Gallery, Wine, Around Town. Around Town is also still
+  on the home page above the Boops.
+- **Restaurants and Activities cards removed** from the Hub. Their screens still exist and
+  still open from the home page's restaurant and activity lists.
+
 ### Maps: tapping a place keeps your zoom
 
 Elisa: "we've just made a bunch of streamlined changes to the zooming/bubbles on the travel

@@ -10,8 +10,11 @@ struct HubView: View {
         _resumeTrip = resumeTrip
     }
 
-    // Five fixed cards laid out NON-lazily. Around Town moved to the home page
-    // (Elisa, 2026-10-11), above the Boops.
+    // Four fixed cards laid out NON-lazily. Around Town is here AND on the home
+    // page above the Boops. Elisa, 2026-10-25: "make sure to add around town to
+    // hub ... also you can eliminate restaurants and actiities because those are
+    // encapsulated on around town". The Restaurants and Activities screens are
+    // still opened from the home page lists.
     //
     // This was a LazyVGrid. With only six always-visible cards there is nothing to
     // gain from laziness, and lazy containers are where NavigationLink(destination:)
@@ -24,8 +27,7 @@ struct HubView: View {
         [.init(title: "Travel",      subtitle: "Our Trips",     symbolName: "map.fill"),
          .init(title: "Gallery",     subtitle: "Our Memories",  symbolName: "photo.stack.fill")],
         [.init(title: "Wine",        subtitle: "My Collection", assetName: "hubWine"),
-         .init(title: "Restaurants", subtitle: "My Guide",      assetName: "hubRestaurants")],
-        [.init(title: "Activities",  subtitle: "Things To Do",  assetName: "hubActivities")]
+         .init(title: "Around Town", subtitle: "LA & SF Bay",   symbolName: "mappin.and.ellipse")]
     ]
 
     var body: some View {
@@ -79,8 +81,7 @@ struct HubView: View {
         case "Travel":      TravelView()
         case "Gallery":     GalleryView()
         case "Wine":        WineHubView()
-        case "Restaurants": RestaurantHubView()
-        default:            ActivitiesHubView()
+        default:            AroundTownView()
         }
     }
 }
