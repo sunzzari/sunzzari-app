@@ -96,8 +96,8 @@ struct TodayView: View {
                             Section {
                                 NavigationLink { AroundTownView() } label: {
                                     homeBanner(
-                                        icon: "mappin.and.ellipse", eyebrow: "LA TO VIENNA",
-                                        title: "Elisa's Map", detail: "Every place, opens on LA"
+                                        icon: "mappin.and.ellipse", eyebrow: "OUR PLACES",
+                                        title: "Elisa's Map", detail: "Opens on the city you're in"
                                     )
                                 }
                                 .listRowBackground(Color.sunBackground)
@@ -174,34 +174,42 @@ struct TodayView: View {
                                     // Restaurants gets the full width — it is the
                                     // list Elisa wants to see the most of.
                                     checklistCard(.restaurants)
+                                        .fixedSize(horizontal: false, vertical: true)
 
-                                    LazyVGrid(
-                                        columns: [GridItem(.flexible(), spacing: 10, alignment: .top),
-                                                  GridItem(.flexible(), spacing: 10, alignment: .top)],
-                                        alignment: .leading,
-                                        spacing: 10
-                                    ) {
-                                        // Travel is an add-and-link card, not a
-                                        // checklist, so it is placed rather than
-                                        // driven through the ForEach below.
-                                        HomeTravelCard(
-                                            onAdd:    { addTarget = .travel },
-                                            onBrowse: { browseTarget = .travel }
-                                        )
-
-                                        ForEach([HomeList.activities, .movies, .shows, .recipes]) { list in
-                                            checklistCard(list)
+                                    // Two independent columns, not a grid. A grid
+                                    // row is as tall as its taller card, which left
+                                    // black gaps under the short ones. Elisa,
+                                    // 2026-10-26: "i dont like how there is weird
+                                    // black space".
+                                    // Both columns end level: the HStack takes the
+                                    // taller column's height and each column's last
+                                    // card stretches to it; the others keep their own.
+                                    HStack(alignment: .top, spacing: 10) {
+                                        VStack(spacing: 10) {
+                                            checklistCard(.activities).fixedSize(horizontal: false, vertical: true)
+                                            checklistCard(.recipes)
                                         }
-
-                                        // Beside Home Cooking. Read-only feed from
-                                        // the recipe app, so not a HomeList.
-                                        HomeRecipeBookmarksCard(
-                                            bookmarks: lists.recipeBookmarks,
-                                            state: lists.bookmarksState,
-                                            onConnect: { showBookmarksConnect = true },
-                                            onDisconnect: { lists.disconnectBookmarks() }
-                                        )
+                                        VStack(spacing: 10) {
+                                            checklistCard(.movies).fixedSize(horizontal: false, vertical: true)
+                                            checklistCard(.shows).fixedSize(horizontal: false, vertical: true)
+                                            // Read-only feed from the recipe app,
+                                            // so not a HomeList.
+                                            HomeRecipeBookmarksCard(
+                                                bookmarks: lists.recipeBookmarks,
+                                                state: lists.bookmarksState,
+                                                onConnect: { showBookmarksConnect = true },
+                                                onDisconnect: { lists.disconnectBookmarks() }
+                                            )
+                                        }
                                     }
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                    // Last, full width. Elisa, 2026-10-26: "travel
+                                    // wishlist should be at the bottom".
+                                    HomeTravelCard(
+                                        onAdd:    { addTarget = .travel },
+                                        onBrowse: { browseTarget = .travel }
+                                    )
                                 }
                                 .listRowBackground(Color.sunBackground)
                                 .listRowSeparator(.hidden)

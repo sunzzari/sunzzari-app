@@ -117,10 +117,19 @@ final class HomeListsModel: ObservableObject {
         bookmarksState = .notConnected
     }
 
+    /// LA only. Elisa, 2026-10-26: "for restaurants, that should show bookmarked
+    /// restaurans IN LA ONLY". Travel restaurants stay bookmarked in Notion and
+    /// on Elisa's Map; they just never reach this card. Combined Locations such
+    /// as "LA / OC" count as LA.
     private static func shortlist(_ rs: [Restaurant]) -> [ChecklistItem] {
-        rs.filter { $0.thinkingAbout && !$0.beenThere }
+        rs.filter { $0.thinkingAbout && !$0.beenThere && isLA($0.location) }
           .map { ChecklistItem(id: $0.id, title: $0.name,
                                chips: $0.neighborhood.isEmpty ? [] : [$0.neighborhood]) }
+    }
+
+    private static func isLA(_ location: String) -> Bool {
+        location.components(separatedBy: "/")
+            .contains { $0.trimmingCharacters(in: .whitespaces) == "LA" }
     }
 
     private static func shortlist(_ as_: [Activity]) -> [ChecklistItem] {

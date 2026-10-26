@@ -62,11 +62,17 @@ struct AroundTownMapView: View {
     @State private var openingEditID: String?
     @State private var editError: String?
 
-    /// The area on show. Opens on LA, every time; nil is Everywhere, reached only
-    /// from the area menu or "Search everywhere". Elisa, 2026-10-25: "default
-    /// filter to LA ... hong kong restaurants should not come up for if im in
-    /// LA. it should be harder to expalnd my search but it should be possible".
+    /// The area on show. Opens on the area she is in, LA when that is unknown or
+    /// she is outside every area; nil is Everywhere, reached only from the area
+    /// menu or "Search everywhere". Elisa, 2026-10-25: "hong kong restaurants
+    /// should not come up for if im in LA. it should be harder to expalnd my
+    /// search but it should be possible"; 2026-10-26: "it should default to
+    /// show the map of the city im in".
     @State private var filterRegion: AroundTownItem.Region? = .la
+    /// The area the map last chose by itself from her location. While the
+    /// filter still equals it a fresher location may move it; once she picks
+    /// an area herself, nothing moves on its own.
+    @State private var autoRegion: AroundTownItem.Region = .la
     /// The area the map came to rest over after a pan, for "Show places here".
     @State private var viewArea: AroundTownItem.Area?
     /// The area menu, from the server's last answer.
@@ -105,7 +111,7 @@ struct AroundTownMapView: View {
     private var nearMeOn: Bool { nearMeAsked && userCoordinate != nil }
 
     private var hasActiveFilters: Bool {
-        filterRegion != .la || filterKind != nil || wantToTryOnly || hideBeenThere
+        filterRegion != autoRegion || filterKind != nil || wantToTryOnly || hideBeenThere
             || beenThereOnly || !hideBad
             || nearMeChip || !searchQuery.isEmpty
     }
@@ -247,6 +253,17 @@ struct AroundTownMapView: View {
         searchNamesOnly = false
     }
 
+    /// Points the map at the area she is standing in. Untouched when she has
+    /// already chosen an area, is searching, or is outside every area.
+    private func openWhereSheIs() {
+        guard filterRegion == autoRegion, !nearMeChip, searchText.isEmpty,
+              let here = LocationService.shared.lastKnownCoordinate,
+              let area = AroundTownItem.Area.at(here, in: areas),
+              area.region != autoRegion else { return }
+        autoRegion = area.region
+        filterRegion = area.region
+    }
+
     private func requestLocation() {
         userCoordinate = LocationService.shared.lastKnownCoordinate
         LocationService.shared.requestLocationForNearMe()
@@ -372,8 +389,11 @@ struct AroundTownMapView: View {
                     pinStyles[AroundTownItem.placeID(of: trip.id)]
                         ?? MapPinStyle(color: Color(hex: AroundTownItem.haventTriedHex), glyph: "mappin")
                 },
+                // Starts where she is, so the first frame is not LA on the way
+                // to another city; the area fit takes over once places load.
                 initialRegion: MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
+                    center: LocationService.shared.lastKnownCoordinate
+                        ?? CLLocationCoordinate2D(latitude: 34.05, longitude: -118.24),
                     latitudinalMeters: 60_000, longitudinalMeters: 60_000
                 ),
                 fitScopeIDs: fitScopeIDs,
@@ -477,6 +497,13 @@ struct AroundTownMapView: View {
         .task(id: searchText) { await runSearch() }
         .onReceive(NotificationCenter.default.publisher(for: .ownLocationDidUpdate)) { _ in
             if nearMeAsked { userCoordinate = LocationService.shared.lastKnownCoordinate }
+            openWhereSheIs()
+        }
+        // Areas arrive with the places, after the first paint.
+        .onChange(of: areas.map(\.region.id)) { openWhereSheIs() }
+        .task {
+            openWhereSheIs()
+            LocationService.shared.requestLocationForNearMe()
         }
         .toolbar {
             // Same job as "+ Add place" on the website's Around Town.
@@ -578,7 +605,7 @@ struct AroundTownMapView: View {
 
                     if hasActiveFilters {
                         Button {
-                            filterRegion = .la
+                            filterRegion = autoRegion
                             filterKind = nil
                             wantToTryOnly = false
                             hideBeenThere = false

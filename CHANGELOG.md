@@ -2,6 +2,28 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-26
+
+### Home: map opens where you are, LA-only restaurants, Travel at the bottom, no gaps
+
+Elisa: "i dont understand why it says "LA to Vienna" on elisas map. it shoiuld default to
+show the map of the city im in. also for restaurants, that should show bookmarked
+restaurans IN LA ONLY ... TRAVEL WISHLIST SHOULDBE AT THE BOTTOM. AND I DONT LIKE HOW there
+is weird black space".
+
+- **Elisa's Map opens on the area you are standing in** (LA, SF Bay, or a travel area),
+  centered on you from the first frame. Outside every area, or with no location yet, it
+  opens on LA as before. Once you pick an area yourself it stays put, and Reset returns to
+  the area you are in.
+- **The Home banner no longer says "LA TO VIENNA"**: it reads "Our places" and "Opens on
+  the city you're in".
+- **Restaurants card shows LA places only.** Bookmarked restaurants elsewhere (Demel in
+  Vienna, La Renommee in Paris) are untouched in Notion and still on the map; they just
+  are not on this card. Locations like "LA / OC" count as LA.
+- **Travel wishlist moved to the bottom**, full width.
+- **No more black gaps between cards.** The checklists sit in two columns that end level,
+  instead of a grid whose rows left empty space under the shorter card.
+
 ## 2026-10-25
 
 ### Home: Recipe Bookmarks card, from Cathy's recipe app

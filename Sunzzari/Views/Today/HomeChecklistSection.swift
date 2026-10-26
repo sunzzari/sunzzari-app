@@ -383,7 +383,10 @@ struct HomeChecklistCard: View {
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Fills the height it is given, so the last card in a Home column can
+        // run to the bottom instead of leaving a black gap. Callers that want
+        // the natural height pin it with .fixedSize.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.sunSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
@@ -542,7 +545,10 @@ struct HomeRecipeBookmarksCard: View {
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Fills the height it is given, so the last card in a Home column can
+        // run to the bottom instead of leaving a black gap. Callers that want
+        // the natural height pin it with .fixedSize.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.sunSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
