@@ -27,7 +27,7 @@ struct HubView: View {
         [.init(title: "Travel",      subtitle: "Our Trips",     symbolName: "map.fill"),
          .init(title: "Gallery",     subtitle: "Our Memories",  symbolName: "photo.stack.fill")],
         [.init(title: "Wine",        subtitle: "My Collection", assetName: "hubWine"),
-         .init(title: "Around Town", subtitle: "LA & SF Bay",   symbolName: "mappin.and.ellipse")]
+         .init(title: "Elisa's Map", subtitle: "Every place, LA first",   symbolName: "mappin.and.ellipse")]
     ]
 
     var body: some View {

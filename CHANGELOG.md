@@ -4,6 +4,25 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-10-25
 
+### Elisa's Map: every place on one map, opens on LA
+
+Elisa: "maybe around town should be changed to "Elisa's Map" but default filter to LA. then
+i can pan to wherever. but hong kong restaurants should not come up for if im in LA. it should
+be harder to expalnd my search but it should be possible".
+
+- **Renamed** on Home, Hub and the map title. The screen reads the world answer from the travel
+  map server (`/api/around-town/live?world=1`, falling back to `/api/around-town/world`, both
+  with the app's key), so travel places (Paris, Vienna, Hong Kong...) are on it too.
+- **Opens on LA.** An area menu (LA, SF Bay, each travel area with its count, Everywhere)
+  replaces the LA / SF Bay chips. `AroundTownItem.Region` is now the server's area id.
+- **Search stays in the area:** "5 matches in LA · 6 elsewhere · Search everywhere". The
+  search sends the app's key (`world=1&area=`).
+- **Show places in X** appears when the map comes to rest over another area with places
+  (`TripMKMap.onRegionSettled`, optional; trips pass nothing). Near me ignores the area.
+- Seen in the iPhone 17 Simulator against the live server: opens on LA (290 on the map), the
+  menu, Hong Kong with all 4 Master Low Key pins, Show places in LA, dim sum 5 in LA then 11
+  everywhere.
+
 ### Hub: Around Town is back, Restaurants and Activities are gone
 
 Elisa: "make sure to add around town to hub. it got eliminated from that. also you can

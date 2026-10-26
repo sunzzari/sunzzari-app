@@ -22,7 +22,20 @@ final class AroundTownService: @unchecked Sendable {
 
     // MARK: - Places
 
-    private struct Payload: Decodable { let places: [Place] }
+    private struct Payload: Decodable {
+        let places: [Place]
+        /// Elisa's Map's area list. Missing from an answer cached by an older server.
+        let areas: [AreaInfo]?
+    }
+
+    struct AreaInfo: Decodable {
+        let id: String
+        let label: String
+        let lat: Double
+        let lng: Double
+        let radiusKm: Double
+        let count: Int
+    }
 
     struct Place: Decodable {
         struct Branch: Decodable {
@@ -60,8 +73,25 @@ final class AroundTownService: @unchecked Sendable {
     }
 
     private func decode(_ data: Data) -> [AroundTownItem]? {
-        (try? JSONDecoder().decode(Payload.self, from: data))?.places.map(AroundTownItem.init(place:))
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return nil }
+        let areas = (payload.areas ?? []).map {
+            AroundTownItem.Area(
+                region: AroundTownItem.Region(id: $0.id),
+                label: $0.label,
+                center: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng),
+                radiusMeters: $0.radiusKm * 1000,
+                count: $0.count
+            )
+        }
+        lastAreas = areas
+        DispatchQueue.main.async {
+            for area in areas { AroundTownItem.Region.labels[area.region.id] = area.label }
+        }
+        return payload.places.map(AroundTownItem.init(place:))
     }
+
+    /// The area menu from the last answer decoded, LA first.
+    private(set) var lastAreas: [AroundTownItem.Area] = []
 
     /// The last answer the server gave, for a first paint and for offline.
     func cachedPlaces() -> [AroundTownItem]? {
@@ -77,17 +107,15 @@ final class AroundTownService: @unchecked Sendable {
     /// review would have looked unsaved on the next open. The cached route is
     /// only the fallback, for when the live one cannot answer.
     func fetchPlaces() async throws -> [AroundTownItem] {
-        if let live = try? await send(URLRequest(url: URL(string: "\(Self.base)/api/around-town/live")!)),
+        // Elisa's Map: every area (`world=1`), the area menu included.
+        if let live = try? await send(URLRequest(url: URL(string: "\(Self.base)/api/around-town/live?world=1")!)),
            let items = decode(live) {
             try? live.write(to: diskURL, options: .atomic)
             return items
         }
-        var request = URLRequest(url: URL(string: "\(Self.base)/api/around-town")!)
-        request.timeoutInterval = 20
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200, let items = decode(data) else {
-            throw ServiceError.badAnswer
-        }
+        // The cached world answer is behind the site password; the app's key opens it.
+        let data = try await send(URLRequest(url: URL(string: "\(Self.base)/api/around-town/world")!))
+        guard let items = decode(data) else { throw ServiceError.badAnswer }
         try? data.write(to: diskURL, options: .atomic)
         return items
     }
@@ -116,18 +144,18 @@ final class AroundTownService: @unchecked Sendable {
         /// Pins not to draw: she asked for an area and these branches of a
         /// matching chain are elsewhere. A place's id, or `id~n` for a branch.
         let hiddenPins: [String]?
+        /// Matches outside the area asked for: what "Search everywhere" adds.
+        let elsewhere: Int?
     }
 
     /// Which saved places match a name or a question such as "jian bing in
     /// rowland heights". Free: a keyword search, no Claude call.
-    func search(_ query: String) async throws -> SearchAnswer {
+    func search(_ query: String, area: AroundTownItem.Region?) async throws -> SearchAnswer {
         var components = URLComponents(string: "\(Self.base)/api/around-town/search")!
-        components.queryItems = [URLQueryItem(name: "q", value: query)]
-        // A public route over public data, so the Notion key is not sent.
-        var request = URLRequest(url: components.url!)
-        request.timeoutInterval = 10
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
+        components.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "world", value: "1")]
+        if let area { components.queryItems?.append(URLQueryItem(name: "area", value: area.id)) }
+        // Every area is behind the site password, so the app's key goes along.
+        guard let data = try? await send(URLRequest(url: components.url!)),
               let answer = try? JSONDecoder().decode(SearchAnswer.self, from: data)
         else { throw ServiceError.badAnswer }
         return answer

@@ -216,6 +216,10 @@ struct TripMKMap: UIViewRepresentable {
     // a trip keeps amber.
     var bubblesTakePinColor = false
 
+    // Where the map came to rest after she panned or zoomed. Elisa's Map uses
+    // it for "Show places here"; a trip passes nothing.
+    var onRegionSettled: ((CLLocationCoordinate2D) -> Void)?
+
     func makeCoordinator() -> Coordinator {
         Coordinator(selectedID: $selectedID, onOpenDetail: onOpenDetail, onOpenCluster: onOpenCluster)
     }
@@ -258,6 +262,7 @@ struct TripMKMap: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.isUpdating = true
         defer { coordinator.isUpdating = false }
+        coordinator.onRegionSettled = onRegionSettled
 
         // Refresh callout-accessory callback so it always points to the
         // latest closure captured by the SwiftUI body.
@@ -403,6 +408,7 @@ struct TripMKMap: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate, CLLocationManagerDelegate {
         @Binding var selectedID: String?
         var onOpenDetail: ((TripItem) -> Void)?
+        var onRegionSettled: ((CLLocationCoordinate2D) -> Void)?
         var onOpenCluster: (([TripItem]) -> Void)?
         var styleFor: ((TripItem) -> MapPinStyle)?
         var isUpdating = false
@@ -564,6 +570,7 @@ struct TripMKMap: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             updateCone()
             refreshBubbling(mapView)
+            onRegionSettled?(mapView.region.center)
         }
 
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {

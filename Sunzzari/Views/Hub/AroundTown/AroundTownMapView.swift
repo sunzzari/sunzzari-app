@@ -62,7 +62,15 @@ struct AroundTownMapView: View {
     @State private var openingEditID: String?
     @State private var editError: String?
 
-    @State private var filterRegion: AroundTownItem.Region? = nil
+    /// The area on show. Opens on LA, every time; nil is Everywhere, reached only
+    /// from the area menu or "Search everywhere". Elisa, 2026-10-25: "default
+    /// filter to LA ... hong kong restaurants should not come up for if im in
+    /// LA. it should be harder to expalnd my search but it should be possible".
+    @State private var filterRegion: AroundTownItem.Region? = .la
+    /// The area the map came to rest over after a pan, for "Show places here".
+    @State private var viewArea: AroundTownItem.Area?
+    /// The area menu, from the server's last answer.
+    private var areas: [AroundTownItem.Area] { AroundTownService.shared.lastAreas }
     @State private var filterKind: AroundTownItem.Kind? = nil
     @State private var wantToTryOnly = false
     /// "Haven't Tried": hides the places we have been to. One on/off chip, the
@@ -97,17 +105,22 @@ struct AroundTownMapView: View {
     private var nearMeOn: Bool { nearMeAsked && userCoordinate != nil }
 
     private var hasActiveFilters: Bool {
-        filterRegion != nil || filterKind != nil || wantToTryOnly || hideBeenThere
+        filterRegion != .la || filterKind != nil || wantToTryOnly || hideBeenThere
             || beenThereOnly || !hideBad
             || nearMeChip || !searchQuery.isEmpty
     }
 
     /// What the chips and the search leave, best match first, before distance.
-    private var matched: [AroundTownItem] { matches(in: filterRegion) }
+    /// Near me goes by distance from where she is, whatever the area.
+    private var matched: [AroundTownItem] { matches(in: nearMeAsked ? nil : filterRegion) }
 
     private func matches(in area: AroundTownItem.Region?) -> [AroundTownItem] {
         var result = items.filter { item in
+            // A place with no pin and no area is a home row (blank Location): it
+            // stays with LA and the Bay, never a travel area's list.
+            let homeArea = area == .la || area == .sfBay
             let regionOK = area == nil || item.region == area
+                || (item.region == nil && item.coordinate == nil && homeArea)
             let kindOK   = filterKind == nil || item.kind == filterKind
             let triedOK  = (!hideBeenThere || !item.done) && (!beenThereOnly || item.done)
             let badOK    = !hideBad || item.preferenceLabel != "Bad"
@@ -161,7 +174,7 @@ struct AroundTownMapView: View {
     /// Matches of the search that the LA / SF Bay chip is hiding, so a search
     /// kept to one area still says the other area has some.
     private var matchesOutsideArea: Int {
-        guard isSearchActive, filterRegion != nil else { return 0 }
+        guard isSearchActive, filterRegion != nil, !nearMeAsked else { return 0 }
         return matches(in: nil).count - matched.count
     }
 
@@ -195,7 +208,7 @@ struct AroundTownMapView: View {
         }
         // The area chip is hiding every match: say so, or it reads as "not found".
         if let area = filterRegion, matched.isEmpty, matchesOutsideArea > 0 {
-            parts.append("None in \(area.label), \(matchesOutsideArea) elsewhere: tap \(area.label) to see them")
+            parts.append("None in \(area.label), \(matchesOutsideArea) elsewhere")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " - ")
     }
@@ -215,7 +228,7 @@ struct AroundTownMapView: View {
         isSearching = true
         defer { isSearching = false }
         do {
-            let answer = try await AroundTownService.shared.search(query)
+            let answer = try await AroundTownService.shared.search(query, area: filterRegion)
             guard !Task.isCancelled else { return }
             searchAnswer = answer
             searchNamesOnly = false
@@ -268,17 +281,17 @@ struct AroundTownMapView: View {
     /// area holds more of the places currently on screen, which is deterministic
     /// and needs no location permission -- Locate Me is the control for "take me
     /// to where I actually am".
+    ///
+    /// Everywhere is the same rule across the world: the frame is the one area
+    /// holding the most pins on show, never Hong Kong to LA.
     private var fitRegion: AroundTownItem.Region {
-        if let filterRegion { return filterRegion }
-        var la = 0, sf = 0
+        if let filterRegion, !nearMeOn { return filterRegion }
+        var votes: [AroundTownItem.Region: Int] = [:]
         for item in filtered where item.coordinate != nil {
-            switch item.region {
-            case .la: la += 1
-            case .sfBay: sf += 1
-            case nil: break
-            }
+            if let region = item.region { votes[region, default: 0] += 1 }
         }
-        return sf > la ? .sfBay : .la
+        let la = votes[.la] ?? 0
+        return votes.max { $0.value < $1.value }.flatMap { $0.value > la ? $0.key : nil } ?? .la
     }
 
     /// Pins inside `fitRegion`'s FIT area, which is tighter than the area the
@@ -365,7 +378,8 @@ struct AroundTownMapView: View {
                 ),
                 fitScopeIDs: fitScopeIDs,
                 topCover: controlBarHeight,
-                bubblesTakePinColor: true
+                bubblesTakePinColor: true,
+                onRegionSettled: { center in viewArea = AroundTownItem.Area.at(center, in: areas) }
             )
             .ignoresSafeArea()
 
@@ -376,6 +390,22 @@ struct AroundTownMapView: View {
                             .onAppear { controlBarHeight = bar.size.height }
                             .onChange(of: bar.size.height) { _, height in controlBarHeight = height }
                     })
+                // She panned somewhere else that has places: one tap moves the
+                // area there. Nothing switches on its own.
+                if let here = viewArea, let current = filterRegion, here.region != current, !nearMeOn, !isSearchActive {
+                    Button {
+                        filterRegion = here.region
+                    } label: {
+                        Text("Show places in \(here.label)")
+                            .font(.system(size: 13, weight: .semibold, design: .serif))
+                            .foregroundStyle(Color.sunBackground)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.sunAccent))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                }
                 Spacer()
             }
 
@@ -399,7 +429,7 @@ struct AroundTownMapView: View {
             }
             .ignoresSafeArea(.keyboard)
         }
-        .navigationTitle("Around Town")
+        .navigationTitle("Elisa's Map")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -466,6 +496,30 @@ struct AroundTownMapView: View {
 
     // MARK: - Controls
 
+    /// LA, the Bay, each travel area with places, then Everywhere.
+    private var areaMenu: some View {
+        Menu {
+            Picker("Area", selection: $filterRegion) {
+                ForEach(areas.isEmpty ? [AroundTownItem.Area(region: .la, label: "LA", center: .init(latitude: 34.05, longitude: -118.25), radiusMeters: 120_000, count: items.count)] : areas) { area in
+                    Text("\(area.label) (\(area.count))").tag(Optional(area.region))
+                }
+                Text("Everywhere").tag(AroundTownItem.Region?.none)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(filterRegion?.label ?? "Everywhere")
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(Color.sunBackground)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.sunAccent))
+        }
+        .accessibilityLabel("Area: \(filterRegion?.label ?? "Everywhere")")
+    }
+
     private var controlBar: some View {
         VStack(spacing: 8) {
             AskSearchBar(
@@ -485,12 +539,8 @@ struct AroundTownMapView: View {
             // view while she types, not below the results.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    filterChip(label: "LA", isActive: filterRegion == .la) {
-                        filterRegion = filterRegion == .la ? nil : .la
-                    }
-                    filterChip(label: "SF Bay", isActive: filterRegion == .sfBay) {
-                        filterRegion = filterRegion == .sfBay ? nil : .sfBay
-                    }
+                    // One menu, not a chip per area: leaving LA is a deliberate step.
+                    areaMenu
 
                     Rectangle()
                         .fill(Color.white.opacity(0.15))
@@ -528,7 +578,7 @@ struct AroundTownMapView: View {
 
                     if hasActiveFilters {
                         Button {
-                            filterRegion = nil
+                            filterRegion = .la
                             filterKind = nil
                             wantToTryOnly = false
                             hideBeenThere = false
@@ -773,9 +823,12 @@ struct AroundTownMapView: View {
                         .font(.system(size: 11, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.white.opacity(0.6))
                     if matchesOutsideArea > 0 {
+                        Text("· \(matchesOutsideArea) elsewhere")
+                            .font(.system(size: 11, design: .serif))
+                            .foregroundStyle(Color.white.opacity(0.6))
                         Button { filterRegion = nil } label: {
-                            Text("· \(matchesOutsideArea) more elsewhere")
-                                .font(.system(size: 11, design: .serif))
+                            Text("Search everywhere")
+                                .font(.system(size: 11, weight: .semibold, design: .serif))
                                 .foregroundStyle(Color.sunAccent)
                         }
                         .buttonStyle(.plain)

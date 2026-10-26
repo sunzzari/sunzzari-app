@@ -95,8 +95,8 @@ struct TodayView: View {
                             Section {
                                 NavigationLink { AroundTownView() } label: {
                                     homeBanner(
-                                        icon: "mappin.and.ellipse", eyebrow: "LA & SF BAY",
-                                        title: "Around Town", detail: "Map and search our places"
+                                        icon: "mappin.and.ellipse", eyebrow: "LA TO VIENNA",
+                                        title: "Elisa's Map", detail: "Every place, opens on LA"
                                     )
                                 }
                                 .listRowBackground(Color.sunBackground)

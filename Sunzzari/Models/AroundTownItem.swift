@@ -2,7 +2,7 @@ import Foundation
 import CoreLocation
 import SwiftUI
 
-/// One LA or SF Bay place on the Around Town map.
+/// One place on Elisa's Map (was Around Town): LA, the Bay, or a travel area.
 ///
 /// Built from the travel map server's answer (`AroundTownService`), never from
 /// Notion rows. Where the place is, which area it belongs to, its colour and its
@@ -12,19 +12,56 @@ import SwiftUI
 struct AroundTownItem: Identifiable {
     enum Kind { case restaurant, activity }
 
-    enum Region {
-        case la, sfBay
+    /// An area of Elisa's Map: LA, the Bay, or a travel area such as "vienna",
+    /// exactly as the server names it. Elisa, 2026-10-25: "maybe around town
+    /// should be changed to "Elisa's Map" but default filter to LA".
+    struct Region: Hashable {
+        let id: String
+
+        static let la = Region(id: "la")
+        static let sfBay = Region(id: "sfBay")
+
+        init(id: String) { self.id = id }
 
         init?(server value: String?) {
-            switch value {
-            case "la": self = .la
-            case "sfBay": self = .sfBay
-            default: return nil
-            }
+            guard let value, !value.isEmpty else { return nil }
+            self.id = value
         }
 
+        /// Her own spelling of each travel area ("Koh Samui", "NYC"), from the
+        /// server's area list. Filled when places load.
+        static var labels: [String: String] = [:]
+
         var label: String {
-            switch self { case .la: return "LA"; case .sfBay: return "SF Bay" }
+            switch id {
+            case "la": return "LA"
+            case "sfBay": return "SF Bay"
+            default: return Region.labels[id] ?? id.capitalized
+            }
+        }
+    }
+
+    /// One area in the area menu, as the server lists it: where it is, how far
+    /// it reaches, and how many places it holds.
+    struct Area: Identifiable, Hashable {
+        let region: Region
+        let label: String
+        let center: CLLocationCoordinate2D
+        let radiusMeters: CLLocationDistance
+        let count: Int
+        var id: String { region.id }
+
+        static func == (a: Area, b: Area) -> Bool { a.region == b.region && a.count == b.count }
+        func hash(into h: inout Hasher) { h.combine(region) }
+
+        /// The area a map centre is in, for "Show places here": the nearest one
+        /// whose reach covers it.
+        static func at(_ point: CLLocationCoordinate2D, in areas: [Area]) -> Area? {
+            let here = CLLocation(latitude: point.latitude, longitude: point.longitude)
+            return areas
+                .map { ($0, here.distance(from: CLLocation(latitude: $0.center.latitude, longitude: $0.center.longitude))) }
+                .filter { $0.1 <= $0.0.radiusMeters }
+                .min { $0.1 < $1.1 }?.0
         }
     }
 
