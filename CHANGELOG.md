@@ -4,6 +4,20 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-10-25
 
+### Home: Recipe Bookmarks card, from Cathy's recipe app
+
+Elisa: "i want you to be able to display my bookmarked recipes from the recipe app"; "i
+dont need to see images in the sunzzari app".
+
+- **New card beside Home Cooking** lists the recipes bookmarked in the recipe app, titles
+  only, sorted by title. Tapping one opens that recipe in the recipe app.
+- **Connect once per phone:** tap "Connect recipe bookmarks", paste the bookmarks key,
+  tap Connect. The key is checked against the recipe app before it is saved, and it lives
+  in that phone's Keychain, never in the app itself, so changing the key needs no new build.
+- **If the key is changed** in the recipe app, the card says so and offers to paste the new
+  one. The "..." menu on the card replaces or removes the key.
+- Read-only: bookmarking still happens in the recipe app. Reads
+  `GET /api/integrations/bookmarks`.
 ### Elisa's Map: every place on one map, opens on LA
 
 Elisa: "maybe around town should be changed to "Elisa's Map" but default filter to LA. then

@@ -23,6 +23,12 @@ enum Constants {
         static let version          = "2022-06-28"
     }
 
+    /// Cathy's recipe app. Read-only bookmarks feed; its key is NOT in the
+    /// bundle; each phone pastes it once and it lives in that phone's Keychain.
+    enum Recipes {
+        static let bookmarksFeedURL = URL(string: "https://recipes.159-65-239-232.sslip.io:8443/api/integrations/bookmarks")!
+    }
+
     enum Cloudinary {
         static let cloudName    = "dhkw1tuq6"
         static let uploadPreset = "sunzzari_uploads"

@@ -454,3 +454,194 @@ struct HomeTravelCard: View {
         )
     }
 }
+
+/// Bookmarked recipes from Cathy's recipe app. Read-only: titles only, and a
+/// tap opens the recipe in the recipe app. Bookmarking and un-bookmarking stay
+/// in the recipe app, so there is no add button and no circle.
+struct HomeRecipeBookmarksCard: View {
+    let bookmarks: [RecipeBookmark]
+    let state: HomeListsModel.BookmarksState
+    let onConnect: () -> Void
+    let onDisconnect: () -> Void
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(bookmarks.isEmpty ? "RECIPE BOOKMARKS" : "RECIPE BOOKMARKS · \(bookmarks.count)")
+                    .font(.system(size: 10, weight: .bold, design: .serif))
+                    .tracking(0.9)
+                    .foregroundStyle(Color.sunSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Spacer(minLength: 0)
+
+                if state != .notConnected {
+                    Menu {
+                        Button("Replace key", systemImage: "key", action: onConnect)
+                        Button("Disconnect", systemImage: "xmark.circle", role: .destructive, action: onDisconnect)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.sunSecondary)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                }
+            }
+
+            switch state {
+            case .notConnected:
+                connectButton("Connect recipe bookmarks")
+            case .keyRejected:
+                Text("The key was changed in the recipe app")
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(Color.sunSecondary.opacity(0.7))
+                connectButton("Paste the new key")
+            case .loading where bookmarks.isEmpty:
+                ProgressView().controlSize(.small).tint(Color.sunAccent)
+                    .padding(.vertical, 2)
+            case .failed:
+                Text("Couldn't reach the recipe app")
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(Color.sunSecondary.opacity(0.7))
+                    .padding(.vertical, 2)
+            default:
+                if bookmarks.isEmpty {
+                    Text("No bookmarked recipes")
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(Color.sunSecondary.opacity(0.7))
+                        .padding(.vertical, 2)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(bookmarks) { recipe in
+                            Button {
+                                openURL(recipe.href)
+                            } label: {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Image(systemName: "bookmark.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Color.sunAccent.opacity(0.8))
+                                    Text(recipe.title)
+                                        .font(.system(size: 13, design: .serif))
+                                        .foregroundStyle(Color.sunText)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.vertical, 5)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.sunSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private func connectButton(_ label: String) -> some View {
+        Button(action: onConnect) {
+            HStack(spacing: 4) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 11))
+                Text(label)
+                    .font(.system(size: 13, design: .serif))
+                    .multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(Color.sunAccent)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Paste the recipe app's bookmarks key. The key is checked against the live
+/// feed before it is saved, so a typo never gets stored.
+struct HomeRecipeBookmarksConnectView: View {
+    let onConnect: (String) async -> String?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var key = ""
+    @State private var error: String?
+    @State private var isConnecting = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.sunBackground.ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    SecureField("", text: $key, prompt:
+                        Text("Bookmarks key").foregroundStyle(Color.sunSecondary))
+                        .font(.system(size: 15, design: .monospaced))
+                        .foregroundStyle(Color.sunText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(14)
+                        .background(Color.sunSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { connect() }
+
+                    Text(error ?? "Paste the key from the recipe app. It is saved on this phone only.")
+                        .font(.system(size: 12, design: .serif))
+                        .foregroundStyle(error == nil ? Color.sunSecondary : Color.sunAccent)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
+            }
+            .navigationTitle("Recipe Bookmarks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(Color.sunSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isConnecting {
+                        ProgressView().controlSize(.small).tint(Color.sunAccent)
+                    } else {
+                        Button("Connect") { connect() }
+                            .foregroundStyle(Color.sunAccent)
+                            .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.height(220)])
+        .onAppear { focused = true }
+    }
+
+    private func connect() {
+        guard !isConnecting, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        isConnecting = true
+        error = nil
+        Task {
+            let failure = await onConnect(key)
+            isConnecting = false
+            if let failure {
+                error = failure
+            } else {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            }
+        }
+    }
+}

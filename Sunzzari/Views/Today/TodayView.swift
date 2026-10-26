@@ -32,6 +32,7 @@ struct TodayView: View {
     @StateObject private var lists = HomeListsModel()
     @State private var addTarget: HomeList? = nil
     @State private var browseTarget: HomeList? = nil
+    @State private var showBookmarksConnect = false
     @State private var showCycle = false
 
     @State private var selectedEntry: BestOfEntry? = nil
@@ -191,6 +192,15 @@ struct TodayView: View {
                                         ForEach([HomeList.activities, .movies, .shows, .recipes]) { list in
                                             checklistCard(list)
                                         }
+
+                                        // Beside Home Cooking. Read-only feed from
+                                        // the recipe app, so not a HomeList.
+                                        HomeRecipeBookmarksCard(
+                                            bookmarks: lists.recipeBookmarks,
+                                            state: lists.bookmarksState,
+                                            onConnect: { showBookmarksConnect = true },
+                                            onDisconnect: { lists.disconnectBookmarks() }
+                                        )
                                     }
                                 }
                                 .listRowBackground(Color.sunBackground)
@@ -279,6 +289,11 @@ struct TodayView: View {
         .sheet(item: $addTarget) { list in
             HomeChecklistAddView(list: list) { name, chips in
                 await lists.add(title: name, chips: chips, to: list)
+            }
+        }
+        .sheet(isPresented: $showBookmarksConnect) {
+            HomeRecipeBookmarksConnectView { key in
+                await lists.connectBookmarks(key: key)
             }
         }
         .task { await load() }

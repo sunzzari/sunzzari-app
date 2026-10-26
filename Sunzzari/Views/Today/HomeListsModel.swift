@@ -31,6 +31,15 @@ final class HomeListsModel: ObservableObject {
     @Published var travel:      [ChecklistItem] = []
     @Published var cycleEntries: [CycleEntry] = []
 
+    /// Cathy's recipe app, read-only. Not a HomeList: nothing is added or
+    /// checked off here, the bookmark lives in the recipe app.
+    @Published var recipeBookmarks: [RecipeBookmark] = []
+    @Published var bookmarksState: BookmarksState = RecipeBookmarksService.shared.hasKey ? .loading : .notConnected
+
+    enum BookmarksState: Equatable {
+        case notConnected, loading, loaded, keyRejected, failed
+    }
+
     /// Rows mid-write, so the circle can show progress and block a double tap.
     @Published var completing: Set<String> = []
     @Published var toast: String?
@@ -47,8 +56,9 @@ final class HomeListsModel: ObservableObject {
         async let a = try? service.fetchActivities(force: force)
         async let w = try? service.fetchWatchlist(force: force)
         async let c = try? service.fetchCycleEntries(force: force)
+        async let b: Void = loadBookmarks()
 
-        let (rest, acts, watch, cyc) = await (r, a, w, c)
+        let (rest, acts, watch, cyc, _) = await (r, a, w, c, b)
 
         if let rest { allRestaurants = rest; restaurants = Self.shortlist(rest) }
         if let acts { allActivities = acts;  activities  = Self.shortlist(acts) }
@@ -61,6 +71,50 @@ final class HomeListsModel: ObservableObject {
                            .map { ChecklistItem(id: $0.id, title: $0.title, chips: $0.locations) }
         }
         if let cyc { cycleEntries = cyc }
+    }
+
+    func loadBookmarks() async {
+        guard RecipeBookmarksService.shared.hasKey else {
+            bookmarksState = .notConnected
+            return
+        }
+        if recipeBookmarks.isEmpty { bookmarksState = .loading }
+        do {
+            recipeBookmarks = try await RecipeBookmarksService.shared.fetchBookmarks()
+            bookmarksState = .loaded
+        } catch RecipeBookmarksService.FeedError.keyRejected {
+            // Rotated on the server: keep the rows off screen rather than show stale ones.
+            recipeBookmarks = []
+            bookmarksState = .keyRejected
+        } catch {
+            // Offline or server down: keep whatever was last shown.
+            bookmarksState = recipeBookmarks.isEmpty ? .failed : .loaded
+        }
+    }
+
+    /// Tests the pasted key against the live feed and only saves it if accepted.
+    /// Returns an error line for the sheet, or nil on success.
+    func connectBookmarks(key raw: String) async -> String? {
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "BOOKMARKS_READ_SECRET=", with: "")
+        guard !key.isEmpty else { return "Paste the key first" }
+        do {
+            let rows = try await RecipeBookmarksService.shared.fetchBookmarks(key: key)
+            guard RecipeBookmarksService.shared.saveKey(key) else { return "Couldn't save the key on this phone" }
+            recipeBookmarks = rows
+            bookmarksState = .loaded
+            return nil
+        } catch RecipeBookmarksService.FeedError.keyRejected {
+            return "That key wasn't accepted"
+        } catch {
+            return "Couldn't reach the recipe app, check connection"
+        }
+    }
+
+    func disconnectBookmarks() {
+        RecipeBookmarksService.shared.deleteKey()
+        recipeBookmarks = []
+        bookmarksState = .notConnected
     }
 
     private static func shortlist(_ rs: [Restaurant]) -> [ChecklistItem] {
