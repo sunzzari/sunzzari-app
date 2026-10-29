@@ -2,6 +2,20 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-10-29
+
+### Wine picker learns the 11 bottles logged since June
+
+Elisa: "run /wine-picker-sync". Re-derived from all 60 bottles in the Wine Collection.
+
+- **Burgundy reds widened**: Pommard and Chambolle-Musigny join the village list (both
+  5-star). Burgundy now holds 10 of her 14 five-star reds.
+- **New Old World lanes**: Barbaresco under Nebbiolo, and Rioja Tempranillo.
+- **California**: Sonoma Pinot (Three Sticks) added.
+- **Whites**: Ladoix 1er Cru and Santenay added to white Burgundy.
+- **Sparkling**: French Crémant and dry Lambrusco added as everyday bubbles.
+- The Trip Assistant's wine line carries the same lanes. Avoid list unchanged.
+
 ## 2026-10-26
 
 ### Home: map opens where you are, LA-only restaurants, Travel at the bottom, no gaps
