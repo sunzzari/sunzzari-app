@@ -2,6 +2,17 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-11-12
+
+### Wine picker learns the Muscadet and the 5-star Barbaresco
+
+Elisa: "/wine-picker-sync", then "barbaresco is 5/5". Re-derived from all 61 bottles.
+
+- **Whites**: Loire Muscadet Sevre et Maine sur lie added (5-star, Vignobles Lacheteau).
+- **Nebbiolo**: Bruno Rocca Barbaresco now rated 5-star, so Nebbiolo and Xinomavro lead
+  the structured Old World lane. Burgundy holds 10 of her 15 five-star reds.
+- The Trip Assistant's wine line carries the same lanes. Avoid list unchanged.
+
 ## 2026-10-29
 
 ### Wine picker learns the 11 bottles logged since June
