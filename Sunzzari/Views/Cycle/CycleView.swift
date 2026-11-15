@@ -6,6 +6,9 @@ struct CycleView: View {
     @State private var errorMessage: String?
     @State private var pendingDate: Date? = nil
     @State private var isSaving = false
+    @State private var healthConnected = HealthCycleService.shared.isConnected
+    @State private var healthStatus: String? = nil
+    @State private var isSyncingHealth = false
     @State private var currentMonth: Date = {
         let cal = Calendar(identifier: .gregorian)
         return cal.date(from: cal.dateComponents([.year, .month], from: Date()))!
@@ -43,6 +46,9 @@ struct CycleView: View {
                             VStack(spacing: 20) {
                                 calendarSection
                                 nextPeriodSummary
+                                if HealthCycleService.shared.isEligible {
+                                    appleHealthRow
+                                }
                                 recentEntriesSection
                             }
                             .padding(.horizontal, 16)
@@ -273,6 +279,79 @@ struct CycleView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    // MARK: - Apple Health (Elisa's phone only)
+
+    private var appleHealthRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "heart.fill")
+                .foregroundStyle(Color(hex: CycleEntry.Person.elisa.colorHex))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Apple Health + My Cycle")
+                    .font(.system(size: 14, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.sunText)
+                Text(healthStatus ?? (healthConnected ? "Checks each time you open Cycle" : "Add your periods, and Cathy's from My Cycle"))
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(Color.sunSecondary)
+            }
+            Spacer()
+            if isSyncingHealth {
+                ProgressView().tint(.sunAccent)
+            } else {
+                Button(healthConnected ? "Sync" : "Connect") {
+                    Task { healthConnected ? await syncHealth() : await connectHealth() }
+                }
+                .font(.system(size: 14, weight: .semibold, design: .serif))
+                .foregroundStyle(Color.sunAccent)
+            }
+        }
+        .padding(14)
+        .background(Color.sunSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func connectHealth() async {
+        do {
+            try await HealthCycleService.shared.connect()
+            healthConnected = HealthCycleService.shared.isConnected
+            await syncHealth()
+        } catch {
+            healthStatus = "Could not connect: \(error.localizedDescription)"
+        }
+    }
+
+    private func syncHealth() async {
+        guard HealthCycleService.shared.isEligible, healthConnected, !isSyncingHealth else { return }
+        isSyncingHealth = true
+        defer { isSyncingHealth = false }
+        do {
+            // Fresh Notion read so a period logged by hand is never added twice.
+            let current = try await NotionService.shared.fetchCycleEntries(force: true)
+            guard let result = try await HealthCycleService.shared.sync(existing: current) else { return }
+            let found = result.foundInHealth.values.reduce(0, +)
+            let addedElisa = result.added[.elisa] ?? 0
+            let addedCathy = result.added[.cathy] ?? 0
+            var lines: [String] = []
+            if found == 0 {
+                lines.append("No periods found in Health. Check Health > Sharing > Apps > Sunzzari")
+            } else if addedElisa + addedCathy == 0 {
+                lines.append("Up to date with Health")
+            } else {
+                lines.append("Added \(addedElisa) for Elisa, \(addedCathy) for Cathy")
+            }
+            if (result.foundInHealth[.cathy] ?? 0) == 0 {
+                let others = result.sourceNames.isEmpty ? "none" : result.sourceNames.joined(separator: ", ")
+                lines.append("Nothing from \(HealthCycleService.cathySourceName) in Health (apps found: \(others))")
+            }
+            healthStatus = lines.joined(separator: "\n")
+            if addedElisa + addedCathy > 0 {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                entries = try await NotionService.shared.fetchCycleEntries(force: true)
+            }
+        } catch {
+            healthStatus = "Health sync failed: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Recent Entries
 
     private var recentEntriesSection: some View {
@@ -427,6 +506,7 @@ struct CycleView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+        if healthConnected { await syncHealth() }
     }
 
     private func dayKey(for date: Date) -> String {

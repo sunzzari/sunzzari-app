@@ -2,6 +2,14 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-11-15
+
+### Cycle pulls periods from Apple Health, including Cathy's from My Cycle
+
+Elisa: "can you set up the sunzzari app to pull elisas period data from apple health", then "can you have cathys period info pull from my cycle app? also on elisas phone".
+
+- A new "Apple Health + My Cycle" row on the Cycle screen (Elisa's phone only, never Cathy's) asks once for read access to Health's period data, then checks every time Cycle opens. Period starts from the last 12 months that are not already logged (within 3 days) are added to the shared Notion Cycle Tracker, so Cathy's phone sees them too. Entries logged by the My Cycle app are saved as Cathy's; all other Health entries are Elisa's. If Health has nothing, or nothing from My Cycle, the row says so and lists which apps it did find. Read-only: Sunzzari never writes to Apple Health.
+
 ## 2026-11-12
 
 ### Wine picker learns the Muscadet and the 5-star Barbaresco
