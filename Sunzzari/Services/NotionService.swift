@@ -563,7 +563,9 @@ final class NotionService: @unchecked Sendable {
 
     // MARK: - Cycle Tracker
 
-    func fetchCycleEntries(force: Bool = false) async throws -> [CycleEntry] {
+    /// `allowDiskFallback: false` throws instead of returning the saved copy when Notion
+    /// cannot be reached, for callers that must not act on stale data (the Health import).
+    func fetchCycleEntries(force: Bool = false, allowDiskFallback: Bool = true) async throws -> [CycleEntry] {
         if !force, let cached = cycleCache, Date().timeIntervalSince(cached.at) < cacheTTL {
             return cached.entries
         }
@@ -577,7 +579,7 @@ final class NotionService: @unchecked Sendable {
             saveToDisk(data, name: "cycle")
             return entries
         } catch {
-            if let diskData = loadFromDisk(name: "cycle") {
+            if allowDiskFallback, let diskData = loadFromDisk(name: "cycle") {
                 let entries = parseCycleEntries(from: diskData)
                 cycleCache = (entries, Date())
                 return entries

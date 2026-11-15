@@ -324,8 +324,9 @@ struct CycleView: View {
         isSyncingHealth = true
         defer { isSyncingHealth = false }
         do {
-            // Fresh Notion read so a period logged by hand is never added twice.
-            let current = try await NotionService.shared.fetchCycleEntries(force: true)
+            // Live Notion read (never the saved copy) so a period already logged for
+            // Elisa or Cathy is never added twice. If Notion is unreachable, nothing is added.
+            let current = try await NotionService.shared.fetchCycleEntries(force: true, allowDiskFallback: false)
             guard let result = try await HealthCycleService.shared.sync(existing: current) else { return }
             let found = result.foundInHealth.values.reduce(0, +)
             let addedElisa = result.added[.elisa] ?? 0
@@ -348,7 +349,7 @@ struct CycleView: View {
                 entries = try await NotionService.shared.fetchCycleEntries(force: true)
             }
         } catch {
-            healthStatus = "Health sync failed: \(error.localizedDescription)"
+            healthStatus = "Health sync skipped, nothing added: \(error.localizedDescription)"
         }
     }
 

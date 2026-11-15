@@ -4,11 +4,18 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-11-15
 
+### Health import never duplicates a period already in Notion
+
+Elisa: "make sure in this initial import you dont duplicate periods that are already in the notion (from elisa or cathy)".
+
+- A Health period within 10 days of one already logged for that person (was 3) counts as the same period and is skipped, so a hand-logged date that is a few days off is not added again.
+- The import now reads Notion live every time; if Notion cannot be reached it adds nothing, instead of checking against the copy saved on the phone.
+
 ### Cycle pulls periods from Apple Health, including Cathy's from My Cycle
 
 Elisa: "can you set up the sunzzari app to pull elisas period data from apple health", then "can you have cathys period info pull from my cycle app? also on elisas phone".
 
-- A new "Apple Health + My Cycle" row on the Cycle screen (Elisa's phone only, never Cathy's) asks once for read access to Health's period data, then checks every time Cycle opens. Period starts from the last 12 months that are not already logged (within 3 days) are added to the shared Notion Cycle Tracker, so Cathy's phone sees them too. Entries logged by the My Cycle app are saved as Cathy's; all other Health entries are Elisa's. If Health has nothing, or nothing from My Cycle, the row says so and lists which apps it did find. Read-only: Sunzzari never writes to Apple Health.
+- A new "Apple Health + My Cycle" row on the Cycle screen (Elisa's phone only, never Cathy's) asks once for read access to Health's period data, then checks every time Cycle opens. Period starts from the last 12 months that are not already logged (within 10 days) are added to the shared Notion Cycle Tracker, so Cathy's phone sees them too. Entries logged by the My Cycle app are saved as Cathy's; all other Health entries are Elisa's. If Health has nothing, or nothing from My Cycle, the row says so and lists which apps it did find. Read-only: Sunzzari never writes to Apple Health.
 
 ## 2026-11-12
 

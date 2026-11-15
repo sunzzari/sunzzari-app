@@ -24,8 +24,11 @@ final class HealthCycleService {
     static let cathySourceName = "My Cycle"
     /// How far back each pull looks (Elisa chose 12 months, 2026-11-15).
     private let lookbackMonths = 12
-    /// A Health start within this many days of an existing entry is the same period.
-    private let duplicateWindowDays = 3
+    /// A Health start within this many days of an existing entry for the same person
+    /// is the same period, never a new one. Wide on purpose (Elisa, 2026-11-15: "make sure
+    /// in this initial import you dont duplicate periods that are already in the notion"):
+    /// a hand-logged date can be off by days, and no real cycle is shorter than 10 days.
+    private let duplicateWindowDays = 10
     /// Flow days further apart than this belong to different periods.
     private let newPeriodGapDays = 7
 
