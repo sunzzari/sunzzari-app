@@ -7,6 +7,10 @@ enum CyclePrediction {
 
     private static let cal = Calendar(identifier: .gregorian)
 
+    /// Assumed period length in days (Notion stores only the start). The calendar draws
+    /// this many days, and the Health import treats them as the entry's days.
+    static let periodLengthDays = 5
+
     /// How many recent cycles to average over once history exists
     static let avgWindow = 6
 

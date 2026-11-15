@@ -609,6 +609,15 @@ final class NotionService: @unchecked Sendable {
                           predictedNext: nil, cycleLength: nil)
     }
 
+    /// Moves an existing Cycle Tracker row to a new start date (Health import, when
+    /// Apple Health's dates overlap it and win). Leaves the row's notes as they are.
+    func updateCycleEntry(id: String, periodStart: Date) async throws {
+        try await updatePage(id: id, body: ["properties": [
+            "Period Start": dateProp(periodStart)
+        ]])
+        cycleCache = nil
+    }
+
     // MARK: - Stories
 
     /// Stories visible in the home carousel: posted in the last 24 hours.

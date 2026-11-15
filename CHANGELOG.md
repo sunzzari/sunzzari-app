@@ -4,12 +4,15 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-11-15
 
-### Health import never duplicates a period already in Notion
+### Health import: no overlapping days, Apple Health wins
 
-Elisa: "make sure in this initial import you dont duplicate periods that are already in the notion (from elisa or cathy)".
+Elisa: "make sure in this initial import you dont duplicate periods that are already in the notion (from elisa or cathy)", then "by duplications make sure its no days should be overlapping. the app data takes precedence over the notion data. if any days collide, the app data wins".
 
-- A Health period within 10 days of one already logged for that person (was 3) counts as the same period and is skipped, so a hand-logged date that is a few days off is not added again.
-- The import now reads Notion live every time; if Notion cannot be reached it adds nothing, instead of checking against the copy saved on the phone.
+- Each Notion entry covers its start day plus 4 more (the same 5 days the calendar draws). Each Health period covers its first to last logged day.
+- If a Notion entry shares any day with a Health period for the same person, the Notion entry is moved to the Health start date (its notes are kept). Any other Notion entries overlapping that same period are moved to Notion's trash, where they can be restored for 30 days.
+- Health periods that overlap nothing are added; Notion entries that overlap nothing are left alone.
+- The import reads Notion live every time; if Notion cannot be reached it changes nothing.
+- The 5-day period length now lives in one place (`CyclePrediction.periodLengthDays`) for both the calendar and the import.
 
 ### Cycle pulls periods from Apple Health, including Cathy's from My Cycle
 

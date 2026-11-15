@@ -15,8 +15,7 @@ struct CycleView: View {
     }()
 
     private let cal = Calendar(identifier: .gregorian)
-    /// Assumed period duration in days (no end date stored in DB)
-    private let periodLengthDays = 5
+    private let periodLengthDays = CyclePrediction.periodLengthDays
     // MARK: - Derived state
 
     private var latestElisa: CycleEntry? { entries.first(where: { $0.person == .elisa }) }
@@ -329,15 +328,20 @@ struct CycleView: View {
             let current = try await NotionService.shared.fetchCycleEntries(force: true, allowDiskFallback: false)
             guard let result = try await HealthCycleService.shared.sync(existing: current) else { return }
             let found = result.foundInHealth.values.reduce(0, +)
-            let addedElisa = result.added[.elisa] ?? 0
-            let addedCathy = result.added[.cathy] ?? 0
+            func changes(_ p: CycleEntry.Person) -> Int {
+                (result.added[p] ?? 0) + (result.corrected[p] ?? 0) + (result.removed[p] ?? 0)
+            }
+            let addedElisa = changes(.elisa)
+            let addedCathy = changes(.cathy)
             var lines: [String] = []
             if found == 0 {
                 lines.append("No periods found in Health. Check Health > Sharing > Apps > Sunzzari")
             } else if addedElisa + addedCathy == 0 {
                 lines.append("Up to date with Health")
             } else {
-                lines.append("Added \(addedElisa) for Elisa, \(addedCathy) for Cathy")
+                for p in CycleEntry.Person.allCases where changes(p) > 0 {
+                    lines.append("\(p.rawValue): \(result.added[p] ?? 0) added, \(result.corrected[p] ?? 0) corrected to Health dates, \(result.removed[p] ?? 0) overlapping removed")
+                }
             }
             if (result.foundInHealth[.cathy] ?? 0) == 0 {
                 let others = result.sourceNames.isEmpty ? "none" : result.sourceNames.joined(separator: ", ")
