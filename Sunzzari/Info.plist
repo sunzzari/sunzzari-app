@@ -10,6 +10,8 @@
 	<string>Sunzzari can save photos from the shared album to your camera roll.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Sunzzari reads your period dates from Apple Health and adds them to your shared Cycle calendar.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Sunzzari only reads your period dates. It never saves anything to Apple Health.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sunzzari shows your location on the shared map so you can see where each other is.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

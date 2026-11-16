@@ -4,6 +4,10 @@ Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md]
 
 ## 2026-11-15
 
+### Cloud builds pass Apple's upload check with HealthKit
+
+- Builds 106-108 failed after the Health import landed. 106-107: HealthKit was off for the app ID in Apple's developer account (Elisa turned it on 2026-11-15). 108: signed and exported fine, then failed "Preparing build for App Store Connect". Added the second Health permission text Apple expects (`NSHealthUpdateUsageDescription`); it says the app never writes to Health, which is true.
+
 ### Health import: no overlapping days, Apple Health wins
 
 Elisa: "make sure in this initial import you dont duplicate periods that are already in the notion (from elisa or cathy)", then "by duplications make sure its no days should be overlapping. the app data takes precedence over the notion data. if any days collide, the app data wins".
