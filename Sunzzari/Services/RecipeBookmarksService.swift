@@ -7,7 +7,16 @@ import Security
 struct RecipeBookmark: Identifiable, Equatable, Decodable {
     let id: String
     let title: String
-    let href: URL
+    /// Absent from the Mac-sent feed, which carries only id and title.
+    let href: URL?
+
+    /// Where tapping the bookmark goes: the feed's link if it sends one, else the
+    /// recipe's page on the recipe app (same `/recipes/<id>` path the app's own feed used).
+    var link: URL {
+        href ?? Constants.Recipes.appBaseURL
+            .appendingPathComponent("recipes")
+            .appendingPathComponent(id)
+    }
 }
 
 /// Reads the recipe app's bookmarks feed (`GET /api/integrations/bookmarks`).

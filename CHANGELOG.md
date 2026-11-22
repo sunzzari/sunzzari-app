@@ -2,6 +2,16 @@
 
 Newest entries at the top. Every push to `main` adds one - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## 2026-11-22
+
+### Recipe Bookmarks card reads Elisa's own recipe app again
+
+Elisa: "if ive bookmarked it, to show on sunzzari app" (2026-11-20), then "Yes, build it" (2026-11-22).
+
+- The recipe app now runs on Elisa's Mac instead of Cathy's server. The Mac sends her bookmarked recipes once a day to the Elisa Health server, and the card now reads that list (`https://elisa-health-backend.vercel.app/api/recipe-bookmarks`) instead of Cathy's old address.
+- Tapping a bookmark opens that recipe at https://recipes.elisafazzari.com, which is served from her Mac, so it opens only while the Mac is awake.
+- The card needs the new bookmarks key pasted once on each phone (Connect recipe bookmarks). The old key from Cathy's server no longer works.
+
 ## 2026-11-15
 
 ### Cloud builds pass Apple's upload check with HealthKit

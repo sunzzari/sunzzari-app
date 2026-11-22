@@ -521,7 +521,7 @@ struct HomeRecipeBookmarksCard: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(bookmarks) { recipe in
                             Button {
-                                openURL(recipe.href)
+                                openURL(recipe.link)
                             } label: {
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     Image(systemName: "bookmark.fill")

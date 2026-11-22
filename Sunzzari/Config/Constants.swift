@@ -23,10 +23,14 @@ enum Constants {
         static let version          = "2022-06-28"
     }
 
-    /// Cathy's recipe app. Read-only bookmarks feed; its key is NOT in the
-    /// bundle; each phone pastes it once and it lives in that phone's Keychain.
+    /// Elisa's recipe app runs on her Mac (2026-11-20); the Mac sends her bookmarks to the
+    /// Elisa Health server, which serves this read-only feed. Its key is NOT in the bundle;
+    /// each phone pastes it once and it lives in that phone's Keychain.
     enum Recipes {
-        static let bookmarksFeedURL = URL(string: "https://recipes.159-65-239-232.sslip.io:8443/api/integrations/bookmarks")!
+        static let bookmarksFeedURL = URL(string: "https://elisa-health-backend.vercel.app/api/recipe-bookmarks")!
+        /// The recipe app itself, served from her Mac through a Cloudflare tunnel (2026-11-22).
+        /// Opens only while the Mac is awake. Recipe pages live at `/recipes/<id>`.
+        static let appBaseURL = URL(string: "https://recipes.elisafazzari.com")!
     }
 
     enum Cloudinary {
